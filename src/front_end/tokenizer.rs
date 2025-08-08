@@ -8,8 +8,8 @@ use crate::{
     error::DisplayLen as _,
     front_end::{MsgSeverity, SliceIndexPtr},
 };
-use back_to_front::offset32;
-use core::fmt::Display;
+use back_to_front::{digit::{self, AsciiDigit}, offset32};
+use core::{fmt::Display, ops::RangeInclusive};
 use unicode_segmentation::UnicodeSegmentation as _;
 
 // TODO(stefano): move to primitives.rs
@@ -503,7 +503,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
 
         let mut back_patches = Vec::<BackPatch<'_>>::new();
 
-        'tokenization: while let Some(next_character) = tokenizer.peek_ascii_multiline() {
+        'tokenization: while let Some(next_character) = tokenizer.current_ascii_multiline() {
             let token_kind_result = 'next_token: {
                 let next = match next_character {
                     Ok(next) => match next {
@@ -551,7 +551,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                 };
 
                 match next {
-                    b'r' => match tokenizer.peek_byte_multiline() {
+                    b'r' => match tokenizer.current_byte_multiline() {
                         Some(b'"') => {
                             tokenizer.col += 1;
                             tokenizer.raw_str_literal()
@@ -559,7 +559,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         _ => tokenizer.identifier(),
                     },
                     b'a'..=b'z' | b'A'..=b'Z' | b'_' => tokenizer.identifier(),
-                    b'0' => match tokenizer.peek_byte_singleline() {
+                    b'0' => match tokenizer.current_byte_singleline() {
                         None => {
                             let literal_text = tokenizer.token_text();
                             let literal_index = tokenizer.new_token_text(literal_text);
@@ -573,13 +573,13 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             tokenizer.col += 1;
                             tokenizer.integer_octal()
                         },
-                        Some(b'x') => {
-                            tokenizer.col += 1;
-                            tokenizer.integer_hexadecimal()
-                        },
                         Some(b'd') => {
                             tokenizer.col += 1;
                             tokenizer.integer_decimal_prefix()
+                        },
+                        Some(b'x') => {
+                            tokenizer.col += 1;
+                            tokenizer.integer_hexadecimal()
                         },
                         Some(_) => {
                             tokenizer.integer_decimal()
@@ -589,12 +589,12 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                     b'\'' => tokenizer.ascii_literal(),
                     b'"' => tokenizer.str_literal(),
                     b'`' => tokenizer.identifier_str(),
-                    b'#' => match tokenizer.next_byte_singleline() {
+                    b'#' => match tokenizer.get_next_byte_singleline() {
                         Some(b'*') => 'comment: {
                             let previous_block_comments_token_start_len = back_patches.len();
                             'next_character: loop {
-                                match tokenizer.next_byte_multiline() {
-                                    Some(b'*') => match tokenizer.next_byte_multiline() {
+                                match tokenizer.get_next_byte_multiline() {
+                                    Some(b'*') => match tokenizer.get_next_byte_multiline() {
                                         Some(b'#') => {
                                             let comment_text = tokenizer.token_text();
                                             let comment_index = tokenizer.new_token_text(comment_text);
@@ -622,7 +622,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                     },
                                     Some(b'#') => {
                                         let comment_start_col = tokenizer.col - 1;
-                                        match tokenizer.next_byte_multiline() {
+                                        match tokenizer.get_next_byte_multiline() {
                                             Some(b'*') => {
                                                 let back_patch =
                                                     BackPatch { column: tokenizer.token_start_col };
@@ -659,7 +659,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             Err(())
                         },
                         Some(_) => {
-                            while let Some(_) = tokenizer.next_byte_singleline() {
+                            while let Some(_) = tokenizer.get_next_byte_singleline() {
                                 // consume next character
                             }
                             let comment_text = tokenizer.token_text();
@@ -810,10 +810,10 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                     b':' => Ok(TokenKind::Colon),
                     b';' => Ok(TokenKind::SemiColon),
                     b',' => Ok(TokenKind::Comma),
-                    b'!' => match tokenizer.peek_byte_multiline() {
+                    b'!' => match tokenizer.current_byte_multiline() {
                         Some(b'=') => {
                             tokenizer.col += 1;
-                            match tokenizer.peek_byte_multiline() {
+                            match tokenizer.current_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::NotEqualsEquals))
@@ -823,17 +823,17 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         },
                         _ => Ok(TokenKind::Op(Op::Not)),
                     },
-                    b'*' => match tokenizer.peek_byte_multiline() {
+                    b'*' => match tokenizer.current_byte_multiline() {
                         Some(b'*') => {
                             tokenizer.col += 1;
-                            match tokenizer.peek_byte_multiline() {
+                            match tokenizer.current_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::PowEquals))
                                 },
                                 Some(b'\\') => {
                                     tokenizer.col += 1;
-                                    match tokenizer.peek_byte_multiline() {
+                                    match tokenizer.current_byte_multiline() {
                                         Some(b'=') => {
                                             tokenizer.col += 1;
                                             Ok(TokenKind::Op(Op::WrappingPowEquals))
@@ -843,7 +843,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                 },
                                 Some(b'|') => {
                                     tokenizer.col += 1;
-                                    match tokenizer.peek_byte_multiline() {
+                                    match tokenizer.current_byte_multiline() {
                                         Some(b'=') => {
                                             tokenizer.col += 1;
                                             Ok(TokenKind::Op(Op::SaturatingPowEquals))
@@ -860,7 +860,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         },
                         Some(b'\\') => {
                             tokenizer.col += 1;
-                            match tokenizer.peek_byte_multiline() {
+                            match tokenizer.current_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::WrappingTimesEquals))
@@ -870,7 +870,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         },
                         Some(b'|') => {
                             tokenizer.col += 1;
-                            match tokenizer.peek_byte_multiline() {
+                            match tokenizer.current_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::SaturatingTimesEquals))
@@ -880,14 +880,14 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         },
                         _ => Ok(TokenKind::Op(Op::Times)),
                     },
-                    b'/' => match tokenizer.peek_byte_multiline() {
+                    b'/' => match tokenizer.current_byte_multiline() {
                         Some(b'=') => {
                             tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::DivideEquals))
                         },
                         Some(b'\\') => {
                             tokenizer.col += 1;
-                            match tokenizer.peek_byte_multiline() {
+                            match tokenizer.current_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::WrappingDivideEquals))
@@ -897,7 +897,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         },
                         Some(b'|') => {
                             tokenizer.col += 1;
-                            match tokenizer.peek_byte_multiline() {
+                            match tokenizer.current_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::SaturatingDivideEquals))
@@ -907,21 +907,21 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         },
                         _ => Ok(TokenKind::Op(Op::Divide)),
                     },
-                    b'%' => match tokenizer.peek_byte_multiline() {
+                    b'%' => match tokenizer.current_byte_multiline() {
                         Some(b'=') => {
                             tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::RemainderEquals))
                         },
                         _ => Ok(TokenKind::Op(Op::Remainder)),
                     },
-                    b'+' => match tokenizer.peek_byte_multiline() {
+                    b'+' => match tokenizer.current_byte_multiline() {
                         Some(b'=') => {
                             tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::PlusEquals))
                         },
                         Some(b'\\') => {
                             tokenizer.col += 1;
-                            match tokenizer.peek_byte_multiline() {
+                            match tokenizer.current_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::WrappingPlusEquals))
@@ -931,7 +931,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         },
                         Some(b'|') => {
                             tokenizer.col += 1;
-                            match tokenizer.peek_byte_multiline() {
+                            match tokenizer.current_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::SaturatingPlusEquals))
@@ -941,14 +941,14 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         },
                         _ => Ok(TokenKind::Op(Op::Plus)),
                     },
-                    b'-' => match tokenizer.peek_byte_multiline() {
+                    b'-' => match tokenizer.current_byte_multiline() {
                         Some(b'=') => {
                             tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::MinusEquals))
                         },
                         Some(b'\\') => {
                             tokenizer.col += 1;
-                            match tokenizer.peek_byte_multiline() {
+                            match tokenizer.current_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::WrappingMinusEquals))
@@ -958,7 +958,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         },
                         Some(b'|') => {
                             tokenizer.col += 1;
-                            match tokenizer.peek_byte_multiline() {
+                            match tokenizer.current_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::SaturatingMinusEquals))
@@ -968,10 +968,10 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         },
                         _ => Ok(TokenKind::Op(Op::Minus)),
                     },
-                    b'&' => match tokenizer.peek_byte_multiline() {
+                    b'&' => match tokenizer.current_byte_multiline() {
                         Some(b'&') => {
                             tokenizer.col += 1;
-                            match tokenizer.peek_byte_multiline() {
+                            match tokenizer.current_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::AndEquals))
@@ -985,17 +985,17 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         },
                         _ => Ok(TokenKind::Op(Op::BitAnd)),
                     },
-                    b'^' => match tokenizer.peek_byte_multiline() {
+                    b'^' => match tokenizer.current_byte_multiline() {
                         Some(b'=') => {
                             tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::BitXorEquals))
                         },
                         _ => Ok(TokenKind::Op(Op::BitXor)),
                     },
-                    b'|' => match tokenizer.peek_byte_multiline() {
+                    b'|' => match tokenizer.current_byte_multiline() {
                         Some(b'|') => {
                             tokenizer.col += 1;
-                            match tokenizer.peek_byte_multiline() {
+                            match tokenizer.current_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::OrEquals))
@@ -1009,20 +1009,20 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         },
                         _ => Ok(TokenKind::Op(Op::BitOr)),
                     },
-                    b'=' => match tokenizer.peek_byte_multiline() {
+                    b'=' => match tokenizer.current_byte_multiline() {
                         Some(b'=') => {
                             tokenizer.col += 1;
                             Ok(TokenKind::Op(Op::EqualsEquals))
                         },
                         _ => Ok(TokenKind::Op(Op::Equals)),
                     },
-                    b'>' => match tokenizer.peek_byte_multiline() {
+                    b'>' => match tokenizer.current_byte_multiline() {
                         Some(b'>') => {
                             tokenizer.col += 1;
-                            match tokenizer.peek_byte_multiline() {
+                            match tokenizer.current_byte_multiline() {
                                 Some(b'>') => {
                                     tokenizer.col += 1;
-                                    match tokenizer.peek_byte_multiline() {
+                                    match tokenizer.current_byte_multiline() {
                                         Some(b'=') => {
                                             tokenizer.col += 1;
                                             Ok(TokenKind::Op(Op::RightRotateEquals))
@@ -1043,13 +1043,13 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         },
                         _ => Ok(TokenKind::Op(Op::Greater)),
                     },
-                    b'<' => match tokenizer.peek_byte_multiline() {
+                    b'<' => match tokenizer.current_byte_multiline() {
                         Some(b'<') => {
                             tokenizer.col += 1;
-                            match tokenizer.peek_byte_multiline() {
+                            match tokenizer.current_byte_multiline() {
                                 Some(b'<') => {
                                     tokenizer.col += 1;
-                                    match tokenizer.peek_byte_multiline() {
+                                    match tokenizer.current_byte_multiline() {
                                         Some(b'=') => {
                                             tokenizer.col += 1;
                                             Ok(TokenKind::Op(Op::LeftRotateEquals))
@@ -1063,7 +1063,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                 },
                                 Some(b'\\') => {
                                     tokenizer.col += 1;
-                                    match tokenizer.peek_byte_multiline() {
+                                    match tokenizer.current_byte_multiline() {
                                         Some(b'=') => {
                                             tokenizer.col += 1;
                                             Ok(TokenKind::Op(Op::WrappingLeftShiftEquals))
@@ -1073,7 +1073,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                 },
                                 Some(b'|') => {
                                     tokenizer.col += 1;
-                                    match tokenizer.peek_byte_multiline() {
+                                    match tokenizer.current_byte_multiline() {
                                         Some(b'=') => {
                                             tokenizer.col += 1;
                                             Ok(TokenKind::Op(Op::SaturatingLeftShiftEquals))
@@ -1086,7 +1086,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         },
                         Some(b'=') => {
                             tokenizer.col += 1;
-                            match tokenizer.peek_byte_multiline() {
+                            match tokenizer.current_byte_multiline() {
                                 Some(b'>') => {
                                     tokenizer.col += 1;
                                     Ok(TokenKind::Op(Op::Compare))
@@ -1199,7 +1199,7 @@ impl<'code> Tokenizer<'code> {
 
     #[must_use]
     #[inline]
-    const fn peek_byte_multiline(&self) -> Option<u8> {
+    const fn current_byte_multiline(&self) -> Option<u8> {
         if self.col as usize >= self.code.as_bytes().len() {
             return None;
         }
@@ -1207,8 +1207,8 @@ impl<'code> Tokenizer<'code> {
     }
 
     #[must_use]
-    const fn peek_byte_singleline(&self) -> Option<u8> {
-        let Some(next) = self.peek_byte_multiline() else {
+    const fn current_byte_singleline(&self) -> Option<u8> {
+        let Some(next) = self.current_byte_multiline() else {
             return None;
         };
         return match next {
@@ -1219,8 +1219,8 @@ impl<'code> Tokenizer<'code> {
 
     #[expect(clippy::question_mark)]
     #[must_use]
-    fn next_byte_multiline(&mut self) -> Option<u8> {
-        let Some(next) = self.peek_byte_multiline() else {
+    fn get_next_byte_multiline(&mut self) -> Option<u8> {
+        let Some(next) = self.current_byte_multiline() else {
             return None;
         };
         return match next {
@@ -1252,8 +1252,8 @@ impl<'code> Tokenizer<'code> {
 
     #[expect(clippy::question_mark)]
     #[must_use]
-    fn next_byte_singleline(&mut self) -> Option<u8> {
-        let Some(next) = self.peek_byte_multiline() else {
+    fn get_next_byte_singleline(&mut self) -> Option<u8> {
+        let Some(next) = self.current_byte_multiline() else {
             return None;
         };
         return match next {
@@ -1267,8 +1267,8 @@ impl<'code> Tokenizer<'code> {
 
     #[expect(clippy::question_mark)]
     #[must_use]
-    fn peek_ascii_multiline(&self) -> Option<Result<ascii, &'code str>> {
-        let Some(next) = self.peek_byte_multiline() else {
+    fn current_ascii_multiline(&self) -> Option<Result<ascii, &'code str>> {
+        let Some(next) = self.current_byte_multiline() else {
             return None;
         };
         return match next {
@@ -1287,8 +1287,8 @@ impl<'code> Tokenizer<'code> {
 
     #[expect(clippy::question_mark)]
     #[must_use]
-    fn peek_ascii_singleline(&self) -> Option<Result<ascii, &'code str>> {
-        let Some(next) = self.peek_byte_singleline() else {
+    fn current_ascii_singleline(&self) -> Option<Result<ascii, &'code str>> {
+        let Some(next) = self.current_byte_singleline() else {
             return None;
         };
         return match next {
@@ -1307,9 +1307,9 @@ impl<'code> Tokenizer<'code> {
 
     #[expect(clippy::question_mark)]
     #[must_use]
-    fn next_ascii_singleline(&mut self) -> Option<ascii> {
+    fn current_or_until_next_ascii_singleline(&mut self) -> Option<ascii> {
         loop {
-            let Some(next) = self.peek_byte_singleline() else {
+            let Some(next) = self.current_byte_singleline() else {
                 return None;
             };
             match next {
@@ -1340,36 +1340,25 @@ impl<'code> Tokenizer<'code> {
     }
 }
 
-// tokenization of numbers, strings and identifiers
+// tokenization of numbers
 impl<'code> Tokenizer<'code> {
-    const MAX_IDENTIFIER_LEN: offset32 = 63;
-
-    #[expect(clippy::single_call_fn)]
-    #[inline]
-    const fn integer_decimal_digit(digit: ascii) -> Option<Result<ascii, ascii>> {
-        return match digit {
-            b'0'..=b'9' | b'_' => Some(Ok(digit)),
-            b'a'..=b'z' | b'A'..=b'Z' => Some(Err(digit)),
-            _ => None,
-        };
-    }
-
-    fn integer_decimal_digits(&mut self) -> Result<&'code str, ()> {
+    fn decimal_digits(&mut self) -> Result<&'code str, ()> {
         let previous_errors_len = self.errors.len();
 
-        while let Some(digit) = self.next_ascii_singleline() {
-            let Some(digit_result) = Self::integer_decimal_digit(digit) else {
-                break;
-            };
-                    self.col += 1;
-            if let Err(out_of_range) = digit_result {
+        while let Some(digit) = self.current_or_until_next_ascii_singleline() {
+            match digit::check_decimal(digit) {
+                AsciiDigit::Ok | AsciiDigit::Underscore => {},
+                AsciiDigit::Other | AsciiDigit::Dot => break,
+                AsciiDigit::OutOfRange => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
-                    kind: ErrorKind::DigitOutOfRange(out_of_range, Base::Decimal),
+                        kind: ErrorKind::DigitOutOfRange(digit, Base(digit::Base::Decimal)),
                         col: self.col,
                         pointers_count: 1,
                     });
+                },
             }
+            self.col += 1;
         }
 
         if previous_errors_len != self.errors.len() {
@@ -1380,43 +1369,34 @@ impl<'code> Tokenizer<'code> {
     }
 
     fn integer_decimal(&mut self) -> Result<TokenKind<'code>, ()> {
-        let literal_text = self.integer_decimal_digits()?;
+        let literal_text = self.decimal_digits()?;
         let literal_index = self.new_token_text(literal_text);
         return Ok(TokenKind::DecimalInteger(literal_index));
     }
 
     fn integer_decimal_prefix(&mut self) -> Result<TokenKind<'code>, ()> {
-        let literal_text = self.integer_decimal_digits()?;
+        let literal_text = self.decimal_digits()?;
         let literal_index = self.new_token_text(literal_text);
         return Ok(TokenKind::DecimalIntegerPrefix(literal_index));
     }
 
-    #[expect(clippy::single_call_fn)]
-    #[inline]
-    const fn integer_binary_digit(digit: ascii) -> Option<Result<ascii, ascii>> {
-        return match digit {
-            b'0'..=b'1' | b'_' => Some(Ok(digit)),
-            b'2'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' => Some(Err(digit)),
-            _ => None,
-        };
-    }
-
-    fn integer_binary_digits(&mut self) -> Result<&'code str, ()> {
+    fn binary_digits(&mut self) -> Result<&'code str, ()> {
         let previous_errors_len = self.errors.len();
 
-        while let Some(digit) = self.next_ascii_singleline() {
-            let Some(digit_result) = Self::integer_binary_digit(digit) else {
-                break;
-            };
-                    self.col += 1;
-            if let Err(out_of_range) = digit_result {
+        while let Some(digit) = self.current_or_until_next_ascii_singleline() {
+            match digit::check_binary(digit) {
+                AsciiDigit::Ok | AsciiDigit::Underscore => {},
+                AsciiDigit::Other | AsciiDigit::Dot => break,
+                AsciiDigit::OutOfRange => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::DigitOutOfRange(out_of_range, Base::Binary),
+                        kind: ErrorKind::DigitOutOfRange(digit, Base(digit::Base::Binary)),
                         col: self.col,
                         pointers_count: 1,
                     });
+                },
             }
+            self.col += 1;
         }
 
         if previous_errors_len != self.errors.len() {
@@ -1427,37 +1407,28 @@ impl<'code> Tokenizer<'code> {
     }
 
     fn integer_binary(&mut self) -> Result<TokenKind<'code>, ()> {
-        let literal_text = self.integer_binary_digits()?;
+        let literal_text = self.binary_digits()?;
         let literal_index = self.new_token_text(literal_text);
         return Ok(TokenKind::BinaryInteger(literal_index));
     }
 
-    #[expect(clippy::single_call_fn)]
-    #[inline]
-    const fn integer_octal_digit(digit: ascii) -> Option<Result<ascii, ascii>> {
-        return match digit {
-            b'0'..=b'7' | b'_' => Some(Ok(digit)),
-            b'8'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' => Some(Err(digit)),
-            _ => None,
-        };
-    }
-
-    fn integer_octal_digits(&mut self) -> Result<&'code str, ()> {
+    fn octal_digits(&mut self) -> Result<&'code str, ()> {
         let previous_errors_len = self.errors.len();
 
-        while let Some(digit) = self.next_ascii_singleline() {
-            let Some(digit_result) = Self::integer_octal_digit(digit) else {
-                break;
-            };
-                    self.col += 1;
-            if let Err(out_of_range) = digit_result {
+        while let Some(digit) = self.current_or_until_next_ascii_singleline() {
+            match digit::check_octal(digit) {
+                AsciiDigit::Ok | AsciiDigit::Underscore => {},
+                AsciiDigit::Other | AsciiDigit::Dot => break,
+                AsciiDigit::OutOfRange => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::DigitOutOfRange(out_of_range, Base::Octal),
+                        kind: ErrorKind::DigitOutOfRange(digit, Base(digit::Base::Octal)),
                         col: self.col,
                         pointers_count: 1,
                     });
+                },
             }
+            self.col += 1;
         }
 
         if previous_errors_len != self.errors.len() {
@@ -1468,37 +1439,28 @@ impl<'code> Tokenizer<'code> {
     }
 
     fn integer_octal(&mut self) -> Result<TokenKind<'code>, ()> {
-        let literal_text = self.integer_octal_digits()?;
+        let literal_text = self.octal_digits()?;
         let literal_index = self.new_token_text(literal_text);
         return Ok(TokenKind::OctalInteger(literal_index));
     }
 
-    #[expect(clippy::single_call_fn)]
-    #[inline]
-    const fn integer_hexadecimal_digit(digit: ascii) -> Option<Result<ascii, ascii>> {
-        return match digit {
-            b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F' | b'_' => Some(Ok(digit)),
-            b'g'..=b'z' | b'G'..=b'Z' => Some(Err(digit)),
-            _ => None,
-        };
-    }
-
-    fn integer_hexadecimal_digits(&mut self) -> Result<&'code str, ()> {
+    fn hexadecimal_digits(&mut self) -> Result<&'code str, ()> {
         let previous_errors_len = self.errors.len();
 
-        while let Some(digit) = self.next_ascii_singleline() {
-            let Some(digit_result) = Self::integer_hexadecimal_digit(digit) else {
-                break;
-            };
-                    self.col += 1;
-            if let Err(out_of_range) = digit_result {
+        while let Some(digit) = self.current_or_until_next_ascii_singleline() {
+            match digit::check_hexadecimal(digit) {
+                AsciiDigit::Ok | AsciiDigit::Underscore => {},
+                AsciiDigit::Other | AsciiDigit::Dot => break,
+                AsciiDigit::OutOfRange => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::DigitOutOfRange(out_of_range, Base::Hexadecimal),
+                        kind: ErrorKind::DigitOutOfRange(digit, Base(digit::Base::Hexadecimal)),
                         col: self.col,
                         pointers_count: 1,
                     });
+                },
             }
+            self.col += 1;
         }
 
         if previous_errors_len != self.errors.len() {
@@ -1509,13 +1471,131 @@ impl<'code> Tokenizer<'code> {
     }
 
     fn integer_hexadecimal(&mut self) -> Result<TokenKind<'code>, ()> {
-        let literal_text = self.integer_hexadecimal_digits()?;
+        let literal_text = self.hexadecimal_digits()?;
         let literal_index = self.new_token_text(literal_text);
         return Ok(TokenKind::HexadecimalInteger(literal_index));
     }
+}
 
-    fn escape_character(&mut self, ch: ascii, start_of_ch: offset32) -> Result<ascii, bool> {
-        let escaped_character = match ch {
+#[derive(Clone, Copy)]
+enum Character {
+    OkEscaped(ascii),
+    ErrBreak,
+    ErrContinue,
+}
+
+// tokenization of strings and character literals
+impl<'code> Tokenizer<'code> {
+    fn decimal_escape_sequence(&mut self) -> Character {
+        unimplemented!()
+    }
+
+    fn binary_escape_sequence(&mut self) -> Character {
+        //     const ASCII_MAX_BINARY_DIGITS: u32 = 0;
+
+            //     self.col += 1;
+            //     let start_of_digits_col = self.col;
+            //     loop {
+            //         let digit = match self.peek_ascii_singleline() {
+            //             Some(Ok(digit)) => digit,
+            //             Some(Err(grapheme)) => {
+            //                 self.push_utf8_error(grapheme);
+            //                 #[expect(clippy::cast_possible_truncation)]
+            //                 {
+            //                     self.col += grapheme.len() as offset32;
+            //                 }
+            //                 return EscapedCharacter::ErrNonTerminal;
+            //             }
+            //             None => {
+            //                 self.errors.push(Msg {
+            //                     severity: MsgSeverity::NonTerminalError,
+            //                     kind: ErrorKind::UnterminatedEscapeCharacter,
+            //                     col: start_of_ch,
+            //                     pointers_count: self.col - start_of_ch,
+            //                 });
+            //                 return EscapedCharacter::Err;
+            //             }
+            //         };
+            //         let Some(digit_result) = Self::integer_binary_digit(digit) else {
+            //             break;
+            //         };
+
+            //         self.col += 1;
+            //         if let Err(out_of_range) = digit_result {
+            //             self.errors.push(Msg {
+            //                 severity: MsgSeverity::NonTerminalError,
+            //                 kind: ErrorKind::DigitOutOfRange(out_of_range, Base::Binary),
+            //                 col: self.col,
+            //                 pointers_count: 1,
+            //             });
+            //         }
+            //     }
+            //     let Some(terminator) = self.next_ascii_singleline() else {
+            //         self.errors.push(Msg {
+            //             severity: MsgSeverity::NonTerminalError,
+            //             kind: ErrorKind::UnterminatedEscapeCharacter,
+            //             col: start_of_ch,
+            //             pointers_count: self.col - start_of_ch,
+            //         });
+            //         return EscapedCharacter::Err;
+            //     };
+            //     let b'\\' = terminator else {
+            //         self.errors.push(Msg {
+            //             severity: MsgSeverity::NonTerminalError,
+            //             kind: ErrorKind::UnterminatedEscapeCharacter,
+            //             col: start_of_ch,
+            //             pointers_count: self.col - start_of_ch,
+            //         });
+            //         return EscapedCharacter::ErrNonTerminal;
+            //     };
+
+            //     let digits_count = self.col - start_of_digits_col;
+            //     if digits_count > ASCII_MAX_BINARY_DIGITS {
+            //         self.errors.push(Msg {
+            //             severity: MsgSeverity::NonTerminalError,
+            //             kind: ErrorKind::AsciiBinaryEscapeOverflow,
+            //             col: start_of_ch,
+            //             pointers_count: self.col - start_of_ch,
+            //         });
+            //         return EscapedCharacter::ErrNonTerminal;
+            //     }
+            //     unimplemented!("parsing of the ascii value (expose the implementation from the parsing in the typed abstract syntax tree");
+        unimplemented!()
+    }
+
+    fn octal_escape_sequence(&mut self) -> Character {
+        unimplemented!()
+    }
+
+    fn hexadecimal_escape_sequence(&mut self) -> Character {
+        unimplemented!()
+    }
+
+    fn escape_sequence(&mut self, start_of_character: offset32) -> Character {
+        // TODO: factor out this peeking of the next character in quoted literal
+        let next_character = match self.current_ascii_singleline() {
+            Some(Ok(escape_character)) => escape_character,
+            Some(Err(grapheme)) => {
+                self.push_utf8_error(grapheme);
+                #[expect(clippy::cast_possible_truncation)]
+                {
+                    self.col += grapheme.len() as offset32;
+                }
+                return Character::ErrContinue;
+            },
+            None => {
+                self.errors.push(Msg {
+                    severity: MsgSeverity::NonTerminalError,
+                    kind: ErrorKind::UnterminatedEscapeCharacter,
+                    col: start_of_character,
+                    pointers_count: self.col - start_of_character,
+                });
+                return Character::ErrBreak;
+            },
+        };
+        self.col += 1;
+
+        let escaped_character = match next_character {
             b'\\' => b'\\',
             b'\'' => b'\'',
             b'"'  => b'\"',
@@ -1524,23 +1604,58 @@ impl<'code> Tokenizer<'code> {
             b'r'  => b'\r',
             b't'  => b'\t',
             b'0'  => b'\0',
-            // b'b'  => {
-            //     unimplemented!("ascii binary");
-            // },
-            // b'o'  => {
-            //     unimplemented!("ascii octal");
-            // },
-            // b'd'  => {
-            //     unimplemented!("ascii decimal");
-            // },
-            // b'x'  => {
-            //     unimplemented!("ascii hexadecimal");
+            // b'0'  => {
+            //     let digit = match self.current_ascii_singleline() {
+            //         Some(Ok(digit)) => digit,
+            //         Some(Err(grapheme)) => {
+            //             self.push_utf8_error(grapheme);
+            //             #[expect(clippy::cast_possible_truncation)]
+            //             {
+            //                 self.col += grapheme.len() as offset32;
+            //             }
+            //             return Character::ErrContinue;
+            //         },
+            //         None => {
+            //             self.errors.push(Msg {
+            //                 severity: MsgSeverity::NonTerminalError,
+            //                 kind: ErrorKind::UnterminatedEscapeCharacter,
+            //                 col: start_of_character,
+            //                 pointers_count: self.col - start_of_character,
+            //             });
+            //             return Character::ErrBreak;
+            //         },
+            //     };
+            //     self.col += 1;
+
+            //     let escaped_character = match digit {
+            //         b'b'  => {
+            //             self.col += 1;
+            //             self.binary_escape_sequence()
+            //         },
+            //         b'o'  => {
+            //             self.col += 1;
+            //             self.octal_escape_sequence()
+            //         },
+            //         b'd'  => {
+            //             self.col += 1;
+            //             self.decimal_escape_sequence()
+            //         },
+            //         b'x'  => {
+            //             self.col += 1;
+            //             self.hexadecimal_escape_sequence()
+            //         },
+            //         _ => {
+            //             self.decimal_escape_sequence()
+            //         }
+            //     };
+
+            //     unimplemented!("parsing of ascii value");
             // },
             // b'c'  => {
             //     unimplemented!("ascii control mnemonics");
             // },
-            b'^'  => {
-                let caret_character = match self.peek_ascii_singleline() {
+            b'^' => {
+                let caret_character = match self.current_ascii_singleline() {
                     Some(Ok(escape_character)) => escape_character,
                     Some(Err(grapheme)) => {
                         self.push_utf8_error(grapheme);
@@ -1548,16 +1663,16 @@ impl<'code> Tokenizer<'code> {
                         {
                             self.col += grapheme.len() as offset32;
                         }
-                        return Err(false);
+                        return Character::ErrContinue;
                     },
                     None => {
                         self.errors.push(Msg {
                             severity: MsgSeverity::NonTerminalError,
                             kind: ErrorKind::UnterminatedEscapeCharacter,
-                            col: start_of_ch,
-                            pointers_count: self.col - start_of_ch,
+                            col: start_of_character,
+                            pointers_count: self.col - start_of_character,
                         });
-                        return Err(true);
+                        return Character::ErrBreak;
                     },
                 };
                 self.col += 1;
@@ -1570,10 +1685,10 @@ impl<'code> Tokenizer<'code> {
                         self.errors.push(Msg {
                             severity: MsgSeverity::NonTerminalError,
                             kind: ErrorKind::UnrecognizedEscapeCharacter(unrecognized),
-                            col: start_of_ch,
+                            col: start_of_character,
                             pointers_count: 3,
                         });
-                        return Err(false);
+                        return Character::ErrContinue;
                     },
                 }
             },
@@ -1581,23 +1696,23 @@ impl<'code> Tokenizer<'code> {
                 self.errors.push(Msg {
                     severity: MsgSeverity::NonTerminalError,
                     kind: ErrorKind::ControlCharacter(control),
-                    col: start_of_ch + 1,
+                    col: start_of_character + 1,
                     pointers_count: 1,
                 });
-                return Err(false);
+                return Character::ErrContinue;
             },
             unrecognized => {
                 self.errors.push(Msg {
                     severity: MsgSeverity::NonTerminalError,
                     kind: ErrorKind::UnrecognizedEscapeCharacter(unrecognized),
-                    col: start_of_ch,
+                    col: start_of_character,
                     pointers_count: 2,
                 });
-                return Err(false);
+                return Character::ErrContinue;
             },
         };
 
-        return Ok(escaped_character);
+        return Character::OkEscaped(escaped_character);
     }
 
     fn ascii_literal_characters(&mut self) -> Result<(&'code str, ascii), ()> {
@@ -1606,7 +1721,7 @@ impl<'code> Tokenizer<'code> {
         let mut logical_character = b'\0';
         let mut logical_characters_count = 0;
         loop {
-            let next_character = match self.peek_ascii_singleline() {
+            let next_character = match self.current_ascii_singleline() {
                 Some(Ok(next_character)) => next_character,
                 Some(Err(grapheme)) => {
                     self.push_utf8_error(grapheme);
@@ -1626,47 +1741,22 @@ impl<'code> Tokenizer<'code> {
                     break;
                 },
             };
-            let start_of_next_character = self.col;
+            let start_of_character = self.col;
             self.col += 1;
 
             match next_character {
                 b'\\' => {
-                    let escape_character = match self.peek_ascii_singleline() {
-                        Some(Ok(escape_character)) => escape_character,
-                        Some(Err(grapheme)) => {
-                            self.push_utf8_error(grapheme);
-                            #[expect(clippy::cast_possible_truncation)]
-                            {
-                                self.col += grapheme.len() as offset32;
-                            }
-                            continue;
-                        },
-                        None => {
-                            self.errors.push(Msg {
-                                severity: MsgSeverity::NonTerminalError,
-                                kind: ErrorKind::UnterminatedEscapeCharacter,
-                                col: start_of_next_character,
-                                pointers_count: self.col - start_of_next_character,
-                            });
-                            break;
-                        },
-                    };
-                    self.col += 1;
-
-                    logical_character = match self.escape_character(
-                        escape_character,
-                        start_of_next_character,
-                    ) {
-                        Ok(ch) => ch,
-                        Err(true) => break,
-                        Err(false) => continue,
+                    logical_character = match self.escape_sequence(start_of_character) {
+                        Character::OkEscaped(ch) => ch,
+                        Character::ErrBreak => break,
+                        Character::ErrContinue => continue,
                     };
                 },
                 control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::ControlCharacter(control),
-                        col: start_of_next_character,
+                        col: start_of_character,
                         pointers_count: 1,
                     });
                 },
@@ -1713,7 +1803,7 @@ impl<'code> Tokenizer<'code> {
         let previous_errors_len = self.errors.len();
 
         loop {
-            let next_character = match self.peek_ascii_singleline() {
+            let next_character = match self.current_ascii_singleline() {
                 Some(Ok(next_character)) => next_character,
                 Some(Err(grapheme)) => {
                     self.push_utf8_error(grapheme);
@@ -1733,47 +1823,22 @@ impl<'code> Tokenizer<'code> {
                     break;
                 },
             };
-            let start_of_next_character = self.col;
+            let start_of_character = self.col;
             self.col += 1;
 
             match next_character {
                 b'\\' => {
-                    let escape_character = match self.peek_ascii_singleline() {
-                        Some(Ok(escape_character)) => escape_character,
-                        Some(Err(grapheme)) => {
-                            self.push_utf8_error(grapheme);
-                            #[expect(clippy::cast_possible_truncation)]
-                            {
-                                self.col += grapheme.len() as offset32;
-                            }
-                            continue;
-                        },
-                        None => {
-                            self.errors.push(Msg {
-                                severity: MsgSeverity::NonTerminalError,
-                                kind: ErrorKind::UnterminatedEscapeCharacter,
-                                col: start_of_next_character,
-                                pointers_count: self.col - start_of_next_character,
-                            });
-                            break;
-                        },
-                    };
-                    self.col += 1;
-
-                    let _logical_character = match self.escape_character(
-                        escape_character,
-                        start_of_next_character,
-                    ) {
-                        Ok(ch) => ch,
-                        Err(true) => break,
-                        Err(false) => continue,
+                    let _logical_character = match self.escape_sequence(start_of_character) {
+                        Character::OkEscaped(ch) => ch,
+                        Character::ErrBreak => break,
+                        Character::ErrContinue => continue,
                     };
                 },
                 control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::ControlCharacter(control),
-                        col: start_of_next_character,
+                        col: start_of_character,
                         pointers_count: 1,
                     });
                 },
@@ -1799,7 +1864,7 @@ impl<'code> Tokenizer<'code> {
         let previous_errors_len = self.errors.len();
 
         loop {
-            let next_character = match self.peek_ascii_singleline() {
+            let next_character = match self.current_ascii_singleline() {
                 Some(Ok(next_character)) => next_character,
                 Some(Err(grapheme)) => {
                     self.push_utf8_error(grapheme);
@@ -1824,7 +1889,7 @@ impl<'code> Tokenizer<'code> {
 
             match next_character {
                 b'\\' => {
-                    let escape_character = match self.peek_ascii_singleline() {
+                    let escape_character = match self.current_ascii_singleline() {
                         Some(Ok(escape_character)) => escape_character,
                         Some(Err(grapheme)) => {
                             self.push_utf8_error(grapheme);
@@ -1874,12 +1939,17 @@ impl<'code> Tokenizer<'code> {
         let literal_index = self.new_token_text(literal_text);
         return Ok(TokenKind::RawStr(literal_index));
     }
+}
+
+// tokenization of identifiers
+impl<'code> Tokenizer<'code> {
+    const MAX_IDENTIFIER_LEN: offset32 = 63;
 
     fn identifier_str_characters(&mut self) -> Result<&'code str, ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
-            let next_character = match self.peek_ascii_singleline() {
+            let next_character = match self.current_ascii_singleline() {
                 Some(Ok(next_character)) => next_character,
                 Some(Err(grapheme)) => {
                     self.push_utf8_error(grapheme);
@@ -1945,7 +2015,7 @@ impl<'code> Tokenizer<'code> {
     fn identifier(&mut self) -> Result<TokenKind<'code>, ()> {
         let previous_errors_len = self.errors.len();
 
-        while let Some(letter) = self.next_ascii_singleline() {
+        while let Some(letter) = self.current_or_until_next_ascii_singleline() {
             match letter {
                 b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_' => {
                     self.col += 1;
@@ -1997,36 +2067,79 @@ impl<'code> Tokenizer<'code> {
 }
 
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
-#[repr(u8)]
-pub enum Base {
-    #[default]
-    Decimal = 10,
-    Binary = 0b10,
-    Octal = 0o10,
-    Hexadecimal = 0x10,
-}
+#[repr(transparent)]
+pub struct Base(pub digit::Base);
 
+#[rustfmt::skip]
 impl Base {
+    pub const BINARY_LETTER:           &str = "b";
+    pub const BINARY_PREFIX:           &str = "0b";
+
+    pub const OCTAL_LETTER:            &str = "o";
+    pub const OCTAL_PREFIX:            &str = "0o";
+
+    pub const DECIMAL_LETTER:          &str = "";
+    pub const DECIMAL_PREFIX:          &str = "";
+    pub const DECIMAL_LETTER_EXTENDED: &str = "d";
+    pub const DECIMAL_PREFIX_EXTENDED: &str = "0d";
+
+    pub const HEXADECIMAL_LETTER:      &str = "x";
+    pub const HEXADECIMAL_PREFIX:      &str = "0x";
+
     #[must_use]
     #[inline]
-    pub const fn prefix(self) -> &'static str {
-        return match self {
-            Self::Decimal => "",
-            Self::Binary => "0b",
-            Self::Octal => "0o",
-            Self::Hexadecimal => "0x",
+    pub const fn letter(self) -> &'static str {
+        return match self.0 {
+            digit::Base::Binary      => Self::BINARY_LETTER,
+            digit::Base::Octal       => Self::OCTAL_LETTER,
+            digit::Base::Decimal     => Self::DECIMAL_LETTER,
+            digit::Base::Hexadecimal => Self::HEXADECIMAL_LETTER,
         };
     }
 
     #[must_use]
     #[inline]
-    pub const fn range(self) -> &'static [core::ops::RangeInclusive<utf32>] {
-        return match self {
-            Self::Decimal => &['0'..='9'],
-            Self::Binary => &['0'..='1'],
-            Self::Octal => &['0'..='7'],
-            Self::Hexadecimal => &['0'..='9', 'A'..='F', 'a'..='f'],
+    pub const fn letter_extended(self) -> &'static str {
+        return match self.0 {
+            digit::Base::Binary      => Self::BINARY_LETTER,
+            digit::Base::Octal       => Self::OCTAL_LETTER,
+            digit::Base::Decimal     => Self::DECIMAL_LETTER_EXTENDED,
+            digit::Base::Hexadecimal => Self::HEXADECIMAL_LETTER,
         };
+    }
+
+    #[must_use]
+    #[inline]
+    pub const fn prefix(self) -> &'static str {
+        return match self.0 {
+            digit::Base::Binary      => Self::BINARY_PREFIX,
+            digit::Base::Octal       => Self::OCTAL_PREFIX,
+            digit::Base::Decimal     => Self::DECIMAL_PREFIX,
+            digit::Base::Hexadecimal => Self::HEXADECIMAL_PREFIX,
+        };
+    }
+
+    #[must_use]
+    #[inline]
+    pub const fn prefix_extended(self) -> &'static str {
+        return match self.0 {
+            digit::Base::Binary      => Self::BINARY_PREFIX,
+            digit::Base::Octal       => Self::OCTAL_PREFIX,
+            digit::Base::Decimal     => Self::DECIMAL_PREFIX_EXTENDED,
+            digit::Base::Hexadecimal => Self::HEXADECIMAL_PREFIX,
+        };
+    }
+
+    #[must_use]
+    #[inline]
+    pub const fn range(self) -> &'static [RangeInclusive<utf32>] {
+        return self.0.range_ops();
+    }
+
+    #[must_use]
+    #[inline]
+    pub const fn range_ascii(self) -> &'static [RangeInclusive<ascii>] {
+        return self.0.range_ascii_ops();
     }
 }
 
@@ -2051,6 +2164,7 @@ pub enum ErrorKind<'code> {
 
     UnrecognizedEscapeCharacter(ascii),
     UnterminatedEscapeCharacter,
+    AsciiBinaryEscapeOverflow,
 
     UnclosedCharacterLiteral,
     UnclosedStrLiteral,
@@ -2131,8 +2245,8 @@ impl IntoMsgInfo for ErrorKind<'_> {
             Self::DigitOutOfRange(digit, base) => (
                 "invalid integer literal".into(),
                 format!(
-                    "digit '{escaped}' ({raw}) out of the valid range for a base {} number {:?}",
-                    *base as u8,
+                    "digit '{escaped}' ({raw}) is out of the valid range for a base {} number {:?}",
+                    base.0 as u8,
                     base.range(),
                     escaped = *digit as utf32,
                     raw = digit,
@@ -2150,6 +2264,10 @@ impl IntoMsgInfo for ErrorKind<'_> {
             Self::UnterminatedEscapeCharacter => (
                 "invalid escape character".into(),
                 "unterminated escape character".into(),
+            ),
+            Self::AsciiBinaryEscapeOverflow => (
+                "invalid escape character".into(),
+                format!("must not be over \\b{:b} (ASCII 127)", b'\x7f').into(),
             ),
 
             Self::UnclosedCharacterLiteral => (

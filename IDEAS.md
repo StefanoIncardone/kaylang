@@ -2981,42 +2981,45 @@ loop_0_end:
 ## 0.6.4 - More escape characters
 
 ```kay
-# ASCII full name escape characters controls
-"\cNUL";
-"\cBEL";
-# or delimited versions, to avoid confusions such as "...\aNULL..." where \aNULL are two distinct
-# characters \aNUL and L
-"\cNUL\";
-"\(NUL)";
-"\c(NUL)";
+# enclosed in parentheses to avoid confusions such as "...\cNULL..." where \cNULL are two
+# distinct characters \cNUL and L, or "...\b11111111..." where \b1111111 is one character and 1 is
+# another character, since ascii characters only use 7 bits and it's difficult to count 7 vs 8 1s
 
-# binary\octal\decimal\hexadecimal escapes
-"\b1111111";
-"\o177";
-"\d127";
-"\x7f";
-# or delimited versions, to avoid confusions such as "...\x7FF..." where x7FF are two distinct
-# characters \x7F and F, or with "...\b00001111..." where \b0000111 is one character and 1 is
-# another character, since ascii only use 7 bits and it's difficult to count 7 vs 8 1s
-"\x7f\";
-"\(x7f)";
-"\x(7f)";
+# ASCII and Extended ASCII full name escape characters controls
+"\c(NUL)"; # ASCII controls groud C0
+"\C(NUL)"; # extended ASCII controls in group C1
+
+# binary\octal\decimal\hexadecimal escapes similar to regular integer literals
+"\(0b1111111)";
+"\(0o177)";
+"\(0d127)";
+"\(127)";
+"\(0x7f)";
 
 # Unicode binary\octal\decimal\hexadecimal codepoints
-"\ub(...)";
-"\ub...\";
-"\uo(...)";
-"\ud(...)";
-"\ux(...)";
-# or
-"\c0(...)"; # controls group C0
-"\c1(...)"; # controls group C1
-"\c0NUL"; # controls group C0
-"\c0(NUL)"; # controls group C0
-"\c0(NUL)"; # controls group C0
-# or
-"\cNUL\"; # ASCII controls in group C0
-"\ceNUL\"; # extended ASCII controls in group C1
-"\c(NUL)"; # ASCII controls in group C0
-"\ce(NUL)"; # extended ASCII controls in group C1
+"\u(0b...)";
+"\u(0o...)";
+"\u(0d...)";
+"\u(...)";
+"\u(0x...)";
+
+# maybe make all number escape sequences delimited by `\`
+"\(0x7f)"; # is clunky and overly long with `(` and `)` extra characters 
+"\0x7f"; # normally \0 and x7f are distinct characters with the current syntax
+"\0x7f\"; # \0x7f are a single character delimited by `\`
+"\x7f\"; # could also make the leading 0 optional or forbidden
+"\65\"; # character `A`
+"\u0b01\";
+"\u0o12\";
+"\u0d21\";
+"\u21\";
+"\u0x7f\";
+"\ux7f\"; # could also make the leading 0 optional or forbidden
+
+# could use a different closing symbol to disambiguate cases like these
+"\64\n"; # actual characters: \64\, n | could be confuse with: \64, \n
+"\64]"; # the documentation would state that every number escape is terminated by `]`
+"\^\n"; # but then this already exists, although here the confusion is less since there can only be
+        # one character after `\^` as per the documentation, while for numbers there can be multiple
+        # digits
 ```

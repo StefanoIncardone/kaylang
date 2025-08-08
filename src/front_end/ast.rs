@@ -2,13 +2,13 @@
 // IDEA(stefano): fuse tokenization and parsing, making the tokenizer a generator of tokens
 // TODO(stefano): multidimensional arrays
 
-use back_to_front::offset32;
+use back_to_front::{digit::{self, Digit}, offset32};
 
-use crate::front_end::MsgSeverity;
+use crate::front_end::{tokenizer, MsgSeverity};
 
 use super::{
     src_file::{Position, SrcCode},
-    tokenizer::{ascii, Base, Op, Token, TokenIndex, TokenKind, Tokens},
+    tokenizer::{ascii, Op, Token, TokenIndex, TokenKind, Tokens},
     IntoMsgInfo, Msg, MsgInfo,
 };
 use core::fmt::{Debug, Display};
@@ -1450,21 +1450,21 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     }
 
     const fn parse_positive_binary_i64(literal_str: &'code str) -> Option<i64> {
-        const BASE: Base = Base::Binary;
+        const BASE: tokenizer::Base = tokenizer::Base(digit::Base::Binary);
         let mut integer: i64 = 0;
-        let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
+        let mut digit_index = BASE.prefix().len();
 
         let literal = literal_str.as_bytes();
         while digit_index < literal.len() {
             let ascii_digit = literal[digit_index];
             digit_index += 1;
-            if ascii_digit == b'_' {
-                continue;
-            }
+            let digit = match digit::parse_binary(ascii_digit) {
+                Digit::Ok(digit) => digit,
+                Digit::Underscore => continue,
+                Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
+            };
 
-            let digit = ascii_digit - b'0';
-            debug_assert!(digit < BASE as u8, "invalid binary digit");
-            integer = match integer.checked_mul(BASE as i64) {
+            integer = match integer.checked_mul(BASE.0 as i64) {
                 Some(integer_) => integer_,
                 None => return None,
             };
@@ -1477,21 +1477,21 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     }
 
     const fn parse_positive_octal_i64(literal_str: &'code str) -> Option<i64> {
-        const BASE: Base = Base::Octal;
+        const BASE: tokenizer::Base = tokenizer::Base(digit::Base::Octal);
         let mut integer: i64 = 0;
-        let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
+        let mut digit_index = BASE.prefix().len();
 
         let literal = literal_str.as_bytes();
         while digit_index < literal.len() {
             let ascii_digit = literal[digit_index];
             digit_index += 1;
-            if ascii_digit == b'_' {
-                continue;
-            }
+            let digit = match digit::parse_octal(ascii_digit) {
+                Digit::Ok(digit) => digit,
+                Digit::Underscore => continue,
+                Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
+            };
 
-            let digit = ascii_digit - b'0';
-            debug_assert!(digit < BASE as u8, "invalid octal digit");
-            integer = match integer.checked_mul(BASE as i64) {
+            integer = match integer.checked_mul(BASE.0 as i64) {
                 Some(integer_) => integer_,
                 None => return None,
             };
@@ -1504,21 +1504,21 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     }
 
     const fn parse_positive_decimal_i64(literal_str: &'code str) -> Option<i64> {
-        const BASE: Base = Base::Decimal;
+        const BASE: tokenizer::Base = tokenizer::Base(digit::Base::Decimal);
         let mut integer: i64 = 0;
-        let mut digit_index = 0;
+        let mut digit_index = BASE.prefix().len();
 
         let literal = literal_str.as_bytes();
         while digit_index < literal.len() {
             let ascii_digit = literal[digit_index];
             digit_index += 1;
-            if ascii_digit == b'_' {
-                continue;
-            }
+            let digit = match digit::parse_decimal(ascii_digit) {
+                Digit::Ok(digit) => digit,
+                Digit::Underscore => continue,
+                Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
+            };
 
-            let digit = ascii_digit - b'0';
-            debug_assert!(digit < BASE as u8, "invalid decimal digit");
-            integer = match integer.checked_mul(BASE as i64) {
+            integer = match integer.checked_mul(BASE.0 as i64) {
                 Some(integer_) => integer_,
                 None => return None,
             };
@@ -1531,21 +1531,21 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     }
 
     const fn parse_positive_decimal_prefix_i64(literal_str: &'code str) -> Option<i64> {
-        const BASE: Base = Base::Decimal;
+        const BASE: tokenizer::Base = tokenizer::Base(digit::Base::Decimal);
         let mut integer: i64 = 0;
-        let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
+        let mut digit_index = BASE.prefix_extended().len();
 
         let literal = literal_str.as_bytes();
         while digit_index < literal.len() {
             let ascii_digit = literal[digit_index];
             digit_index += 1;
-            if ascii_digit == b'_' {
-                continue;
-            }
+            let digit = match digit::parse_decimal(ascii_digit) {
+                Digit::Ok(digit) => digit,
+                Digit::Underscore => continue,
+                Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
+            };
 
-            let digit = ascii_digit - b'0';
-            debug_assert!(digit < BASE as u8, "invalid decimal digit");
-            integer = match integer.checked_mul(BASE as i64) {
+            integer = match integer.checked_mul(BASE.0 as i64) {
                 Some(integer_) => integer_,
                 None => return None,
             };
@@ -1558,25 +1558,21 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     }
 
     const fn parse_positive_hexadecimal_i64(literal_str: &'code str) -> Option<i64> {
-        const BASE: Base = Base::Hexadecimal;
+        const BASE: tokenizer::Base = tokenizer::Base(digit::Base::Hexadecimal);
         let mut integer: i64 = 0;
-        let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
+        let mut digit_index = BASE.prefix().len();
 
         let literal = literal_str.as_bytes();
         while digit_index < literal.len() {
             let ascii_digit = literal[digit_index];
             digit_index += 1;
-            if ascii_digit == b'_' {
-                continue;
-            }
-
-            let digit = match ascii_digit {
-                number @ b'0'..=b'9' => number - b'0',
-                uppercase_letter @ b'A'..=b'F' => uppercase_letter - b'A' + 10,
-                lowercase_letter @ b'a'..=b'f' => lowercase_letter - b'a' + 10,
-                _ => panic!("invalid hexadecimal digit"),
+            let digit = match digit::parse_hexadecimal(ascii_digit) {
+                Digit::Ok(digit) => digit,
+                Digit::Underscore => continue,
+                Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
             };
-            integer = match integer.checked_mul(BASE as i64) {
+
+            integer = match integer.checked_mul(BASE.0 as i64) {
                 Some(integer_) => integer_,
                 None => return None,
             };
@@ -1590,21 +1586,21 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
     #[expect(clippy::single_call_fn)]
     const fn parse_negative_binary_i64(literal_str: &'code str) -> Option<i64> {
-        const BASE: Base = Base::Binary;
+        const BASE: tokenizer::Base = tokenizer::Base(digit::Base::Binary);
         let mut integer: i64 = 0;
-        let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
+        let mut digit_index = BASE.prefix().len();
 
         let literal = literal_str.as_bytes();
         while digit_index < literal.len() {
             let ascii_digit = literal[digit_index];
             digit_index += 1;
-            if ascii_digit == b'_' {
-                continue;
-            }
+            let digit = match digit::parse_binary(ascii_digit) {
+                Digit::Ok(digit) => digit,
+                Digit::Underscore => continue,
+                Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
+            };
 
-            let digit = ascii_digit - b'0';
-            debug_assert!(digit < BASE as u8, "invalid binary digit");
-            integer = match integer.checked_mul(BASE as i64) {
+            integer = match integer.checked_mul(BASE.0 as i64) {
                 Some(integer_) => integer_,
                 None => return None,
             };
@@ -1618,21 +1614,21 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
     #[expect(clippy::single_call_fn)]
     const fn parse_negative_octal_i64(literal_str: &'code str) -> Option<i64> {
-        const BASE: Base = Base::Octal;
+        const BASE: tokenizer::Base = tokenizer::Base(digit::Base::Octal);
         let mut integer: i64 = 0;
-        let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
+        let mut digit_index = BASE.prefix().len();
 
         let literal = literal_str.as_bytes();
         while digit_index < literal.len() {
             let ascii_digit = literal[digit_index];
             digit_index += 1;
-            if ascii_digit == b'_' {
-                continue;
-            }
+            let digit = match digit::parse_octal(ascii_digit) {
+                Digit::Ok(digit) => digit,
+                Digit::Underscore => continue,
+                Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
+            };
 
-            let digit = ascii_digit - b'0';
-            debug_assert!(digit < BASE as u8, "invalid octal digit");
-            integer = match integer.checked_mul(BASE as i64) {
+            integer = match integer.checked_mul(BASE.0 as i64) {
                 Some(integer_) => integer_,
                 None => return None,
             };
@@ -1646,21 +1642,21 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
     #[expect(clippy::single_call_fn)]
     const fn parse_negative_decimal_i64(literal_str: &'code str) -> Option<i64> {
-        const BASE: Base = Base::Decimal;
+        const BASE: tokenizer::Base = tokenizer::Base(digit::Base::Decimal);
         let mut integer: i64 = 0;
-        let mut digit_index = 0;
+        let mut digit_index = BASE.prefix().len();
 
         let literal = literal_str.as_bytes();
         while digit_index < literal.len() {
             let ascii_digit = literal[digit_index];
             digit_index += 1;
-            if ascii_digit == b'_' {
-                continue;
-            }
+            let digit = match digit::parse_decimal(ascii_digit) {
+                Digit::Ok(digit) => digit,
+                Digit::Underscore => continue,
+                Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
+            };
 
-            let digit = ascii_digit - b'0';
-            debug_assert!(digit < BASE as u8, "invalid decimal digit");
-            integer = match integer.checked_mul(BASE as i64) {
+            integer = match integer.checked_mul(BASE.0 as i64) {
                 Some(integer_) => integer_,
                 None => return None,
             };
@@ -1674,21 +1670,21 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
     #[expect(clippy::single_call_fn)]
     const fn parse_negative_decimal_prefix_i64(literal_str: &'code str) -> Option<i64> {
-        const BASE: Base = Base::Decimal;
+        const BASE: tokenizer::Base = tokenizer::Base(digit::Base::Decimal);
         let mut integer: i64 = 0;
-        let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
+        let mut digit_index = BASE.prefix_extended().len();
 
         let literal = literal_str.as_bytes();
         while digit_index < literal.len() {
             let ascii_digit = literal[digit_index];
             digit_index += 1;
-            if ascii_digit == b'_' {
-                continue;
-            }
+            let digit = match digit::parse_decimal(ascii_digit) {
+                Digit::Ok(digit) => digit,
+                Digit::Underscore => continue,
+                Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
+            };
 
-            let digit = ascii_digit - b'0';
-            debug_assert!(digit < BASE as u8, "invalid decimal digit");
-            integer = match integer.checked_mul(BASE as i64) {
+            integer = match integer.checked_mul(BASE.0 as i64) {
                 Some(integer_) => integer_,
                 None => return None,
             };
@@ -1702,25 +1698,21 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
     #[expect(clippy::single_call_fn)]
     const fn parse_negative_hexadecimal_i64(literal_str: &'code str) -> Option<i64> {
-        const BASE: Base = Base::Hexadecimal;
+        const BASE: tokenizer::Base = tokenizer::Base(digit::Base::Hexadecimal);
         let mut integer: i64 = 0;
-        let mut digit_index = 1 + 1; // 1: leading zero, + 1: base prefix
+        let mut digit_index = BASE.prefix().len();
 
         let literal = literal_str.as_bytes();
         while digit_index < literal.len() {
             let ascii_digit = literal[digit_index];
             digit_index += 1;
-            if ascii_digit == b'_' {
-                continue;
-            }
-
-            let digit = match ascii_digit {
-                number @ b'0'..=b'9' => number - b'0',
-                uppercase_letter @ b'A'..=b'F' => uppercase_letter - b'A' + 10,
-                lowercase_letter @ b'a'..=b'f' => lowercase_letter - b'a' + 10,
-                _ => panic!("invalid hexadecimal digit"),
+            let digit = match digit::parse_hexadecimal(ascii_digit) {
+                Digit::Ok(digit) => digit,
+                Digit::Underscore => continue,
+                Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
             };
-            integer = match integer.checked_mul(BASE as i64) {
+
+            integer = match integer.checked_mul(BASE.0 as i64) {
                 Some(integer_) => integer_,
                 None => return None,
             };
@@ -3905,7 +3897,7 @@ impl IntoMsgInfo for ErrorKind {
                 format!(
                     "overflows a {bits} bit signed integer, over {prefix}{max:0b} ({max})",
                     bits = i64::BITS,
-                    prefix = Base::Binary.prefix(),
+                    prefix = tokenizer::Base(digit::Base::Binary).prefix(),
                     max = i64::MAX
                 ).into(),
             ),
@@ -3914,7 +3906,7 @@ impl IntoMsgInfo for ErrorKind {
                 format!(
                     "overflows a {bits} bit signed integer, over {prefix}{max:0o} ({max})",
                     bits = i64::BITS,
-                    prefix = Base::Octal.prefix(),
+                    prefix = tokenizer::Base(digit::Base::Octal).prefix(),
                     max = i64::MAX
                 ).into(),
             ),
@@ -3931,7 +3923,7 @@ impl IntoMsgInfo for ErrorKind {
                 format!(
                     "overflows a {bits} bit signed integer, over {prefix}{max:0x} ({max})",
                     bits = i64::BITS,
-                    prefix = Base::Hexadecimal.prefix(),
+                    prefix = tokenizer::Base(digit::Base::Hexadecimal).prefix(),
                     max = i64::MAX
                 ).into(),
             ),
@@ -3940,7 +3932,7 @@ impl IntoMsgInfo for ErrorKind {
                 format!(
                     "underflows a {bits} bit signed integer, under {prefix}{min:0b} ({min})",
                     bits = i64::BITS,
-                    prefix = Base::Binary.prefix(),
+                    prefix = tokenizer::Base(digit::Base::Binary).prefix(),
                     min = i64::MIN
                 ).into(),
             ),
@@ -3949,7 +3941,7 @@ impl IntoMsgInfo for ErrorKind {
                 format!(
                     "underflows a {bits} bit signed integer, under {prefix}{min:0o} ({min})",
                     bits = i64::BITS,
-                    prefix = Base::Octal.prefix(),
+                    prefix = tokenizer::Base(digit::Base::Octal).prefix(),
                     min = i64::MIN
                 ).into(),
             ),
@@ -3966,7 +3958,7 @@ impl IntoMsgInfo for ErrorKind {
                 format!(
                     "underflows a {bits} bit signed integer, under {prefix}{min:0x} ({min})",
                     bits = i64::BITS,
-                    prefix = Base::Hexadecimal.prefix(),
+                    prefix = tokenizer::Base(digit::Base::Hexadecimal).prefix(),
                     min = i64::MIN
                 ).into(),
             ),

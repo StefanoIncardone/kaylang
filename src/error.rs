@@ -1,6 +1,5 @@
 use crate::{
-    color::{ansi_flag, AnsiFlag, Bg, Colored, Fg},
-    AT, BAR, CAUSE,
+    color::{ansi_flag, AnsiFlag, Bg, Colored, Fg}, front_end::tokenizer::{ascii, utf32}, AT, BAR, CAUSE
 };
 use core::fmt::Display;
 use std::path::Path;
@@ -8,6 +7,9 @@ use std::path::Path;
 use back_to_front::offset32;
 use unicode_width::UnicodeWidthChar as _;
 
+// IDEA(stefano): rename to PointersLen or something that refers to the fact that it's not
+// calculating the actual visible length of characters, but rather the length of the pointers in
+// error messages
 pub(crate) trait DisplayLen {
     fn display_len(&self) -> offset32;
 }
@@ -16,16 +18,32 @@ impl DisplayLen for str {
     fn display_len(&self) -> offset32 {
         let mut len = 0;
         for character in self.chars() {
-            let character_utf8_len = character.width_cjk().unwrap_or_default();
-            #[expect(clippy::cast_possible_truncation)]
-            {
-                len += character_utf8_len as offset32;
-            }
+            len += character.width_cjk().unwrap_or_default();
         }
         if len == 0 {
             len = 1;
         }
-        return len;
+        #[expect(clippy::cast_possible_truncation)]
+        return len as offset32;
+    }
+}
+
+impl DisplayLen for utf32 {
+    #[inline]
+    fn display_len(&self) -> offset32 {
+        let mut len = self.width_cjk().unwrap_or_default();
+        if len == 0 {
+            len = 1;
+        }
+        #[expect(clippy::cast_possible_truncation)]
+        return len as offset32;
+    }
+}
+
+impl DisplayLen for ascii {
+    #[inline]
+    fn display_len(&self) -> offset32 {
+        return (*self as char).display_len();
     }
 }
 

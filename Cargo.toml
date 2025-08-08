@@ -19,7 +19,7 @@ unicode-segmentation = "1.12.0"
 [dependencies.back-to-front]
 version = "0.1.0"
 git = "https://github.com/StefanoIncardone/back-to-front"
-rev = "891cc758b87a1f0ea51a262de90e258505379114"
+rev = "bbb1678526a0b4708eeaeafdeb6f1779956d9f9c"
 
 [profile.dev]
 debug = "full"

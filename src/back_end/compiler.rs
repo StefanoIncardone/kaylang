@@ -8,7 +8,7 @@ use crate::front_end::{
 };
 #[expect(clippy::useless_attribute, reason = "false positive")]
 #[expect(clippy::pub_use)]
-pub use back_to_front::back_end::x86_64::reg::Reg64;
+pub use back_to_front::x86_64::Reg64;
 use back_to_front::offset32;
 use core::fmt::{Display, Write as _};
 use Reg64::{Rcx, Rdi, Rdx, Rsi};
