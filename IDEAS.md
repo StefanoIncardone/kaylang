@@ -60,7 +60,7 @@ let i = [
     2;
     4; # would not be a problem if a trailing semicolon was mandatory
     3;
-    5; # additions would truly be one line changes (already possible by allowing trailing semicolons)
+    5; # additions would be one line changes (already possible by allowing trailing semicolons)
 ];
 
 # should function arguments have mandatory semicolons?
@@ -174,8 +174,8 @@ Implement a way to recognize and collect todos, and other tags
 ```kay
 # at: file.kay
 
-(12) # TODO(stefano) implement this features
-#                   ^^^^^^^^^^^^^^^^^^^^^^^^ everything after the TODO(stefano) is part of the message
+(12) # TODO(stefano) implement features
+#                   ^^^^^^^^^^^^^^^^^^^ everything after the TODO(stefano) is part of the message
 (42) # IDEA(stefano)genious
 #                   ^notice the missing space
 ```
@@ -212,8 +212,8 @@ Note: use `kay help *specific command*` for further explanation
 
 ## 0.6.4 - More output file names flags
 
-currently only the output path (`-o`, `--output`) can be specified and the names of the generated artifacts is
-generated from the source file name, i.e:
+currently only the output path (`-o`, `--output`) can be specified and the names of the generated
+artifacts is generated from the source file name, i.e:
 
 | source file path | output directory path | assembly file path | object file path | executable file path |
 | :--------------- | :-------------------- | :----------------- | :--------------- | :------------------- |
@@ -288,8 +288,8 @@ obj_name = "obj"
 ```
 
 ```shell
-kay run main.kay --config config.toml # would take the relevant configurations from the [run] entry
-kay check main.kay --config config.toml # would take the relevant configurations from the [check] entry
+kay run main.kay --config config.toml # would take the configurations from the [run] entry
+kay check main.kay --config config.toml # would take the configurations from the [check] entry
 ```
 
 could move to self hosting the compilation process, with a `build.kay` "build system":
@@ -432,7 +432,7 @@ case 19 {
 
 # pattern matching:
 # - only requires to change `==` and `else if answer ==` to `case`
-# - values inside pattern matching (i.e.: `ok` and `err`) are only available in the corresponding branch
+# - values inside pattern matching (i.e.: `ok` and `err`) are only available in the their block
 # - split into multiple lines if preferred
 # - short and concise
 # - can declare mutability modifiers `let` or `var` on matched values
@@ -451,7 +451,7 @@ case var Err2(let err1; err2) {
 # could benefit from rust's mutability modifiers
 # - would get rid of the initial mutabilty modifiers
 if answer
-case Ok(let ok) { println ok; } # ok is available only in the following block and is immutable by default
+case Ok(let ok) { println ok; } # ok is available only in the following block
 case Ok_b(let ok) { println ok; } # `let` is redundant
 case Err(var err) { println err; } # err is available only in the following block and is mutable
 case Err2(var err1; let err2) {
@@ -547,7 +547,6 @@ else ...;
 if answer %
 case 19 == 0 ...; # same as answer % 19 == 0
 case 21 == 3 ...; # same as answer % 21 == 3
-case 42 ...; # same as answer > 42 -> error: other branches evaluated to booleans while this evaluated to i64
 else ...;
 
 # would be sugar for this
@@ -928,9 +927,11 @@ let x = 'label: {
         + "other literal"; # Error: would not be allowed
     ```
 
-- lines will have newline characters appended to them unless they end in a `\`, which can be escaped using a `\\`
-- like in Java, whitespace will be preserved (except before the closing quote) and leading whitespace is calculated based on the
-    position of the closing quote, or by the text furthest to the left:
+- lines will have newline characters appended to them unless they end in a `\`, which can be escaped
+    using a `\\`
+- like in Java, whitespace will be preserved (except before the closing quote) and leading
+    whitespace is calculated based on the position of the closing quote, or by the text furthest to
+    the left:
 
     ```java
     String s = """
@@ -968,15 +969,19 @@ let x = 'label: {
 - utf8str/utf16str indexing, since characters might be more than one byte long, indexing doesn't
     work, i.e. `string[12]` might land in the middle of a multibyte character, so we could introduce
     rounding indexing (syntax subject to discussion):
-    - ceil indexing: `string[+:12]` or `string.at_or_next(12)`, would mean that if the index lands on a non starting byte, it
-        would find the next character and return that or `none` if out of bounds
-    - floor indexing: `string[-:12]` or `string.at_or_previous(12)`, would mean that if the index lands on a non starting byte, it
-        would find the previous character and return that or `none` if out of bounds
-    - checked indexing: `string[?:12]` or `string.at_or_none(12)`, would mean that if the index lands on a non starting byte, it
-        would return a `none` value, else the value of the character
-    - unchecked indexing: `string[!:12]` or `string.at_byte(12)`, would just return the byte at index 12
-    - regular indexing: `string[12]` or `string.at(12)`, would mean that if the index lands on a non starting byte, it
-        would crash
+    - ceil indexing: `string[+:12]` or `string.at_or_next(12)`, would mean that if the index lands
+        on a non starting byte, it would find the next character and return that or `none` if out of
+        bounds
+    - floor indexing: `string[-:12]` or `string.at_or_previous(12)`, would mean that if the index
+        lands on a non starting byte, it would find the previous character and return that or `none`
+        if out of bounds
+    - checked indexing: `string[?:12]` or `string.at_or_none(12)`, would mean that if the index
+        lands on a non starting byte, it would return a `none` value, else the value of the
+        character
+    - unchecked indexing: `string[!:12]` or `string.at_byte(12)`, would just return the byte at
+        index 12
+    - regular indexing: `string[12]` or `string.at(12)`, would mean that if the index lands on a non
+        starting byte, it would crash
 
     might have a general function that returns an enum with the possible cases:
 
@@ -1004,9 +1009,14 @@ let code: i64[capacity]; # works
 # initialized arrays could opt not to specify their lengths, it will get inferred where possible
 let codes: i64[] = [1; 2; 3]; # will be of length 3
 let codes: i64[3] = [1; 2; 3]; # will be of length 3
-let codes: i64[6] = [1; 2; 3; .. = 0]; # array of 6 items with indexes 0, 1 and 2 initialized to 1, 2, 3 and other idexes initialized to 0
-let codes: i64[6] = [1 = 1; 3 = 2; 0 = 3; .. = ---]; # array of 6 items with indexes 1, 3 and 0 initialized to 1, 2, 3 and everything after left uninitialized
-let codes: i64[6] = [1 = 1; 3 = 2; 0 = 3; .. = ?]; # array of 6 items with indexes 1, 3 and 0 initialized to 1, 2, 3 and everything after left uninitialized
+# array of 6 items with indexes 0, 1 and 2 initialized to 1, 2, 3 and other idexes initialized to 0
+let codes: i64[6] = [1; 2; 3; .. = 0];
+# array of 6 items with indexes 1, 3 and 0 initialized to 1, 2, 3 and everything after left
+# uninitialized
+let codes: i64[6] = [1 = 1; 3 = 2; 0 = 3; .. = ---];
+# array of 6 items with indexes 1, 3 and 0 initialized to 1, 2, 3 and everything after left
+# uninitialized
+let codes: i64[6] = [1 = 1; 3 = 2; 0 = 3; .. = ?];
 
 # will borrow useful features from C like indexed initialization:
 let codes: i64[19] = [
@@ -1096,13 +1106,9 @@ let b = ["hello"; "from"; "kay"];
 let a = ["hello"; "from"; "stefano"];
 
 if array_eq(a; b)
-let mismatch: none { println("equals"); } # would not be reached since there was a mismatch
-let mismatch: u64 { println(f"mismatch at index {mismatch}"); } # mismatch would have the value of 2
-
-if array_eq(a; b)
 case let mismatch: none { println("equals"); } # would not be reached since there was a mismatch
 case let mismatch: u64 { println(f"mismatch at index {mismatch}"); } # mismatch would have the value of 2
-else { ... } # unreachable branch: all variants have been matched
+else { ... } # Error: unreachable branch, all variants have been matched
 
 # T[*: N] means just the pointer part of the array
 fn mismatch_index: u64 | none = array_eq[T: type; N: u64](dst: T[*: N]; src: T[*: N]) {
@@ -1158,7 +1164,8 @@ say we now create a constructor function:
     ```kay
     impl Rgb {
         # associated function or java's "static" method
-        # marked as @constructor to allow modifications to fields that can only be set during construction
+        # marked as @constructor to allow modifications to fields that can only be set during
+        # construction
         @constructor fn Self = new(...) { ... }
 
         fn self.do_stuff(...) { ... }
@@ -1202,9 +1209,10 @@ say we now create a constructor function:
 
         fn Rgb.do_stuff(rgb; ...) { ... }
 
-        # no need to convert from curly brackets to round brackets, but could need to use the `struct`
-        # keyword to avoid colliding with a possible function named `Rgb`
-        # "equivalent" constructor function, has no access to fields that can only be set inside the struct constructor
+        # no need to convert from curly brackets to round brackets, but could need to use the
+        # `struct` # keyword to avoid colliding with a possible function named `Rgb`
+        # "equivalent" constructor function, has no access to fields that can only be set inside the
+        # struct constructor
         fn Rgb = Rgb(r: u8; g: u8; b: u8) {
             return struct Rgb(r; g; b);
         }
@@ -1361,8 +1369,8 @@ println range.max;
 
 ### Inheritance
 
-inheritance is just syntactic sugar, this allows for any extended type to be passed as "base" type only carrying
-the fields defined in the base type:
+inheritance is just syntactic sugar, this allows for any extended type to be passed as "base" type
+only carrying the fields defined in the base type:
 
 ```kay
 struct Rgba(
@@ -1451,7 +1459,8 @@ let rgba = Rgba(
 );
 ```
 
-if we have a function defined for the "base" struct only the "base" part of the struct will be passed:
+if we have a function defined for the "base" struct only the "base" part of the struct will be
+passed:
 
 ```kay
 # so this
@@ -3004,7 +3013,7 @@ loop_0_end:
 "\u(0x...)";
 
 # maybe make all number escape sequences delimited by `\`
-"\(0x7f)"; # is clunky and overly long with `(` and `)` extra characters 
+"\(0x7f)"; # is clunky and overly long with `(` and `)` extra characters
 "\0x7f"; # normally \0 and x7f are distinct characters with the current syntax
 "\0x7f\"; # \0x7f are a single character delimited by `\`
 "\x7f\"; # could also make the leading 0 optional or forbidden
@@ -3022,4 +3031,55 @@ loop_0_end:
 "\^\n"; # but then this already exists, although here the confusion is less since there can only be
         # one character after `\^` as per the documentation, while for numbers there can be multiple
         # digits
+```
+
+### ?.?.? - os specific line terminations
+
+```kay
+"first line\nsecond line"; # works on unix systems, not on windows
+"first line\r\nsecond line"; # works on windows systems, not on unix
+"first line\Nsecond line"; # inserts \r\n or \n depending on the operating system
+```
+
+## ?.?.? - Revised raw string/character literals and identifier strings
+
+use a rust-like solution for quotes in raw strings:
+
+```kay
+r"" -> r#"""# -> r##""""## -> r###"""""###
+#         ^          ^^            ^^^      these are the valid characters
+r"" -> rr"""r -> rrr""""rr -> rrrr"""""rrr
+#         ^          ^^            ^^^      these are the valid characters
+r"" -> r'"""' -> r''""""'' -> r'''"""""'''
+#         ^          ^^            ^^^      these are the valid characters
+```
+
+identifier strings could use the same syntax with the `i` prefix:
+
+```kay
+`current ` identifier string` # does not allow for backticks inside
+i"current ` identifier string" # does allow for anything inside
+
+i"" -> i#"""# -> i##""""## -> i###"""""###
+#         ^          ^^            ^^^      these are the valid characters
+i"" -> ii"""i -> iii""""ii -> iiii"""""iii
+#         ^          ^^            ^^^      these are the valid characters
+i"" -> i'"""' -> i''""""'' -> i'''"""""'''
+#         ^          ^^            ^^^      these are the valid characters
+```
+
+could be extended to character literals:
+
+```kay
+'\'' -> r#'''#
+#          ^    this is the valid character, but its longer than the escaped version,
+#               so what's the point?
+'\'' -> r'''
+#         ^ this is the valid character
+'\\' -> r'\'
+#         ^ this is the valid character
+r'' -> r'''''
+#         ^    this is the valid character, but it would not work since it uses the same character
+#              for the quotes and for the escaping of the quotes, so this kind of escaping would be
+#              remove for the other kinds of quoted literals for consistency
 ```

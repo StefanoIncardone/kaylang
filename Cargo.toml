@@ -125,6 +125,7 @@ zero_prefixed_literal = "allow"
 no_effect_underscore_binding = "warn"
 len_without_is_empty = "allow"
 allow_attributes_without_reason = "allow"
+allow_attributes = "allow"
 
 # doesn't solve the problem, i.e.:
 # ```rust

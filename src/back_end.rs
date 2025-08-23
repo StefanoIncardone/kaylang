@@ -9,7 +9,5 @@ pub mod artifacts;
 pub(crate) mod asm;
 pub mod compiler;
 
-#[expect(clippy::allow_attributes)]
-#[allow(clippy::useless_attribute)]
-#[expect(clippy::pub_use)]
+#[expect(clippy::pub_use, clippy::useless_attribute)]
 pub use compiler::Compiler;

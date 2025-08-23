@@ -18,7 +18,6 @@ use std::{
     process::{Command, ExitCode},
 };
 
-#[expect(clippy::allow_attributes, reason = "unrealiable")]
 #[allow(
     clippy::unwrap_used,
     clippy::panic_in_result_fn,
@@ -90,7 +89,6 @@ pub(crate) fn check(src_path: &Path) -> Result<(), ExitCode> {
     return Ok(());
 }
 
-#[expect(clippy::allow_attributes, reason = "unrealiable")]
 #[allow(
     clippy::unwrap_used,
     clippy::panic_in_result_fn,

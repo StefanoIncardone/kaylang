@@ -7,7 +7,7 @@ println "Kay let's go!";
 Experimenting with programming languages and exploring how to create one.
 
 > [!WARNING]
-> The language could change at any moment for now, and could contain many bugs
+> Changes can happen at any moment for now, use at your own risk
 
 ## Syntem requirements
 
