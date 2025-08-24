@@ -1449,22 +1449,32 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         };
     }
 
-    const fn parse_positive_binary_i64(literal_str: &'code str) -> Option<i64> {
-        const BASE: tokenizer::Base = tokenizer::Base(digit::Base::Binary);
+    fn parse_positive_i64(literal_str: &'code str, base: digit::Base, extended_prefix: bool) -> Option<i64> {
         let mut integer: i64 = 0;
-        let mut digit_index = BASE.prefix().len();
+        let mut digit_index = if extended_prefix {
+            tokenizer::Base(base).prefix_extended().len()
+        } else {
+            tokenizer::Base(base).prefix().len()
+        };
+
+        let parse_fn = match base {
+            digit::Base::Binary => digit::parse_binary,
+            digit::Base::Octal => digit::parse_octal,
+            digit::Base::Decimal => digit::parse_decimal,
+            digit::Base::Hexadecimal => digit::parse_hexadecimal,
+        };
 
         let literal = literal_str.as_bytes();
         while digit_index < literal.len() {
             let ascii_digit = literal[digit_index];
             digit_index += 1;
-            let digit = match digit::parse_binary(ascii_digit) {
+            let digit = match parse_fn(ascii_digit) {
                 Digit::Ok(digit) => digit,
                 Digit::Underscore => continue,
                 Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
             };
 
-            integer = match integer.checked_mul(BASE.0 as i64) {
+            integer = match integer.checked_mul(base as i64) {
                 Some(integer_) => integer_,
                 None => return None,
             };
@@ -1476,243 +1486,32 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         return Some(integer);
     }
 
-    const fn parse_positive_octal_i64(literal_str: &'code str) -> Option<i64> {
-        const BASE: tokenizer::Base = tokenizer::Base(digit::Base::Octal);
+    fn parse_negative_i64(literal_str: &'code str, base: digit::Base, extended_prefix: bool) -> Option<i64> {
         let mut integer: i64 = 0;
-        let mut digit_index = BASE.prefix().len();
+        let mut digit_index = if extended_prefix {
+            tokenizer::Base(base).prefix_extended().len()
+        } else {
+            tokenizer::Base(base).prefix().len()
+        };
+
+        let parse_fn = match base {
+            digit::Base::Binary => digit::parse_binary,
+            digit::Base::Octal => digit::parse_octal,
+            digit::Base::Decimal => digit::parse_decimal,
+            digit::Base::Hexadecimal => digit::parse_hexadecimal,
+        };
 
         let literal = literal_str.as_bytes();
         while digit_index < literal.len() {
             let ascii_digit = literal[digit_index];
             digit_index += 1;
-            let digit = match digit::parse_octal(ascii_digit) {
+            let digit = match parse_fn(ascii_digit) {
                 Digit::Ok(digit) => digit,
                 Digit::Underscore => continue,
                 Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
             };
 
-            integer = match integer.checked_mul(BASE.0 as i64) {
-                Some(integer_) => integer_,
-                None => return None,
-            };
-            integer = match integer.checked_add(digit as i64) {
-                Some(integer_) => integer_,
-                None => return None,
-            };
-        }
-        return Some(integer);
-    }
-
-    const fn parse_positive_decimal_i64(literal_str: &'code str) -> Option<i64> {
-        const BASE: tokenizer::Base = tokenizer::Base(digit::Base::Decimal);
-        let mut integer: i64 = 0;
-        let mut digit_index = BASE.prefix().len();
-
-        let literal = literal_str.as_bytes();
-        while digit_index < literal.len() {
-            let ascii_digit = literal[digit_index];
-            digit_index += 1;
-            let digit = match digit::parse_decimal(ascii_digit) {
-                Digit::Ok(digit) => digit,
-                Digit::Underscore => continue,
-                Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
-            };
-
-            integer = match integer.checked_mul(BASE.0 as i64) {
-                Some(integer_) => integer_,
-                None => return None,
-            };
-            integer = match integer.checked_add(digit as i64) {
-                Some(integer_) => integer_,
-                None => return None,
-            };
-        }
-        return Some(integer);
-    }
-
-    const fn parse_positive_decimal_prefix_i64(literal_str: &'code str) -> Option<i64> {
-        const BASE: tokenizer::Base = tokenizer::Base(digit::Base::Decimal);
-        let mut integer: i64 = 0;
-        let mut digit_index = BASE.prefix_extended().len();
-
-        let literal = literal_str.as_bytes();
-        while digit_index < literal.len() {
-            let ascii_digit = literal[digit_index];
-            digit_index += 1;
-            let digit = match digit::parse_decimal(ascii_digit) {
-                Digit::Ok(digit) => digit,
-                Digit::Underscore => continue,
-                Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
-            };
-
-            integer = match integer.checked_mul(BASE.0 as i64) {
-                Some(integer_) => integer_,
-                None => return None,
-            };
-            integer = match integer.checked_add(digit as i64) {
-                Some(integer_) => integer_,
-                None => return None,
-            };
-        }
-        return Some(integer);
-    }
-
-    const fn parse_positive_hexadecimal_i64(literal_str: &'code str) -> Option<i64> {
-        const BASE: tokenizer::Base = tokenizer::Base(digit::Base::Hexadecimal);
-        let mut integer: i64 = 0;
-        let mut digit_index = BASE.prefix().len();
-
-        let literal = literal_str.as_bytes();
-        while digit_index < literal.len() {
-            let ascii_digit = literal[digit_index];
-            digit_index += 1;
-            let digit = match digit::parse_hexadecimal(ascii_digit) {
-                Digit::Ok(digit) => digit,
-                Digit::Underscore => continue,
-                Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
-            };
-
-            integer = match integer.checked_mul(BASE.0 as i64) {
-                Some(integer_) => integer_,
-                None => return None,
-            };
-            integer = match integer.checked_add(digit as i64) {
-                Some(integer_) => integer_,
-                None => return None,
-            };
-        }
-        return Some(integer);
-    }
-
-    #[expect(clippy::single_call_fn)]
-    const fn parse_negative_binary_i64(literal_str: &'code str) -> Option<i64> {
-        const BASE: tokenizer::Base = tokenizer::Base(digit::Base::Binary);
-        let mut integer: i64 = 0;
-        let mut digit_index = BASE.prefix().len();
-
-        let literal = literal_str.as_bytes();
-        while digit_index < literal.len() {
-            let ascii_digit = literal[digit_index];
-            digit_index += 1;
-            let digit = match digit::parse_binary(ascii_digit) {
-                Digit::Ok(digit) => digit,
-                Digit::Underscore => continue,
-                Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
-            };
-
-            integer = match integer.checked_mul(BASE.0 as i64) {
-                Some(integer_) => integer_,
-                None => return None,
-            };
-            integer = match integer.checked_sub(digit as i64) {
-                Some(integer_) => integer_,
-                None => return None,
-            };
-        }
-        return Some(integer);
-    }
-
-    #[expect(clippy::single_call_fn)]
-    const fn parse_negative_octal_i64(literal_str: &'code str) -> Option<i64> {
-        const BASE: tokenizer::Base = tokenizer::Base(digit::Base::Octal);
-        let mut integer: i64 = 0;
-        let mut digit_index = BASE.prefix().len();
-
-        let literal = literal_str.as_bytes();
-        while digit_index < literal.len() {
-            let ascii_digit = literal[digit_index];
-            digit_index += 1;
-            let digit = match digit::parse_octal(ascii_digit) {
-                Digit::Ok(digit) => digit,
-                Digit::Underscore => continue,
-                Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
-            };
-
-            integer = match integer.checked_mul(BASE.0 as i64) {
-                Some(integer_) => integer_,
-                None => return None,
-            };
-            integer = match integer.checked_sub(digit as i64) {
-                Some(integer_) => integer_,
-                None => return None,
-            };
-        }
-        return Some(integer);
-    }
-
-    #[expect(clippy::single_call_fn)]
-    const fn parse_negative_decimal_i64(literal_str: &'code str) -> Option<i64> {
-        const BASE: tokenizer::Base = tokenizer::Base(digit::Base::Decimal);
-        let mut integer: i64 = 0;
-        let mut digit_index = BASE.prefix().len();
-
-        let literal = literal_str.as_bytes();
-        while digit_index < literal.len() {
-            let ascii_digit = literal[digit_index];
-            digit_index += 1;
-            let digit = match digit::parse_decimal(ascii_digit) {
-                Digit::Ok(digit) => digit,
-                Digit::Underscore => continue,
-                Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
-            };
-
-            integer = match integer.checked_mul(BASE.0 as i64) {
-                Some(integer_) => integer_,
-                None => return None,
-            };
-            integer = match integer.checked_sub(digit as i64) {
-                Some(integer_) => integer_,
-                None => return None,
-            };
-        }
-        return Some(integer);
-    }
-
-    #[expect(clippy::single_call_fn)]
-    const fn parse_negative_decimal_prefix_i64(literal_str: &'code str) -> Option<i64> {
-        const BASE: tokenizer::Base = tokenizer::Base(digit::Base::Decimal);
-        let mut integer: i64 = 0;
-        let mut digit_index = BASE.prefix_extended().len();
-
-        let literal = literal_str.as_bytes();
-        while digit_index < literal.len() {
-            let ascii_digit = literal[digit_index];
-            digit_index += 1;
-            let digit = match digit::parse_decimal(ascii_digit) {
-                Digit::Ok(digit) => digit,
-                Digit::Underscore => continue,
-                Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
-            };
-
-            integer = match integer.checked_mul(BASE.0 as i64) {
-                Some(integer_) => integer_,
-                None => return None,
-            };
-            integer = match integer.checked_sub(digit as i64) {
-                Some(integer_) => integer_,
-                None => return None,
-            };
-        }
-        return Some(integer);
-    }
-
-    #[expect(clippy::single_call_fn)]
-    const fn parse_negative_hexadecimal_i64(literal_str: &'code str) -> Option<i64> {
-        const BASE: tokenizer::Base = tokenizer::Base(digit::Base::Hexadecimal);
-        let mut integer: i64 = 0;
-        let mut digit_index = BASE.prefix().len();
-
-        let literal = literal_str.as_bytes();
-        while digit_index < literal.len() {
-            let ascii_digit = literal[digit_index];
-            digit_index += 1;
-            let digit = match digit::parse_hexadecimal(ascii_digit) {
-                Digit::Ok(digit) => digit,
-                Digit::Underscore => continue,
-                Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
-            };
-
-            integer = match integer.checked_mul(BASE.0 as i64) {
+            integer = match integer.checked_mul(base as i64) {
                 Some(integer_) => integer_,
                 None => return None,
             };
@@ -1731,7 +1530,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             TokenKind::True => Ok(Expression::True),
             TokenKind::BinaryInteger(literal_index) => {
                 let literal = self.tokens.text[literal_index];
-                match Self::parse_positive_binary_i64(literal) {
+                match Self::parse_positive_i64(literal, digit::Base::Binary, false) {
                     Some(integer) => Ok(Expression::I64(integer)),
                     None => Err(Msg {
                         severity: MsgSeverity::Error,
@@ -1743,7 +1542,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             },
             TokenKind::OctalInteger(literal_index) => {
                 let literal = self.tokens.text[literal_index];
-                match Self::parse_positive_octal_i64(literal) {
+                match Self::parse_positive_i64(literal, digit::Base::Octal, false) {
                     Some(integer) => Ok(Expression::I64(integer)),
                     None => Err(Msg {
                         severity: MsgSeverity::Error,
@@ -1755,7 +1554,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             },
             TokenKind::DecimalInteger(literal_index) => {
                 let literal = self.tokens.text[literal_index];
-                match Self::parse_positive_decimal_i64(literal) {
+                match Self::parse_positive_i64(literal, digit::Base::Decimal, false) {
                     Some(integer) => Ok(Expression::I64(integer)),
                     None => Err(Msg {
                         severity: MsgSeverity::Error,
@@ -1767,7 +1566,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             },
             TokenKind::DecimalIntegerPrefix(literal_index) => {
                 let literal = self.tokens.text[literal_index];
-                match Self::parse_positive_decimal_prefix_i64(literal) {
+                match Self::parse_positive_i64(literal, digit::Base::Decimal, true) {
                     Some(integer) => Ok(Expression::I64(integer)),
                     None => Err(Msg {
                         severity: MsgSeverity::Error,
@@ -1779,7 +1578,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             },
             TokenKind::HexadecimalInteger(literal_index) => {
                 let literal = self.tokens.text[literal_index];
-                match Self::parse_positive_hexadecimal_i64(literal) {
+                match Self::parse_positive_i64(literal, digit::Base::Hexadecimal, false) {
                     Some(integer) => Ok(Expression::I64(integer)),
                     None => Err(Msg {
                         severity: MsgSeverity::Error,
@@ -2138,7 +1937,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     TokenKind::BinaryInteger(literal_index) => {
                         let literal = self.tokens.text[literal_index];
                         if should_be_negated {
-                            match Self::parse_negative_binary_i64(literal) {
+                            match Self::parse_negative_i64(literal, digit::Base::Binary, false) {
                                 Some(0) => Err(Msg {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::MinusZeroInteger,
@@ -2158,7 +1957,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                 }),
                             }
                         } else {
-                            match Self::parse_positive_binary_i64(literal) {
+                            match Self::parse_positive_i64(literal, digit::Base::Binary, false) {
                                 Some(integer) => Ok(Expression::I64(integer)),
                                 None => Err(Msg {
                                     severity: MsgSeverity::Error,
@@ -2174,7 +1973,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     TokenKind::OctalInteger(literal_index) => {
                         let literal = self.tokens.text[literal_index];
                         if should_be_negated {
-                            match Self::parse_negative_octal_i64(literal) {
+                            match Self::parse_negative_i64(literal, digit::Base::Octal, false) {
                                 Some(0) => Err(Msg {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::MinusZeroInteger,
@@ -2194,7 +1993,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                 }),
                             }
                         } else {
-                            match Self::parse_positive_octal_i64(literal) {
+                            match Self::parse_positive_i64(literal, digit::Base::Octal, false) {
                                 Some(integer) => Ok(Expression::I64(integer)),
                                 None => Err(Msg {
                                     severity: MsgSeverity::Error,
@@ -2210,7 +2009,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     TokenKind::DecimalInteger(literal_index) => {
                         let literal = self.tokens.text[literal_index];
                         if should_be_negated {
-                            match Self::parse_negative_decimal_i64(literal) {
+                            match Self::parse_negative_i64(literal, digit::Base::Decimal, false) {
                                 Some(0) => Err(Msg {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::MinusZeroInteger,
@@ -2230,7 +2029,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                 }),
                             }
                         } else {
-                            match Self::parse_positive_decimal_i64(literal) {
+                            match Self::parse_positive_i64(literal, digit::Base::Decimal, false) {
                                 Some(integer) => Ok(Expression::I64(integer)),
                                 None => Err(Msg {
                                     severity: MsgSeverity::Error,
@@ -2246,7 +2045,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     TokenKind::DecimalIntegerPrefix(literal_index) => {
                         let literal = self.tokens.text[literal_index];
                         if should_be_negated {
-                            match Self::parse_negative_decimal_prefix_i64(literal) {
+                            match Self::parse_negative_i64(literal, digit::Base::Decimal, true) {
                                 Some(0) => Err(Msg {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::MinusZeroInteger,
@@ -2266,7 +2065,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                 }),
                             }
                         } else {
-                            match Self::parse_positive_decimal_prefix_i64(literal) {
+                            match Self::parse_positive_i64(literal, digit::Base::Decimal, true) {
                                 Some(integer) => Ok(Expression::I64(integer)),
                                 None => Err(Msg {
                                     severity: MsgSeverity::Error,
@@ -2282,7 +2081,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     TokenKind::HexadecimalInteger(literal_index) => {
                         let literal = self.tokens.text[literal_index];
                         if should_be_negated {
-                            match Self::parse_negative_hexadecimal_i64(literal) {
+                            match Self::parse_negative_i64(literal, digit::Base::Hexadecimal, false) {
                                 Some(0) => Err(Msg {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::MinusZeroInteger,
@@ -2302,7 +2101,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                 }),
                             }
                         } else {
-                            match Self::parse_positive_hexadecimal_i64(literal) {
+                            match Self::parse_positive_i64(literal, digit::Base::Hexadecimal, false) {
                                 Some(integer) => Ok(Expression::I64(integer)),
                                 None => Err(Msg {
                                     severity: MsgSeverity::Error,

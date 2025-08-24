@@ -1622,23 +1622,32 @@ impl<'code> TypedSyntaxTree<'_, '_, 'code> {
 }
 
 impl<'code> Parser<'_, '_, '_, 'code, '_> {
-    #[expect(clippy::single_call_fn)]
-    const fn parse_positive_binary_i64(literal_str: &'code str) -> Result<i64, ()> {
-        const BASE: tokenizer::Base = tokenizer::Base(digit::Base::Binary);
+    fn parse_positive_i64(literal_str: &'code str, base: digit::Base, extended_prefix: bool) -> Result<i64, ()> {
         let mut integer: i64 = 0;
-        let mut digit_index = BASE.prefix().len();
+        let mut digit_index = if extended_prefix {
+            tokenizer::Base(base).prefix_extended().len()
+        } else {
+            tokenizer::Base(base).prefix().len()
+        };
+
+        let parse_fn = match base {
+            digit::Base::Binary => digit::parse_binary,
+            digit::Base::Octal => digit::parse_octal,
+            digit::Base::Decimal => digit::parse_decimal,
+            digit::Base::Hexadecimal => digit::parse_hexadecimal,
+        };
 
         let literal = literal_str.as_bytes();
         while digit_index < literal.len() {
             let ascii_digit = literal[digit_index];
             digit_index += 1;
-            let digit = match digit::parse_binary(ascii_digit) {
+            let digit = match parse_fn(ascii_digit) {
                 Digit::Ok(digit) => digit,
                 Digit::Underscore => continue,
                 Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
             };
 
-            integer = match integer.checked_mul(BASE.0 as i64) {
+            integer = match integer.checked_mul(base as i64) {
                 Some(integer_) => integer_,
                 None => return Err(()),
             };
@@ -1650,247 +1659,32 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         return Ok(integer);
     }
 
-    #[expect(clippy::single_call_fn)]
-    const fn parse_positive_octal_i64(literal_str: &'code str) -> Result<i64, ()> {
-        const BASE: tokenizer::Base = tokenizer::Base(digit::Base::Octal);
+    fn parse_negative_i64(literal_str: &'code str, base: digit::Base, extended_prefix: bool) -> Result<i64, ()> {
         let mut integer: i64 = 0;
-        let mut digit_index = BASE.prefix().len();
+        let mut digit_index = if extended_prefix {
+            tokenizer::Base(base).prefix_extended().len()
+        } else {
+            tokenizer::Base(base).prefix().len()
+        };
+
+        let parse_fn = match base {
+            digit::Base::Binary => digit::parse_binary,
+            digit::Base::Octal => digit::parse_octal,
+            digit::Base::Decimal => digit::parse_decimal,
+            digit::Base::Hexadecimal => digit::parse_hexadecimal,
+        };
 
         let literal = literal_str.as_bytes();
         while digit_index < literal.len() {
             let ascii_digit = literal[digit_index];
             digit_index += 1;
-            let digit = match digit::parse_octal(ascii_digit) {
+            let digit = match parse_fn(ascii_digit) {
                 Digit::Ok(digit) => digit,
                 Digit::Underscore => continue,
                 Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
             };
 
-            integer = match integer.checked_mul(BASE.0 as i64) {
-                Some(integer_) => integer_,
-                None => return Err(()),
-            };
-            integer = match integer.checked_add(digit as i64) {
-                Some(integer_) => integer_,
-                None => return Err(()),
-            };
-        }
-        return Ok(integer);
-    }
-
-    #[expect(clippy::single_call_fn)]
-    const fn parse_positive_decimal_i64(literal_str: &'code str) -> Result<i64, ()> {
-        const BASE: tokenizer::Base = tokenizer::Base(digit::Base::Decimal);
-        let mut integer: i64 = 0;
-        let mut digit_index = BASE.prefix().len();
-
-        let literal = literal_str.as_bytes();
-        while digit_index < literal.len() {
-            let ascii_digit = literal[digit_index];
-            digit_index += 1;
-            let digit = match digit::parse_decimal(ascii_digit) {
-                Digit::Ok(digit) => digit,
-                Digit::Underscore => continue,
-                Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
-            };
-
-            integer = match integer.checked_mul(BASE.0 as i64) {
-                Some(integer_) => integer_,
-                None => return Err(()),
-            };
-            integer = match integer.checked_add(digit as i64) {
-                Some(integer_) => integer_,
-                None => return Err(()),
-            };
-        }
-        return Ok(integer);
-    }
-
-    #[expect(clippy::single_call_fn)]
-    const fn parse_positive_decimal_prefix_i64(literal_str: &'code str) -> Result<i64, ()> {
-        const BASE: tokenizer::Base = tokenizer::Base(digit::Base::Decimal);
-        let mut integer: i64 = 0;
-        let mut digit_index = BASE.prefix_extended().len();
-
-        let literal = literal_str.as_bytes();
-        while digit_index < literal.len() {
-            let ascii_digit = literal[digit_index];
-            digit_index += 1;
-            let digit = match digit::parse_decimal(ascii_digit) {
-                Digit::Ok(digit) => digit,
-                Digit::Underscore => continue,
-                Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
-            };
-
-            integer = match integer.checked_mul(BASE.0 as i64) {
-                Some(integer_) => integer_,
-                None => return Err(()),
-            };
-            integer = match integer.checked_add(digit as i64) {
-                Some(integer_) => integer_,
-                None => return Err(()),
-            };
-        }
-        return Ok(integer);
-    }
-
-    #[expect(clippy::single_call_fn)]
-    const fn parse_positive_hexadecimal_i64(literal_str: &'code str) -> Result<i64, ()> {
-        const BASE: tokenizer::Base = tokenizer::Base(digit::Base::Hexadecimal);
-        let mut integer: i64 = 0;
-        let mut digit_index = BASE.prefix().len();
-
-        let literal = literal_str.as_bytes();
-        while digit_index < literal.len() {
-            let ascii_digit = literal[digit_index];
-            digit_index += 1;
-            let digit = match digit::parse_hexadecimal(ascii_digit) {
-                Digit::Ok(digit) => digit,
-                Digit::Underscore => continue,
-                Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
-            };
-
-            integer = match integer.checked_mul(BASE.0 as i64) {
-                Some(integer_) => integer_,
-                None => return Err(()),
-            };
-            integer = match integer.checked_add(digit as i64) {
-                Some(integer_) => integer_,
-                None => return Err(()),
-            };
-        }
-        return Ok(integer);
-    }
-
-    #[expect(clippy::single_call_fn)]
-    const fn parse_negative_binary_i64(literal_str: &'code str) -> Result<i64, ()> {
-        const BASE: tokenizer::Base = tokenizer::Base(digit::Base::Binary);
-        let mut integer: i64 = 0;
-        let mut digit_index = BASE.prefix().len();
-
-        let literal = literal_str.as_bytes();
-        while digit_index < literal.len() {
-            let ascii_digit = literal[digit_index];
-            digit_index += 1;
-            let digit = match digit::parse_binary(ascii_digit) {
-                Digit::Ok(digit) => digit,
-                Digit::Underscore => continue,
-                Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
-            };
-
-            integer = match integer.checked_mul(BASE.0 as i64) {
-                Some(integer_) => integer_,
-                None => return Err(()),
-            };
-            integer = match integer.checked_sub(digit as i64) {
-                Some(integer_) => integer_,
-                None => return Err(()),
-            };
-        }
-        return Ok(integer);
-    }
-
-    #[expect(clippy::single_call_fn)]
-    const fn parse_negative_octal_i64(literal_str: &'code str) -> Result<i64, ()> {
-        const BASE: tokenizer::Base = tokenizer::Base(digit::Base::Octal);
-        let mut integer: i64 = 0;
-        let mut digit_index = BASE.prefix().len();
-
-        let literal = literal_str.as_bytes();
-        while digit_index < literal.len() {
-            let ascii_digit = literal[digit_index];
-            digit_index += 1;
-            let digit = match digit::parse_octal(ascii_digit) {
-                Digit::Ok(digit) => digit,
-                Digit::Underscore => continue,
-                Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
-            };
-
-            integer = match integer.checked_mul(BASE.0 as i64) {
-                Some(integer_) => integer_,
-                None => return Err(()),
-            };
-            integer = match integer.checked_sub(digit as i64) {
-                Some(integer_) => integer_,
-                None => return Err(()),
-            };
-        }
-        return Ok(integer);
-    }
-
-    #[expect(clippy::single_call_fn)]
-    const fn parse_negative_decimal_i64(literal_str: &'code str) -> Result<i64, ()> {
-        const BASE: tokenizer::Base = tokenizer::Base(digit::Base::Decimal);
-        let mut integer: i64 = 0;
-        let mut digit_index = BASE.prefix().len();
-
-        let literal = literal_str.as_bytes();
-        while digit_index < literal.len() {
-            let ascii_digit = literal[digit_index];
-            digit_index += 1;
-            let digit = match digit::parse_decimal(ascii_digit) {
-                Digit::Ok(digit) => digit,
-                Digit::Underscore => continue,
-                Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
-            };
-
-            integer = match integer.checked_mul(BASE.0 as i64) {
-                Some(integer_) => integer_,
-                None => return Err(()),
-            };
-            integer = match integer.checked_sub(digit as i64) {
-                Some(integer_) => integer_,
-                None => return Err(()),
-            };
-        }
-        return Ok(integer);
-    }
-
-    #[expect(clippy::single_call_fn)]
-    const fn parse_negative_decimal_prefix_i64(literal_str: &'code str) -> Result<i64, ()> {
-        const BASE: tokenizer::Base = tokenizer::Base(digit::Base::Decimal);
-        let mut integer: i64 = 0;
-        let mut digit_index = BASE.prefix_extended().len();
-
-        let literal = literal_str.as_bytes();
-        while digit_index < literal.len() {
-            let ascii_digit = literal[digit_index];
-            digit_index += 1;
-            let digit = match digit::parse_decimal(ascii_digit) {
-                Digit::Ok(digit) => digit,
-                Digit::Underscore => continue,
-                Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
-            };
-
-            integer = match integer.checked_mul(BASE.0 as i64) {
-                Some(integer_) => integer_,
-                None => return Err(()),
-            };
-            integer = match integer.checked_sub(digit as i64) {
-                Some(integer_) => integer_,
-                None => return Err(()),
-            };
-        }
-        return Ok(integer);
-    }
-
-    #[expect(clippy::single_call_fn)]
-    const fn parse_negative_hexadecimal_i64(literal_str: &'code str) -> Result<i64, ()> {
-        const BASE: tokenizer::Base = tokenizer::Base(digit::Base::Hexadecimal);
-        let mut integer: i64 = 0;
-        let mut digit_index = BASE.prefix().len();
-
-        let literal = literal_str.as_bytes();
-        while digit_index < literal.len() {
-            let ascii_digit = literal[digit_index];
-            digit_index += 1;
-            let digit = match digit::parse_hexadecimal(ascii_digit) {
-                Digit::Ok(digit) => digit,
-                Digit::Underscore => continue,
-                Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
-            };
-
-            integer = match integer.checked_mul(BASE.0 as i64) {
+            integer = match integer.checked_mul(base as i64) {
                 Some(integer_) => integer_,
                 None => return Err(()),
             };
@@ -2057,7 +1851,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             st::Expression::True { column } => Expression::True { column: *column },
             st::Expression::DecimalInteger { literal, column } => {
                 let literal_text = self.tokens.text[*literal];
-                let Ok(value) = Self::parse_positive_decimal_i64(literal_text) else {
+                let Ok(value) = Self::parse_positive_i64(literal_text, digit::Base::Decimal, false) else {
                     return Err(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::DecimalIntegerOverflow,
@@ -2070,7 +1864,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             },
             st::Expression::DecimalIntegerPrefix { literal, column } => {
                 let literal_text = self.tokens.text[*literal];
-                let Ok(value) = Self::parse_positive_decimal_prefix_i64(literal_text) else {
+                let Ok(value) = Self::parse_positive_i64(literal_text, digit::Base::Decimal, true) else {
                     return Err(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::DecimalIntegerOverflow,
@@ -2083,7 +1877,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             },
             st::Expression::BinaryInteger { literal, column } => {
                 let literal_text = self.tokens.text[*literal];
-                let Ok(value) = Self::parse_positive_binary_i64(literal_text) else {
+                let Ok(value) = Self::parse_positive_i64(literal_text, digit::Base::Binary, false) else {
                     return Err(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::BinaryIntegerOverflow,
@@ -2096,7 +1890,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             },
             st::Expression::OctalInteger { literal, column } => {
                 let literal_text = self.tokens.text[*literal];
-                let Ok(value) = Self::parse_positive_octal_i64(literal_text) else {
+                let Ok(value) = Self::parse_positive_i64(literal_text, digit::Base::Octal, false) else {
                     return Err(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::OctalIntegerOverflow,
@@ -2109,7 +1903,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             },
             st::Expression::HexadecimalInteger { literal, column } => {
                 let literal_text = self.tokens.text[*literal];
-                let Ok(value) = Self::parse_positive_hexadecimal_i64(literal_text) else {
+                let Ok(value) = Self::parse_positive_i64(literal_text, digit::Base::Hexadecimal, false) else {
                     return Err(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::HexadecimalIntegerOverflow,
@@ -2309,7 +2103,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         st::Expression::BinaryInteger { literal, column } => {
                             let literal_text = self.tokens.text[*literal];
                             let right_operand_expression =
-                                match Self::parse_negative_binary_i64(literal_text) {
+                                match Self::parse_negative_i64(literal_text, digit::Base::Binary, false) {
                                     Ok(0) => {
                                         return Err(Msg {
                                             severity: MsgSeverity::Error,
@@ -2342,7 +2136,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         st::Expression::OctalInteger { literal, column } => {
                             let literal_text = self.tokens.text[*literal];
                             let right_operand_expression =
-                                match Self::parse_negative_octal_i64(literal_text) {
+                                match Self::parse_negative_i64(literal_text, digit::Base::Octal, false) {
                                     Ok(0) => {
                                         return Err(Msg {
                                             severity: MsgSeverity::Error,
@@ -2375,7 +2169,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         st::Expression::DecimalInteger { literal, column } => {
                             let literal_text = self.tokens.text[*literal];
                             let right_operand_expression =
-                                match Self::parse_negative_decimal_i64(literal_text) {
+                                match Self::parse_negative_i64(literal_text, digit::Base::Decimal, false) {
                                     Ok(0) => {
                                         return Err(Msg {
                                             severity: MsgSeverity::Error,
@@ -2408,7 +2202,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         st::Expression::DecimalIntegerPrefix { literal, column } => {
                             let literal_text = self.tokens.text[*literal];
                             let right_operand_expression =
-                                match Self::parse_negative_decimal_prefix_i64(literal_text) {
+                                match Self::parse_negative_i64(literal_text, digit::Base::Decimal, true) {
                                     Ok(0) => {
                                         return Err(Msg {
                                             severity: MsgSeverity::Error,
@@ -2441,7 +2235,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         st::Expression::HexadecimalInteger { literal, column } => {
                             let literal_text = self.tokens.text[*literal];
                             let right_operand_expression =
-                                match Self::parse_negative_hexadecimal_i64(literal_text) {
+                                match Self::parse_negative_i64(literal_text, digit::Base::Hexadecimal, false) {
                                     Ok(0) => {
                                         return Err(Msg {
                                             severity: MsgSeverity::Error,

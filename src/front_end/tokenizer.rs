@@ -540,12 +540,10 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             other
                         },
                     },
+                    #[expect(clippy::cast_possible_truncation)]
                     Err(grapheme) => {
                         tokenizer.push_utf8_error(grapheme);
-                        #[expect(clippy::cast_possible_truncation)]
-                        {
-                            tokenizer.col += grapheme.len() as offset32;
-                        }
+                        tokenizer.col += grapheme.len() as offset32;
                         break 'next_token Err(());
                     },
                 };
@@ -1250,6 +1248,15 @@ impl<'code> Tokenizer<'code> {
         };
     }
 
+    fn current_grapheme(&self) -> &'code str {
+        let rest_of_code = &self.code[self.col as usize..];
+        let mut rest_of_line_graphemes = rest_of_code.graphemes(true);
+        let Some(grapheme) = rest_of_line_graphemes.next() else {
+            unreachable!("not a valid grapheme");
+        };
+        return grapheme;
+    }
+
     #[expect(clippy::question_mark)]
     #[must_use]
     fn get_next_byte_singleline(&mut self) -> Option<u8> {
@@ -1273,15 +1280,7 @@ impl<'code> Tokenizer<'code> {
         };
         return match next {
             ascii_ch @ 0..=b'\x7F' => Some(Ok(ascii_ch)),
-            _utf8_ch => {
-                let rest_of_code = &self.code[self.col as usize..];
-                let mut rest_of_line_graphemes = rest_of_code.graphemes(true);
-                let Some(grapheme) = rest_of_line_graphemes.next() else {
-                    unreachable!("this branch assured we would have a valid grapheme");
-                };
-
-                Some(Err(grapheme))
-            },
+            _utf8_ch => Some(Err(self.current_grapheme())),
         };
     }
 
@@ -1293,15 +1292,7 @@ impl<'code> Tokenizer<'code> {
         };
         return match next {
             ascii_ch @ 0..=b'\x7F' => Some(Ok(ascii_ch)),
-            _utf8_ch => {
-                let rest_of_code = &self.code[self.col as usize..];
-                let mut rest_of_line_graphemes = rest_of_code.graphemes(true);
-                let Some(grapheme) = rest_of_line_graphemes.next() else {
-                    unreachable!("this branch assured we would have a valid grapheme");
-                };
-
-                Some(Err(grapheme))
-            },
+            _utf8_ch => Some(Err(self.current_grapheme())),
         };
     }
 
@@ -1314,17 +1305,11 @@ impl<'code> Tokenizer<'code> {
             };
             match next {
                 ascii_ch @ 0..=b'\x7F' => return Some(ascii_ch),
+                #[expect(clippy::cast_possible_truncation)]
                 _utf8_ch => {
-                    let rest_of_code = &self.code[self.col as usize..];
-                    let mut rest_of_line_graphemes = rest_of_code.graphemes(true);
-                    let Some(grapheme) = rest_of_line_graphemes.next() else {
-                        unreachable!("this branch assured we would have a valid grapheme");
-                    };
+                    let grapheme = self.current_grapheme();
+                    self.col += grapheme.len() as offset32;
                     self.push_utf8_error(grapheme);
-                    #[expect(clippy::cast_possible_truncation)]
-                    {
-                        self.col += grapheme.len() as offset32;
-                    }
                 }
             }
         }
@@ -1340,23 +1325,36 @@ impl<'code> Tokenizer<'code> {
     }
 }
 
+// match digit {
+//     range_decimal_digit_ascii!() | b'_' => {},
+//     range_decimal_out_of_range_ascii!() => {
+//         self.push_digit_out_range_error(digit, digit::Base::Decimal);
+//     },
+//     _                                   => break,
+// }
+
 // tokenization of numbers
 impl<'code> Tokenizer<'code> {
-    fn decimal_digits(&mut self) -> Result<&'code str, ()> {
+    fn digits(&mut self, base: digit::Base) -> Result<&'code str, ()> {
         let previous_errors_len = self.errors.len();
 
+        let check_fn = match base {
+            digit::Base::Binary => digit::check_binary,
+            digit::Base::Octal => digit::check_octal,
+            digit::Base::Decimal => digit::check_decimal,
+            digit::Base::Hexadecimal => digit::check_hexadecimal,
+        };
+
         while let Some(digit) = self.current_or_until_next_ascii_singleline() {
-            match digit::check_decimal(digit) {
+            match check_fn(digit) {
                 AsciiDigit::Ok | AsciiDigit::Underscore => {},
                 AsciiDigit::Other | AsciiDigit::Dot => break,
-                AsciiDigit::OutOfRange => {
-                    self.errors.push(Msg {
-                        severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::DigitOutOfRange(digit, Base(digit::Base::Decimal)),
-                        col: self.col,
-                        pointers_count: 1,
-                    });
-                },
+                AsciiDigit::OutOfRange => self.errors.push(Msg {
+                    severity: MsgSeverity::NonTerminalError,
+                    kind: ErrorKind::DigitOutOfRange(digit, Base(base)),
+                    col: self.col,
+                    pointers_count: 1,
+                }),
             }
             self.col += 1;
         }
@@ -1368,111 +1366,33 @@ impl<'code> Tokenizer<'code> {
         return Ok(literal_text)
     }
 
+    fn digits_text(&mut self, base: digit::Base) -> Result<TextIndex<'code>, ()> {
+        let literal_text = self.digits(base)?;
+        return Ok(self.new_token_text(literal_text));
+    }
+
     fn integer_decimal(&mut self) -> Result<TokenKind<'code>, ()> {
-        let literal_text = self.decimal_digits()?;
-        let literal_index = self.new_token_text(literal_text);
+        let literal_index = self.digits_text(digit::Base::Decimal)?;
         return Ok(TokenKind::DecimalInteger(literal_index));
     }
 
     fn integer_decimal_prefix(&mut self) -> Result<TokenKind<'code>, ()> {
-        let literal_text = self.decimal_digits()?;
-        let literal_index = self.new_token_text(literal_text);
+        let literal_index = self.digits_text(digit::Base::Decimal)?;
         return Ok(TokenKind::DecimalIntegerPrefix(literal_index));
     }
 
-    fn binary_digits(&mut self) -> Result<&'code str, ()> {
-        let previous_errors_len = self.errors.len();
-
-        while let Some(digit) = self.current_or_until_next_ascii_singleline() {
-            match digit::check_binary(digit) {
-                AsciiDigit::Ok | AsciiDigit::Underscore => {},
-                AsciiDigit::Other | AsciiDigit::Dot => break,
-                AsciiDigit::OutOfRange => {
-                    self.errors.push(Msg {
-                        severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::DigitOutOfRange(digit, Base(digit::Base::Binary)),
-                        col: self.col,
-                        pointers_count: 1,
-                    });
-                },
-            }
-            self.col += 1;
-        }
-
-        if previous_errors_len != self.errors.len() {
-            return Err(());
-        }
-        let literal_text = self.token_text();
-        return Ok(literal_text)
-    }
-
     fn integer_binary(&mut self) -> Result<TokenKind<'code>, ()> {
-        let literal_text = self.binary_digits()?;
-        let literal_index = self.new_token_text(literal_text);
+        let literal_index = self.digits_text(digit::Base::Binary)?;
         return Ok(TokenKind::BinaryInteger(literal_index));
     }
 
-    fn octal_digits(&mut self) -> Result<&'code str, ()> {
-        let previous_errors_len = self.errors.len();
-
-        while let Some(digit) = self.current_or_until_next_ascii_singleline() {
-            match digit::check_octal(digit) {
-                AsciiDigit::Ok | AsciiDigit::Underscore => {},
-                AsciiDigit::Other | AsciiDigit::Dot => break,
-                AsciiDigit::OutOfRange => {
-                    self.errors.push(Msg {
-                        severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::DigitOutOfRange(digit, Base(digit::Base::Octal)),
-                        col: self.col,
-                        pointers_count: 1,
-                    });
-                },
-            }
-            self.col += 1;
-        }
-
-        if previous_errors_len != self.errors.len() {
-            return Err(());
-        }
-        let literal_text = self.token_text();
-        return Ok(literal_text)
-    }
-
     fn integer_octal(&mut self) -> Result<TokenKind<'code>, ()> {
-        let literal_text = self.octal_digits()?;
-        let literal_index = self.new_token_text(literal_text);
+        let literal_index = self.digits_text(digit::Base::Octal)?;
         return Ok(TokenKind::OctalInteger(literal_index));
     }
 
-    fn hexadecimal_digits(&mut self) -> Result<&'code str, ()> {
-        let previous_errors_len = self.errors.len();
-
-        while let Some(digit) = self.current_or_until_next_ascii_singleline() {
-            match digit::check_hexadecimal(digit) {
-                AsciiDigit::Ok | AsciiDigit::Underscore => {},
-                AsciiDigit::Other | AsciiDigit::Dot => break,
-                AsciiDigit::OutOfRange => {
-                    self.errors.push(Msg {
-                        severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::DigitOutOfRange(digit, Base(digit::Base::Hexadecimal)),
-                        col: self.col,
-                        pointers_count: 1,
-                    });
-                },
-            }
-            self.col += 1;
-        }
-
-        if previous_errors_len != self.errors.len() {
-            return Err(());
-        }
-        let literal_text = self.token_text();
-        return Ok(literal_text)
-    }
-
     fn integer_hexadecimal(&mut self) -> Result<TokenKind<'code>, ()> {
-        let literal_text = self.hexadecimal_digits()?;
-        let literal_index = self.new_token_text(literal_text);
+        let literal_index = self.digits_text(digit::Base::Hexadecimal)?;
         return Ok(TokenKind::HexadecimalInteger(literal_index));
     }
 }
@@ -1498,12 +1418,10 @@ impl<'code> Tokenizer<'code> {
             //     loop {
             //         let digit = match self.peek_ascii_singleline() {
             //             Some(Ok(digit)) => digit,
+            //             #[expect(clippy::cast_possible_truncation)]
             //             Some(Err(grapheme)) => {
             //                 self.push_utf8_error(grapheme);
-            //                 #[expect(clippy::cast_possible_truncation)]
-            //                 {
-            //                     self.col += grapheme.len() as offset32;
-            //                 }
+            //                 self.col += grapheme.len() as offset32;
             //                 return EscapedCharacter::ErrNonTerminal;
             //             }
             //             None => {
@@ -1575,12 +1493,10 @@ impl<'code> Tokenizer<'code> {
         // TODO: factor out this peeking of the next character in quoted literal
         let next_character = match self.current_ascii_singleline() {
             Some(Ok(escape_character)) => escape_character,
+            #[expect(clippy::cast_possible_truncation)]
             Some(Err(grapheme)) => {
+                self.col += grapheme.len() as offset32;
                 self.push_utf8_error(grapheme);
-                #[expect(clippy::cast_possible_truncation)]
-                {
-                    self.col += grapheme.len() as offset32;
-                }
                 return Character::ErrContinue;
             },
             None => {
@@ -1657,12 +1573,10 @@ impl<'code> Tokenizer<'code> {
             b'^' => {
                 let caret_character = match self.current_ascii_singleline() {
                     Some(Ok(escape_character)) => escape_character,
+                    #[expect(clippy::cast_possible_truncation)]
                     Some(Err(grapheme)) => {
                         self.push_utf8_error(grapheme);
-                        #[expect(clippy::cast_possible_truncation)]
-                        {
-                            self.col += grapheme.len() as offset32;
-                        }
+                        self.col += grapheme.len() as offset32;
                         return Character::ErrContinue;
                     },
                     None => {
@@ -1723,12 +1637,10 @@ impl<'code> Tokenizer<'code> {
         loop {
             let next_character = match self.current_ascii_singleline() {
                 Some(Ok(next_character)) => next_character,
+                #[expect(clippy::cast_possible_truncation)]
                 Some(Err(grapheme)) => {
                     self.push_utf8_error(grapheme);
-                    #[expect(clippy::cast_possible_truncation)]
-                    {
-                        self.col += grapheme.len() as offset32;
-                    }
+                    self.col += grapheme.len() as offset32;
                     continue;
                 },
                 None => {
@@ -1805,12 +1717,10 @@ impl<'code> Tokenizer<'code> {
         loop {
             let next_character = match self.current_ascii_singleline() {
                 Some(Ok(next_character)) => next_character,
+                #[expect(clippy::cast_possible_truncation)]
                 Some(Err(grapheme)) => {
                     self.push_utf8_error(grapheme);
-                    #[expect(clippy::cast_possible_truncation)]
-                    {
-                        self.col += grapheme.len() as offset32;
-                    }
+                    self.col += grapheme.len() as offset32;
                     continue;
                 },
                 None => {
@@ -1866,12 +1776,10 @@ impl<'code> Tokenizer<'code> {
         loop {
             let next_character = match self.current_ascii_singleline() {
                 Some(Ok(next_character)) => next_character,
+                #[expect(clippy::cast_possible_truncation)]
                 Some(Err(grapheme)) => {
                     self.push_utf8_error(grapheme);
-                    #[expect(clippy::cast_possible_truncation)]
-                    {
-                        self.col += grapheme.len() as offset32;
-                    }
+                    self.col += grapheme.len() as offset32;
                     continue;
                 },
                 None => {
@@ -1891,12 +1799,10 @@ impl<'code> Tokenizer<'code> {
                 b'\\' => {
                     let escape_character = match self.current_ascii_singleline() {
                         Some(Ok(escape_character)) => escape_character,
+                        #[expect(clippy::cast_possible_truncation)]
                         Some(Err(grapheme)) => {
                             self.push_utf8_error(grapheme);
-                            #[expect(clippy::cast_possible_truncation)]
-                            {
-                                self.col += grapheme.len() as offset32;
-                            }
+                            self.col += grapheme.len() as offset32;
                             continue;
                         },
                         None => {
@@ -1909,7 +1815,6 @@ impl<'code> Tokenizer<'code> {
                             break;
                         },
                     };
-
                     if escape_character == b'"' {
                         self.col += 1;
                     }
@@ -1951,12 +1856,10 @@ impl<'code> Tokenizer<'code> {
         loop {
             let next_character = match self.current_ascii_singleline() {
                 Some(Ok(next_character)) => next_character,
+                #[expect(clippy::cast_possible_truncation)]
                 Some(Err(grapheme)) => {
                     self.push_utf8_error(grapheme);
-                    #[expect(clippy::cast_possible_truncation)]
-                    {
-                        self.col += grapheme.len() as offset32;
-                    }
+                    self.col += grapheme.len() as offset32;
                     continue;
                 },
                 None => {
