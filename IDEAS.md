@@ -33,6 +33,7 @@ and all of the previous commands will produce the same final executable
     ```kay
     #compiler_directive
     ## line comment
+    #* block comment *#
     ```
 
 - use a second `#` followed by the previous "directives" for a documentation comment:
@@ -154,6 +155,20 @@ loop i < 10 {
     # break logic
     break;
 }
+
+# returning from a block
+let a = if condition1 { break 1; } else if condition2 { break 2; }
+# omitting the braces for conciseness (could also be solved if reintroducing do statements)
+let a = if condition1 break 1; else if condition2 break 2;
+let a = if condition1 do break 1; else if condition2 do break 2;
+# or, would require a different specialized syntax, which i don't like
+let a = break 1 if condition1 else 2 if condition2;
+# or, would create ambiguities in the parsing of the condition
+let a = break if condition1 1 else if condition2 2;
+# again, new syntax, bad
+let a = break if condition1 do 1 else if condition2 do 2;
+# again, new syntax, bad, but more concise
+let a = if condition1 do 1 else if condition2 do 2;
 ```
 
 ## ?.?.? - Expressions formatting
@@ -2089,6 +2104,57 @@ op SomeOtherStruct = cast(self: SomeStruct; other: SomeOtherStruct) { ...; retur
 
 ### **BREAKING**: Bit-casting operator for primitive types and removal of implicit conversions
 
+## ?.?.? - Ufcs and method call syntax
+
+```kay
+fn ... <- Foo.foo(self @.; a: i64; b: i64) { ... }
+fn ... <- Foo.foo(self: @.; a: i64; b: i64) { ... }
+fn ... <- Foo.foo(.self: Self; a: i64; b: i64) { ... }
+fn ... <- Foo.foo(self: .Self; a: i64; b: i64) { ... }
+fn ... <- Foo.foo(self.: Self; a: i64; b: i64) { ... }
+fn ... <- self.foo(.: Self; a: i64; b: i64) { ... }
+fn ... <- self.foo(.: Foo; a: i64; b: i64) { ... }
+let bar = something.foo(12; 21);
+# is equivalent to
+let bar = foo(something; 12; 21);
+
+# could provide a way of letting the `self` parameter to be anywhere
+fn ... <- foo(a: i64; self; b: i64) { ... }
+let bar = something.foo(12; 21);
+# is equivalent to
+let bar = foo(12; something; 21);
+
+# emulating method call syntax
+fn ... <- baz(a @self: i64; b: i64) { ... }
+fn ... <- baz(a @$: i64; b: i64) { ... }
+fn ... <- baz(a @.: i64; b: i64) { ... }
+fn ... <- baz(a: @.i64; b: i64) { ... }
+fn ... <- baz(.a: i64; b: i64) { ... }
+fn ... <- baz(a: .i64; b: i64) { ... }
+let bar = 12.baz(21); # 12 refers to `a`
+# is equivalent to
+let bar = foo(12; 21);
+
+fn ... <- baz(a: i64; b @self: i64) { ... }
+let bar = 12.baz(21); # 12 refers to `b`
+# is equivalent to
+let bar = foo(21; 12);
+
+# could allow explicit markers
+fn ... <- baz(a: i64; b: i64) { ... }
+let bar = 12.baz(@self; 21);
+let bar = 12.baz(@$; 21);
+let bar = 12.baz(@.; 21);
+# is equivalent to
+let bar = foo(12; 21);
+
+let bar = 12.baz(21; @self);
+let bar = 12.baz(21; @$);
+let bar = 12.baz(21; @.);
+# is equivalent to
+let bar = foo(21; 12);
+```
+
 ## 0.7.0 - compile time constants
 
 ```kay
@@ -3024,6 +3090,7 @@ loop_0_end:
 "\u21\";
 "\u0x7f\";
 "\ux7f\"; # could also make the leading 0 optional or forbidden
+"\cNUL\"
 
 # could use a different closing symbol to disambiguate cases like these
 "\64\n"; # actual characters: \64\, n | could be confuse with: \64, \n
@@ -3039,9 +3106,17 @@ loop_0_end:
 "first line\nsecond line"; # works on unix systems, not on windows
 "first line\r\nsecond line"; # works on windows systems, not on unix
 "first line\Nsecond line"; # inserts \r\n or \n depending on the operating system
+
+# could just implement a way of concatenating constants
+alias CR = '\r';
+alias LF = '\n';
+alias NL = break @if windows "\{CR}\{LF}"; else @if linux "\{LF}"; else @if oldMax "\{CR}";
+}
+
+"first line\{NL}second line"; # need to chose a syntax for string compile time interpolation
 ```
 
-## ?.?.? - Revised raw string/character literals and identifier strings
+## 0.7.0 - Revised raw string/character literals and identifier strings
 
 use a rust-like solution for quotes in raw strings:
 
@@ -3081,5 +3156,5 @@ could be extended to character literals:
 r'' -> r'''''
 #         ^    this is the valid character, but it would not work since it uses the same character
 #              for the quotes and for the escaping of the quotes, so this kind of escaping would be
-#              remove for the other kinds of quoted literals for consistency
+#              removed for the other kinds of quoted literals for consistency
 ```

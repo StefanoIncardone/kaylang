@@ -8,7 +8,7 @@ use crate::{
     error::DisplayLen as _,
     front_end::{MsgSeverity, SliceIndexPtr},
 };
-use back_to_front::{digit::{self, AsciiDigit}, offset32};
+use back_to_front::{digit::{self, AsciiDigit, Digit}, offset32};
 use core::{fmt::Display, ops::RangeInclusive};
 use unicode_segmentation::UnicodeSegmentation as _;
 
@@ -1325,17 +1325,9 @@ impl<'code> Tokenizer<'code> {
     }
 }
 
-// match digit {
-//     range_decimal_digit_ascii!() | b'_' => {},
-//     range_decimal_out_of_range_ascii!() => {
-//         self.push_digit_out_range_error(digit, digit::Base::Decimal);
-//     },
-//     _                                   => break,
-// }
-
 // tokenization of numbers
 impl<'code> Tokenizer<'code> {
-    fn digits(&mut self, base: digit::Base) -> Result<&'code str, ()> {
+    fn check_digits(&mut self, base: digit::Base) -> Result<&'code str, ()> {
         let previous_errors_len = self.errors.len();
 
         let check_fn = match base {
@@ -1367,7 +1359,7 @@ impl<'code> Tokenizer<'code> {
     }
 
     fn digits_text(&mut self, base: digit::Base) -> Result<TextIndex<'code>, ()> {
-        let literal_text = self.digits(base)?;
+        let literal_text = self.check_digits(base)?;
         return Ok(self.new_token_text(literal_text));
     }
 
@@ -1398,106 +1390,23 @@ impl<'code> Tokenizer<'code> {
 }
 
 #[derive(Clone, Copy)]
-enum Character {
-    OkEscaped(ascii),
+enum EscapeSequence {
+    Ok(ascii),
     ErrBreak,
     ErrContinue,
 }
 
 // tokenization of strings and character literals
 impl<'code> Tokenizer<'code> {
-    fn decimal_escape_sequence(&mut self) -> Character {
-        unimplemented!()
-    }
-
-    fn binary_escape_sequence(&mut self) -> Character {
-        //     const ASCII_MAX_BINARY_DIGITS: u32 = 0;
-
-            //     self.col += 1;
-            //     let start_of_digits_col = self.col;
-            //     loop {
-            //         let digit = match self.peek_ascii_singleline() {
-            //             Some(Ok(digit)) => digit,
-            //             #[expect(clippy::cast_possible_truncation)]
-            //             Some(Err(grapheme)) => {
-            //                 self.push_utf8_error(grapheme);
-            //                 self.col += grapheme.len() as offset32;
-            //                 return EscapedCharacter::ErrNonTerminal;
-            //             }
-            //             None => {
-            //                 self.errors.push(Msg {
-            //                     severity: MsgSeverity::NonTerminalError,
-            //                     kind: ErrorKind::UnterminatedEscapeCharacter,
-            //                     col: start_of_ch,
-            //                     pointers_count: self.col - start_of_ch,
-            //                 });
-            //                 return EscapedCharacter::Err;
-            //             }
-            //         };
-            //         let Some(digit_result) = Self::integer_binary_digit(digit) else {
-            //             break;
-            //         };
-
-            //         self.col += 1;
-            //         if let Err(out_of_range) = digit_result {
-            //             self.errors.push(Msg {
-            //                 severity: MsgSeverity::NonTerminalError,
-            //                 kind: ErrorKind::DigitOutOfRange(out_of_range, Base::Binary),
-            //                 col: self.col,
-            //                 pointers_count: 1,
-            //             });
-            //         }
-            //     }
-            //     let Some(terminator) = self.next_ascii_singleline() else {
-            //         self.errors.push(Msg {
-            //             severity: MsgSeverity::NonTerminalError,
-            //             kind: ErrorKind::UnterminatedEscapeCharacter,
-            //             col: start_of_ch,
-            //             pointers_count: self.col - start_of_ch,
-            //         });
-            //         return EscapedCharacter::Err;
-            //     };
-            //     let b'\\' = terminator else {
-            //         self.errors.push(Msg {
-            //             severity: MsgSeverity::NonTerminalError,
-            //             kind: ErrorKind::UnterminatedEscapeCharacter,
-            //             col: start_of_ch,
-            //             pointers_count: self.col - start_of_ch,
-            //         });
-            //         return EscapedCharacter::ErrNonTerminal;
-            //     };
-
-            //     let digits_count = self.col - start_of_digits_col;
-            //     if digits_count > ASCII_MAX_BINARY_DIGITS {
-            //         self.errors.push(Msg {
-            //             severity: MsgSeverity::NonTerminalError,
-            //             kind: ErrorKind::AsciiBinaryEscapeOverflow,
-            //             col: start_of_ch,
-            //             pointers_count: self.col - start_of_ch,
-            //         });
-            //         return EscapedCharacter::ErrNonTerminal;
-            //     }
-            //     unimplemented!("parsing of the ascii value (expose the implementation from the parsing in the typed abstract syntax tree");
-        unimplemented!()
-    }
-
-    fn octal_escape_sequence(&mut self) -> Character {
-        unimplemented!()
-    }
-
-    fn hexadecimal_escape_sequence(&mut self) -> Character {
-        unimplemented!()
-    }
-
-    fn escape_sequence(&mut self, start_of_character: offset32) -> Character {
+    fn escape_sequence(&mut self, start_of_character: offset32) -> EscapeSequence {
         // TODO: factor out this peeking of the next character in quoted literal
-        let next_character = match self.current_ascii_singleline() {
-            Some(Ok(escape_character)) => escape_character,
+        let current_character = match self.current_ascii_singleline() {
+            Some(Ok(current_character)) => current_character,
             #[expect(clippy::cast_possible_truncation)]
             Some(Err(grapheme)) => {
                 self.col += grapheme.len() as offset32;
                 self.push_utf8_error(grapheme);
-                return Character::ErrContinue;
+                return EscapeSequence::ErrContinue;
             },
             None => {
                 self.errors.push(Msg {
@@ -1506,12 +1415,12 @@ impl<'code> Tokenizer<'code> {
                     col: start_of_character,
                     pointers_count: self.col - start_of_character,
                 });
-                return Character::ErrBreak;
+                return EscapeSequence::ErrBreak;
             },
         };
         self.col += 1;
 
-        let escaped_character = match next_character {
+        let escaped_character = match current_character {
             b'\\' => b'\\',
             b'\'' => b'\'',
             b'"'  => b'\"',
@@ -1520,56 +1429,6 @@ impl<'code> Tokenizer<'code> {
             b'r'  => b'\r',
             b't'  => b'\t',
             b'0'  => b'\0',
-            // b'0'  => {
-            //     let digit = match self.current_ascii_singleline() {
-            //         Some(Ok(digit)) => digit,
-            //         Some(Err(grapheme)) => {
-            //             self.push_utf8_error(grapheme);
-            //             #[expect(clippy::cast_possible_truncation)]
-            //             {
-            //                 self.col += grapheme.len() as offset32;
-            //             }
-            //             return Character::ErrContinue;
-            //         },
-            //         None => {
-            //             self.errors.push(Msg {
-            //                 severity: MsgSeverity::NonTerminalError,
-            //                 kind: ErrorKind::UnterminatedEscapeCharacter,
-            //                 col: start_of_character,
-            //                 pointers_count: self.col - start_of_character,
-            //             });
-            //             return Character::ErrBreak;
-            //         },
-            //     };
-            //     self.col += 1;
-
-            //     let escaped_character = match digit {
-            //         b'b'  => {
-            //             self.col += 1;
-            //             self.binary_escape_sequence()
-            //         },
-            //         b'o'  => {
-            //             self.col += 1;
-            //             self.octal_escape_sequence()
-            //         },
-            //         b'd'  => {
-            //             self.col += 1;
-            //             self.decimal_escape_sequence()
-            //         },
-            //         b'x'  => {
-            //             self.col += 1;
-            //             self.hexadecimal_escape_sequence()
-            //         },
-            //         _ => {
-            //             self.decimal_escape_sequence()
-            //         }
-            //     };
-
-            //     unimplemented!("parsing of ascii value");
-            // },
-            // b'c'  => {
-            //     unimplemented!("ascii control mnemonics");
-            // },
             b'^' => {
                 let caret_character = match self.current_ascii_singleline() {
                     Some(Ok(escape_character)) => escape_character,
@@ -1577,7 +1436,7 @@ impl<'code> Tokenizer<'code> {
                     Some(Err(grapheme)) => {
                         self.push_utf8_error(grapheme);
                         self.col += grapheme.len() as offset32;
-                        return Character::ErrContinue;
+                        return EscapeSequence::ErrContinue;
                     },
                     None => {
                         self.errors.push(Msg {
@@ -1586,7 +1445,7 @@ impl<'code> Tokenizer<'code> {
                             col: start_of_character,
                             pointers_count: self.col - start_of_character,
                         });
-                        return Character::ErrBreak;
+                        return EscapeSequence::ErrBreak;
                     },
                 };
                 self.col += 1;
@@ -1602,7 +1461,7 @@ impl<'code> Tokenizer<'code> {
                             col: start_of_character,
                             pointers_count: 3,
                         });
-                        return Character::ErrContinue;
+                        return EscapeSequence::ErrContinue;
                     },
                 }
             },
@@ -1613,7 +1472,7 @@ impl<'code> Tokenizer<'code> {
                     col: start_of_character + 1,
                     pointers_count: 1,
                 });
-                return Character::ErrContinue;
+                return EscapeSequence::ErrContinue;
             },
             unrecognized => {
                 self.errors.push(Msg {
@@ -1622,11 +1481,11 @@ impl<'code> Tokenizer<'code> {
                     col: start_of_character,
                     pointers_count: 2,
                 });
-                return Character::ErrContinue;
+                return EscapeSequence::ErrContinue;
             },
         };
 
-        return Character::OkEscaped(escaped_character);
+        return EscapeSequence::Ok(escaped_character);
     }
 
     fn ascii_literal_characters(&mut self) -> Result<(&'code str, ascii), ()> {
@@ -1659,9 +1518,9 @@ impl<'code> Tokenizer<'code> {
             match next_character {
                 b'\\' => {
                     logical_character = match self.escape_sequence(start_of_character) {
-                        Character::OkEscaped(ch) => ch,
-                        Character::ErrBreak => break,
-                        Character::ErrContinue => continue,
+                        EscapeSequence::Ok(ch) => ch,
+                        EscapeSequence::ErrBreak => break,
+                        EscapeSequence::ErrContinue => continue,
                     };
                 },
                 control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
@@ -1739,9 +1598,9 @@ impl<'code> Tokenizer<'code> {
             match next_character {
                 b'\\' => {
                     let _logical_character = match self.escape_sequence(start_of_character) {
-                        Character::OkEscaped(ch) => ch,
-                        Character::ErrBreak => break,
-                        Character::ErrContinue => continue,
+                        EscapeSequence::Ok(ch) => ch,
+                        EscapeSequence::ErrBreak => break,
+                        EscapeSequence::ErrContinue => continue,
                     };
                 },
                 control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
