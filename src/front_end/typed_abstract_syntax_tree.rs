@@ -951,8 +951,9 @@ pub(crate) type VariableDefinitionIndex<'code> = SliceIndexPtr<VariableDefinitio
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct VariableDefinition<'code> {
     pub(crate) name: TextIndex<'code>,
+    // NOTE(stefano): might remove and recalculate it each time
     pub(crate) typ: Type,
-    pub(crate) initial_value: ExpressionIndex<'code>,
+    pub(crate) value: ExpressionIndex<'code>,
 }
 
 pub(crate) type NodeIndex<'code> = SliceIndexPtr<Node<'code>>;
@@ -1316,7 +1317,7 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
         variable_index: VariableDefinitionIndex<'_>,
         indent: usize,
     ) -> core::fmt::Result {
-        let VariableDefinition { name, initial_value, typ } =
+        let VariableDefinition { name, value, typ } =
             &self.typed_syntax_tree.variables[variable_index];
         let name_str = self.tokens.text[*name];
         writeln!(f, "{:>indent$}Name = {name_str}", "")?;
@@ -1324,7 +1325,7 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
         writeln!(f, "{:>indent$}InitialValue", "")?;
 
         let initial_value_indent = indent + Self::INDENT_INCREMENT;
-        return self.info_expression(f, *initial_value, initial_value_indent);
+        return self.info_expression(f, *value, initial_value_indent);
     }
 }
 
@@ -2778,7 +2779,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         let variable = VariableDefinition {
             name: *name,
             typ: expression_type,
-            initial_value: self.tast.new_expression(parsed_expression),
+            value: self.tast.new_expression(parsed_expression),
         };
         let variable_index = self.tast.new_variable(variable);
         return Ok(variable_index);

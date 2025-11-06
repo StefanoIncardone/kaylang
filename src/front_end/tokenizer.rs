@@ -8,7 +8,7 @@ use crate::{
     error::DisplayLen as _,
     front_end::{MsgSeverity, SliceIndexPtr},
 };
-use back_to_front::{digit::{self, AsciiDigit, Digit}, offset32};
+use back_to_front::{digit::{self, AsciiDigit}, offset32};
 use core::{fmt::Display, ops::RangeInclusive};
 use unicode_segmentation::UnicodeSegmentation as _;
 
