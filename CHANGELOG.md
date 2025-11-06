@@ -72,14 +72,12 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 #### Fixed
 
-- Corrected cli error messages
-- Corrected line ending tokenization
 - Actually removed do-statements
-<!--  -->
+- Corrected cli error messages
 - Corrected crashes in compilation of unary operators on non-`i64` types
 - Corrected crashes in compilation of comparison expressions in variable assignments
 - Corrected parsing of character literals
-- Corrected tokenization of vertical tabs
+- Corrected tokenization of vertical tabs and line endings
 
 ## 0.6.3 - 2025-06-21
 

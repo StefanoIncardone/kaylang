@@ -2319,6 +2319,8 @@ if c <= foo(a; b) { ... }
 
 # nameless functions or "lambdas" could look something like this, truly nameless functions
 let nameless_function = fn result: i64 <- (a: i64; b: i64) { ... }
+filter(fn i64 <- (a: i64; b: i64) { ... }) # with type inference
+filter(fn <-(a; b) { ... }) # with type inference
 
 # going from variable to usage
 let nameless_function = fn result: i64 <- (a: i64; b: i64) { ... }
@@ -2725,12 +2727,12 @@ fn i64 = dot(lhs: Matrix; rhs: Matrix)
 -> lhs op `.*` rhs { ... }
 
 # would need to provide a way to specify precedence
-fn i64 = dot(lhs: Matrix; rhs: Matrix) -> lhs op `.*` rhs alias * { ... } # same precedence as the * operator
-fn i64 = dot(lhs: Matrix; rhs: Matrix) -> lhs op `.*` rhs | alias * { ... } # same precedence as the * operator
-fn i64 = dot(lhs: Matrix; rhs: Matrix) -> lhs op `.*` rhs => * { ... } # same precedence as the * operator
-fn i64 = dot(lhs: Matrix; rhs: Matrix) -> lhs op `.*` rhs == * { ... } # same precedence as the * operator
-fn i64 = dot(lhs: Matrix; rhs: Matrix) -> lhs op `.*` rhs as * { ... } # same precedence as the * operator
-fn i64 = dot(lhs: Matrix; rhs: Matrix) -> lhs op `.*` rhs -> * { ... } # same precedence as the * operator
+fn i64 = dot(lhs: Matrix; rhs: Matrix) -> lhs op`.*` rhs alias * { ... } # same precedence as the * operator
+fn i64 = dot(lhs: Matrix; rhs: Matrix) -> lhs op`.*` rhs | alias * { ... } # same precedence as the * operator
+fn i64 = dot(lhs: Matrix; rhs: Matrix) -> lhs op`.*` rhs => * { ... } # same precedence as the * operator
+fn i64 = dot(lhs: Matrix; rhs: Matrix) -> lhs op`.*` rhs == * { ... } # same precedence as the * operator
+fn i64 = dot(lhs: Matrix; rhs: Matrix) -> lhs op`.*` rhs as * { ... } # same precedence as the * operator
+fn i64 = dot(lhs: Matrix; rhs: Matrix) -> lhs op`.*` rhs -> * { ... } # same precedence as the * operator
 
 # "operator overloading" could become this, so this would tell the compiler to add "+[i64, i64]" to
 # the overloads for the operator "+", thus inferring the usage from the operator
@@ -2789,8 +2791,13 @@ let b: ascii = a; # Error: ascii is a different type from u8
 
 # could use the `alias` keyword for compile time contants, similar to rust's `const`s
 alias MAX = 21; # basically #define MAX 21
-const MAX = 21; # instead of this, saving on the `const` keyword
+const MAX = 21; # instead of this, saving on the `const` keyword, since const means `not mutable` in
+                # other languages using `alias` would make it more clear
 let f = MAX - 1; # equivalent to `let f = 21 - 1;`
+
+# could use the `macro` keyword to replace the `alias` keyword
+macro MAX = 21;
+macro fn i64 <- foo(a: i64, b: i64) { return a + b; }
 ```
 
 ## ?.?.? - Capturing scopes
@@ -3082,14 +3089,12 @@ loop_0_end:
 "\(0x7f)"; # is clunky and overly long with `(` and `)` extra characters
 "\0x7f"; # normally \0 and x7f are distinct characters with the current syntax
 "\0x7f\"; # \0x7f are a single character delimited by `\`
-"\x7f\"; # could also make the leading 0 optional or forbidden
 "\65\"; # character `A`
 "\u0b01\";
 "\u0o12\";
 "\u0d21\";
 "\u21\";
 "\u0x7f\";
-"\ux7f\"; # could also make the leading 0 optional or forbidden
 "\cNUL\"
 
 # could use a different closing symbol to disambiguate cases like these
@@ -3110,10 +3115,13 @@ loop_0_end:
 # could just implement a way of concatenating constants
 alias CR = '\r';
 alias LF = '\n';
-alias NL = break @if windows "\{CR}\{LF}"; else @if linux "\{LF}"; else @if oldMax "\{CR}";
-}
+alias NL = break @if windows "\{CR}\{LF}"; else @if linux "\{LF}"; else @if oldMac "\{CR}";
+alias NL = break @if windows CR + LF; else @if linux LF; else @if oldMac CR;
 
-"first line\{NL}second line"; # need to chose a syntax for string compile time interpolation
+# need to chose a syntax for string compile time interpolation
+alias NL = break @if windows CR + LF; else @if linux LF; else @if oldMax CR;
+"first line\{NL}second line"; # arguments inside \{...} need to evaluate to constant strings/characters
+"first line" + NL + "second line"; # could allow the usage of the + operator for constant strings/characters
 ```
 
 ## 0.7.0 - Revised raw string/character literals and identifier strings
@@ -3124,8 +3132,6 @@ use a rust-like solution for quotes in raw strings:
 r"" -> r#"""# -> r##""""## -> r###"""""###
 #         ^          ^^            ^^^      these are the valid characters
 r"" -> rr"""r -> rrr""""rr -> rrrr"""""rrr
-#         ^          ^^            ^^^      these are the valid characters
-r"" -> r'"""' -> r''""""'' -> r'''"""""'''
 #         ^          ^^            ^^^      these are the valid characters
 ```
 
@@ -3139,8 +3145,6 @@ i"" -> i#"""# -> i##""""## -> i###"""""###
 #         ^          ^^            ^^^      these are the valid characters
 i"" -> ii"""i -> iii""""ii -> iiii"""""iii
 #         ^          ^^            ^^^      these are the valid characters
-i"" -> i'"""' -> i''""""'' -> i'''"""""'''
-#         ^          ^^            ^^^      these are the valid characters
 ```
 
 could be extended to character literals:
@@ -3153,8 +3157,69 @@ could be extended to character literals:
 #         ^ this is the valid character
 '\\' -> r'\'
 #         ^ this is the valid character
-r'' -> r'''''
-#         ^    this is the valid character, but it would not work since it uses the same character
-#              for the quotes and for the escaping of the quotes, so this kind of escaping would be
-#              removed for the other kinds of quoted literals for consistency
+```
+
+## ?.?.? - explicit out parameters
+
+```kay
+# more high level function, this lets the compiler chose where to pass the argument, i guess
+# depending on the ABI
+fn struct Foo <- new_foo(...) { ... }
+# what most likely happens
+fn new_foo(..., foo: struct Foo&) { ... }
+# system-v abi passes the out parameter in rdi and returns the same out parameter in rax
+fn struct Foo& <- new_foo(foo: struct Foo&, ...) { ... }
+
+# could allow customizing where out parameters are placed (syntax up to revision)
+fn struct Foo @0 <- new_foo(foo: @0&, ...) { ... }
+fn struct Foo @0 <- new_foo(..., foo: @0&) { ... }
+fn struct Foo @0 <- new_foo(..., foo: @0&, ...) { ... }
+fn success: bool #* regular return value *#, struct Foo @0, i64 @1, bool @2, str @3 <- new_foo(
+    ...,
+    foo: @0&,
+    bar: @1&,
+    ...,
+    baz: @3&,
+    foobar: @2&,
+) { ... }
+
+# in C you would do
+struct Foo foo;
+i64 bar;
+bool foobar;
+str baz;
+bool success = new_foo(..., &foo, &bar, ..., &baz, &foobar)
+
+# in kay you could do
+let success, foo @0, bar @1, foobar @2, baz @3 = new_foo(..., @0&, @1&, ..., @3&, @2&);
+
+# or do the same this as in C, but with first class uninitialized variables support
+# (syntax up to revision)
+let foo: struct Foo = ?; # ? as "just allocate the space on the stack"
+let bar: i64 = ---; # --- instead of ?
+let bar: i64 = ...; # ... instead of ?
+let bar: i64 = .; # . instead of ?
+let bar: i64...; # ... instead of ?
+let foobar: bool =; # =; "operator", this avoids extra --- or ? symbols, but is confusing
+let baz: str...;
+
+# baz has type `str...` (uninitialized str) before the call
+let success: bool = new_foo(..., foo&, bar&, ..., baz&, foobar&);
+
+# baz has type `str` (initialized str), would need to implement a way to signal that a true
+# `success` variable means that uninitialized variables are now properly initialized
+
+```
+
+## ?.?.? - Removal of type inference
+
+```kay
+let i = 12; # could raise an error
+let i: i64 = 21; # would need an explicit type
+
+# could also enable type inference only for literals where its really obvious
+let i = 42;
+let i = "hello";
+let i: struct Foo = struct Foo(...); # obvious case, so type inference would help
+let i = struct Foo(...);
 ```

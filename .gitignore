@@ -12,8 +12,4 @@ target
 # output directory of artifacts generated from debugging with vscode
 out
 
-# used to test the compiler, with a lot of hard coding specific to my current
-# vscode debugging launch configurations
-src/bin
-
 src/saved_for_later
