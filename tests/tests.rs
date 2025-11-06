@@ -72,3 +72,26 @@ fn run_project_euler() -> Result<(), ExitCode> {
 
     return Ok(());
 }
+
+#[expect(clippy::panic, clippy::panic_in_result_fn, reason = "it's for testing")]
+#[test]
+fn check_escape_characters() -> Result<(), ExitCode> {
+    let color = Color::Auto;
+    color.set(&std::io::stderr());
+    color.set(&std::io::stdout());
+
+    let src_path = Path::new("tests/escape_characters.kay");
+    return check(&src_path);
+}
+
+#[expect(clippy::panic, clippy::panic_in_result_fn, reason = "it's for testing")]
+#[test]
+fn run_escape_characters() -> Result<(), ExitCode> {
+    let color = Color::Auto;
+    color.set(&std::io::stderr());
+    color.set(&std::io::stdout());
+
+    let out_path = Path::new("out");
+    let src_path = Path::new("tests/escape_characters.kay");
+    return run(&src_path, out_path);
+}
