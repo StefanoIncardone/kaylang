@@ -58,11 +58,11 @@ var max_product = 0;
 var row = 0;
 var col = 0;
 
-# println "horizontal products";
+## println "horizontal products";
 loop row < ROWS {
     col = 0;
     loop col <= COLUMNS - AMOUNT_OF_ADJACENT_NUMBERS {
-        # print "row: "; print row; print ", col: "; print col; print " -> \t";
+        ## print "row: "; print row; print ", col: "; print col; print " -> \t";
 
         let first_element_index = row * ROWS + col;
         let number_0 = numbers[first_element_index];
@@ -71,28 +71,28 @@ loop row < ROWS {
         let number_3 = numbers[first_element_index + 3];
 
         let product = number_0 * number_1 * number_2 * number_3;
-        # print number_0; print "\t * "; print number_1; print "\t * "; print number_2; print "\t * "; print number_3; print "\t = "; print product;
+        ## print number_0; print "\t * "; print number_1; print "\t * "; print number_2; print "\t * "; print number_3; print "\t = "; print product;
 
         if product > max_product {
             max_product = product;
-            # print " found new vertical max product ";
+            ## print " found new vertical max product ";
         }
 
-        # println;
+        ## println;
 
         col += 1;
     }
     row += 1;
 }
-# println;
+## println;
 
 row = 0;
 col = 0;
-# println "vertical products";
+## println "vertical products";
 loop col < COLUMNS {
     row = 0;
     loop row <= ROWS - AMOUNT_OF_ADJACENT_NUMBERS {
-        # print "row: "; print row; print ", col: "; print col; print " -> \t";
+        ## print "row: "; print row; print ", col: "; print col; print " -> \t";
 
         let number_0 = numbers[row * ROWS + col];
         let number_1 = numbers[(row + 1) * ROWS + col];
@@ -100,28 +100,28 @@ loop col < COLUMNS {
         let number_3 = numbers[(row + 3) * ROWS + col];
 
         let product = number_0 * number_1 * number_2 * number_3;
-        # print number_0; print "\t * "; print number_1; print "\t * "; print number_2; print "\t * "; print number_3; print "\t = "; print product;
+        ## print number_0; print "\t * "; print number_1; print "\t * "; print number_2; print "\t * "; print number_3; print "\t = "; print product;
 
         if product > max_product {
             max_product = product;
-            # print " found new vertical max product ";
+            ## print " found new vertical max product ";
         }
 
-        # println;
+        ## println;
 
         row += 1;
     }
     col += 1;
 }
-# println;
+## println;
 
 row = 0;
 col = 0;
-# println "diagonal products from top left to bottom right";
+## println "diagonal products from top left to bottom right";
 loop row <= ROWS - AMOUNT_OF_ADJACENT_NUMBERS {
     col = 0;
     loop col <= COLUMNS - AMOUNT_OF_ADJACENT_NUMBERS {
-        # print "row: "; print row; print ", col: "; print col; print " -> \t";
+        ## print "row: "; print row; print ", col: "; print col; print " -> \t";
 
         let number_0 = numbers[row * ROWS + col];
         let number_1 = numbers[(row + 1) * ROWS + (col + 1)];
@@ -129,28 +129,28 @@ loop row <= ROWS - AMOUNT_OF_ADJACENT_NUMBERS {
         let number_3 = numbers[(row + 3) * ROWS + (col + 3)];
 
         let product = number_0 * number_1 * number_2 * number_3;
-        # print number_0; print "\t * "; print number_1; print "\t * "; print number_2; print "\t * "; print number_3; print "\t = "; print product;
+        ## print number_0; print "\t * "; print number_1; print "\t * "; print number_2; print "\t * "; print number_3; print "\t = "; print product;
 
         if product > max_product {
             max_product = product;
-            # print " found new vertical max product ";
+            ## print " found new vertical max product ";
         }
 
-        # println;
+        ## println;
 
         col += 1;
     }
     row += 1;
 }
 
-# println;
+## println;
 row = 0;
 col = AMOUNT_OF_ADJACENT_NUMBERS - 1;
-# println "diagonal products from top right to bottom left";
+## println "diagonal products from top right to bottom left";
 loop row <= ROWS - AMOUNT_OF_ADJACENT_NUMBERS {
     col = AMOUNT_OF_ADJACENT_NUMBERS - 1;
     loop col < COLUMNS {
-        # print "row: "; print row; print ", col: "; print col; print " -> \t";
+        ## print "row: "; print row; print ", col: "; print col; print " -> \t";
 
         let number_0 = numbers[row * ROWS + col];
         let number_1 = numbers[(row + 1) * ROWS + (col - 1)];
@@ -158,20 +158,20 @@ loop row <= ROWS - AMOUNT_OF_ADJACENT_NUMBERS {
         let number_3 = numbers[(row + 3) * ROWS + (col - 3)];
 
         let product = number_0 * number_1 * number_2 * number_3;
-        # print number_0; print "\t * "; print number_1; print "\t * "; print number_2; print "\t * "; print number_3; print "\t = "; print product;
+        ## print number_0; print "\t * "; print number_1; print "\t * "; print number_2; print "\t * "; print number_3; print "\t = "; print product;
 
         if product > max_product {
             max_product = product;
-            # print " found new vertical max product ";
+            ## print " found new vertical max product ";
         }
 
-        # println;
+        ## println;
 
         col += 1;
     }
     row += 1;
 }
-# println;
+## println;
 
 print "expected: "; println 70600674;
 print "actual:   "; println max_product;

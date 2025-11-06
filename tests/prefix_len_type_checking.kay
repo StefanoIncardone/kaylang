@@ -1,6 +1,6 @@
-# IDEA(stefano): create a .rs file to "check" these statements for correctness
-    # IDEA(stefano): make Token pub and extract the positions of the `Correct`\`Error` comments
-        # and use them to detect test statements
+## IDEA(stefano): create a .rs file to "check" these statements for correctness
+    ## IDEA(stefano): make Token pub and extract the positions of the `Correct`\`Error` comments
+        ## and use them to detect test statements
 
 let s = "s";
 let a = 'a';
@@ -13,9 +13,9 @@ let ai = [1];
 let ab = [true];
 
 let test_len_literal_string  = len "s";  #* Correct *#
-# let test_len_literal_ascii   = len 'a';  #* Error *#
-# let test_len_literal_i64     = len 12;   #* Error *#
-# let test_len_literal_bool    = len true; #* Error *#
+## let test_len_literal_ascii   = len 'a';  #* Error *#
+## let test_len_literal_i64     = len 12;   #* Error *#
+## let test_len_literal_bool    = len true; #* Error *#
 
 let test_len_literal_array_of_string = len ["s"];  #* Correct *#
 let test_len_literal_array_of_ascii  = len ['a'];  #* Correct *#
@@ -23,9 +23,9 @@ let test_len_literal_array_of_i64    = len [12];   #* Correct *#
 let test_len_literal_array_of_bool   = len [true]; #* Correct *#
 
 let test_len_variable_string = len s; #* Correct *#
-# let test_len_variable_ascii  = len a; #* Error *#
-# let test_len_variable_i64    = len i; #* Error *#
-# let test_len_variable_bool   = len b; #* Error *#
+## let test_len_variable_ascii  = len a; #* Error *#
+## let test_len_variable_i64    = len i; #* Error *#
+## let test_len_variable_bool   = len b; #* Error *#
 
 let test_len_variable_array_of_string = len as; #* Correct *#
 let test_len_variable_array_of_ascii  = len aa; #* Correct *#
@@ -33,6 +33,6 @@ let test_len_variable_array_of_i64    = len ai; #* Correct *#
 let test_len_variable_array_of_bool   = len ab; #* Correct *#
 
 let test_len_index_variable_array_of_string = len as[0]; #* Correct *#
-# let test_len_index_variable_array_of_ascii  = len aa[0]; #* Error *#
-# let test_len_index_variable_array_of_i64    = len ai[0]; #* Error *#
-# let test_len_index_variable_array_of_bool   = len ab[0]; #* Error *#
+## let test_len_index_variable_array_of_ascii  = len aa[0]; #* Error *#
+## let test_len_index_variable_array_of_i64    = len ai[0]; #* Error *#
+## let test_len_index_variable_array_of_bool   = len ab[0]; #* Error *#

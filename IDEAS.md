@@ -3,40 +3,17 @@
 >[!WARNING]
 > no feature is final, modifications can happen at any moment
 
-## 0.6.4/?.?.? - invoking internal tools
+## ?.?.? - Compiler directives and Documentation comments
 
-Ability to invoke internal tools such as assembler and linkers, basically turning the compiler into
-an assembler/linker frontend/wrapper:
-
-```shell
-# any argument after the --assembler flag gets sent to the assembler
-kay compile --assembler main.asm # invoke the assembler
-
-# any argument after the assemble command gets sent to the assembler
-kay assemble main.asm # invoke the assembler
-
-# any argument after the --linker flag gets sent to the linker
-kay compile --linker main.o # invoke the linker
-
-# any argument after the link command gets sent to the assembler
-kay link main.o # invoke the linker
-```
-
-and all of the previous commands will produce the same final executable
-
-## 0.6.4 - Revised comments
-
-- i like the `#` for compiler directives instead of say `@`
-- could treat `#` as a compile directive
-- use a second `#` to signal a line comment:
+- i like the `#` for compiler directives instead of say `@`:
 
     ```kay
-    #compiler_directive
     ## line comment
     #* block comment *#
+    #directive
     ```
 
-- use a second `#` followed by the previous "directives" for a documentation comment:
+- use an extra `#` for a documentation comment:
 
     ```kay
     ### documentation line comment
@@ -46,43 +23,43 @@ and all of the previous commands will produce the same final executable
 ## ?.?.? - Disallowing optional trailing semicolon, make it mandatory
 
 ```kay
-let i = [1; 2; 3]; # would not be allowed
-let i = [1; 2; 3;]; # trailing semicolon would be mandatory for consistency
+let i = [1; 2; 3]; ## would not be allowed
+let i = [1; 2; 3;]; ## trailing semicolon would be mandatory for consistency
 
-# would allow to move line up and down without running into "missing semicolon" errors
+## would allow to move line up and down without running into "missing semicolon" errors
 let i = [
     1;
     2;
-    4 # missing semicolon because we moved a line up
+    4 ## missing semicolon because we moved a line up
     3;
 ];
 let i = [
     1;
     2;
-    4; # would not be a problem if a trailing semicolon was mandatory
+    4; ## would not be a problem if a trailing semicolon was mandatory
     3;
-    5; # additions would be one line changes (already possible by allowing trailing semicolons)
+    5; ## additions would be one line changes (already possible by allowing trailing semicolons)
 ];
 
-# should function arguments have mandatory semicolons?
+## should function arguments have mandatory semicolons?
 fn sum: i64 = sum(a: i64; b: i64;) {
     return a + b;
 }
 
-# should function arguments have mandatory semicolons?
+## should function arguments have mandatory semicolons?
 let sum = sum(12; 21;);
 
-# should generics have mandatory semicolons/commas?
+## should generics have mandatory semicolons/commas?
 struct Point<I,>(...)
 struct Point<I;>(...)
 
-# should fields have mandatory semicolons?
+## should fields have mandatory semicolons?
 struct Point(
     x: i64;
     y: i64;
 )
 
-# should we do it for generics?
+## should we do it for generics?
 let p = Point<i64;>(x = 12; y = 21;);
 ```
 
@@ -103,40 +80,40 @@ loop i < 10 {
     break { println "done"; }
 
     if i & 1 == 0 {
-        continue; # goes inside the continue block previously declared
+        continue; ## goes inside the continue block previously declared
     } else if i == 3 {
-        break; # goes inside the break block previously declared
+        break; ## goes inside the break block previously declared
     }
-    # each block except the first will start executing from the continue block
+    ## each block except the first will start executing from the continue block
 }
 
-# or
+## or
 loop i < 10
 continue { i += 1; }
 break { println "done"; } {
     if i & 1 == 0 {
-        continue; # goes inside the continue block previously declared
+        continue; ## goes inside the continue block previously declared
     } else if i == 3 {
-        break; # goes inside the break block previously declared
+        break; ## goes inside the break block previously declared
     }
-    # each block except the first will start executing from the continue block
+    ## each block except the first will start executing from the continue block
 }
 
-# or
+## or
 loop i < 10 {
     if i & 1 == 0 {
-        continue; # goes inside the continue block
+        continue; ## goes inside the continue block
     } else if i == 3 {
-        break; # goes inside the break block declared
+        break; ## goes inside the break block declared
     }
-    # each block except the first will start executing from the continue block
+    ## each block except the first will start executing from the continue block
 } continue {
     i += 1;
 } break {
     println "done";
 }
 
-# could just be
+## could just be
 loop i < 10 {
     :break_label {
         :continue_label {
@@ -148,26 +125,26 @@ loop i < 10 {
             }
         }
 
-        # continue logic
+        ## continue logic
         continue;
     }
 
-    # break logic
+    ## break logic
     break;
 }
 
-# returning from a block
+## returning from a block
 let a = if condition1 { break 1; } else if condition2 { break 2; }
-# omitting the braces for conciseness (could also be solved if reintroducing do statements)
+## omitting the braces for conciseness (could also be solved if reintroducing do statements)
 let a = if condition1 break 1; else if condition2 break 2;
 let a = if condition1 do break 1; else if condition2 do break 2;
-# or, would require a different specialized syntax, which i don't like
+## or, would require a different specialized syntax, which i don't like
 let a = break 1 if condition1 else 2 if condition2;
-# or, would create ambiguities in the parsing of the condition
+## or, would create ambiguities in the parsing of the condition
 let a = break if condition1 1 else if condition2 2;
-# again, new syntax, bad
+## again, new syntax, bad
 let a = break if condition1 do 1 else if condition2 do 2;
-# again, new syntax, bad, but more concise
+## again, new syntax, bad, but more concise
 let a = if condition1 do 1 else if condition2 do 2;
 ```
 
@@ -177,9 +154,9 @@ emit a warning for ambiguos use of unary/binary operators, i.e.:
 
 ```kay
 1 + 2 -3
-    # ^ this means `1 minus 2 minus 3` but it might mean `1 minus 2 *missing* negative 3`
-    # Help: to avoid ambiguity consider formatting the code as `1 + 2 - 3`, or if you meant
-    # negative 3 you might be missing an operator between `2` and `-3` -> `1 + 2 *op* -3`
+    ## ^ this means `1 minus 2 minus 3` but it might mean `1 minus 2 *missing* negative 3`
+    ## Help: to avoid ambiguity consider formatting the code as `1 + 2 - 3`, or if you meant
+    ## negative 3 you might be missing an operator between `2` and `-3` -> `1 + 2 *op* -3`
 ```
 
 ## ?.?.? - Built-in tags
@@ -187,12 +164,12 @@ emit a warning for ambiguos use of unary/binary operators, i.e.:
 Implement a way to recognize and collect todos, and other tags
 
 ```kay
-# at: file.kay
+## at: file.kay
 
-(12) # TODO(stefano) implement features
-#                   ^^^^^^^^^^^^^^^^^^^ everything after the TODO(stefano) is part of the message
-(42) # IDEA(stefano)genious
-#                   ^notice the missing space
+(12) ## TODO(stefano) implement features
+##                   ^^^^^^^^^^^^^^^^^^^ everything after the TODO(stefano) is part of the message
+(42) ## IDEA(stefano)genious
+##                   ^notice the missing space
 ```
 
 running the `kay tags file.kay` command would output something like:
@@ -370,9 +347,9 @@ reason of the crash, file, line and column number
 - avoiding added nesting:
 
 ```kay
-# regular if:
-# - 1 level of indentation
-# - two keywords: `if`, `else`
+## regular if:
+## - 1 level of indentation
+## - two keywords: `if`, `else`
 if answer == 19 {
     println "lucky";
 } else if answer == 21 {
@@ -383,17 +360,17 @@ if answer == 19 {
     println "too bad";
 }
 
-# switch statement:
-# - 1 level of indentation
-# - one keyword plus the two from before: `if`, `else`, `case`
-#   - possibly a `fall` keyword to specify a fallthrough case
-# - same semantics as a regular if statement
-#   - every case is like an `else if` branch
-#   - it's basically just syntactic sugar
-# - actually less code
-# - requires minimal structural changes and refactoring:
-#   - replace the first `==` and the rest of the `else if answer ==` with a `case`
-#   - keep the `else` keyword for the 'default' case
+## switch statement:
+## - 1 level of indentation
+## - one keyword plus the two from before: `if`, `else`, `case`
+##   - possibly a `fall` keyword to specify a fallthrough case
+## - same semantics as a regular if statement
+##   - every case is like an `else if` branch
+##   - it's basically just syntactic sugar
+## - actually less code
+## - requires minimal structural changes and refactoring:
+##   - replace the first `==` and the rest of the `else if answer ==` with a `case`
+##   - keep the `else` keyword for the 'default' case
 if answer
 case 19 {
     println "lucky";
@@ -405,13 +382,13 @@ case 19 {
     println "too bad";
 }
 
-# switch statement:
-# - 1 level of indentation
-# - no additional keywords, let would become the "pattern matching" keyword
-# - would allow to mix and match patterns and regular comparisons
-# - same semantics as a regular if statement
-#   - every case is like an `else if` branch
-if answer # note: this code makes no sense, it's just to showcase possible syntaxes
+## switch statement:
+## - 1 level of indentation
+## - no additional keywords, let would become the "pattern matching" keyword
+## - would allow to mix and match patterns and regular comparisons
+## - same semantics as a regular if statement
+##   - every case is like an `else if` branch
+if answer ## note: this code makes no sense, it's just to showcase possible syntaxes
 let Ok(19) {
     println "lucky";
 } answer >= 21 {
@@ -422,18 +399,18 @@ let Ok(19) {
     println "too bad";
 }
 
-# alternative switch statement:
-# - 1 level of indentation
-# - two keywords plus the two from before: `if`, `else`, `switch`, `case`
-#   - possibly a `fall` keyword to specify a fallthrough case
-# - same semantics as a regular if statement
-#   - every case is like an `else if` branch
-#   - it's basically just syntactic sugar
-# - actually less code
-# - requires minimal structural changes and refactoring:
-#   - replace the first `if` keyword with the `switch` keyword
-#   - replace the first `==` and the rest of the `else if answer ==` with a `case`
-#   - keep the `else` keyword for the 'default' case
+## alternative switch statement:
+## - 1 level of indentation
+## - two keywords plus the two from before: `if`, `else`, `switch`, `case`
+##   - possibly a `fall` keyword to specify a fallthrough case
+## - same semantics as a regular if statement
+##   - every case is like an `else if` branch
+##   - it's basically just syntactic sugar
+## - actually less code
+## - requires minimal structural changes and refactoring:
+##   - replace the first `if` keyword with the `switch` keyword
+##   - replace the first `==` and the rest of the `else if answer ==` with a `case`
+##   - keep the `else` keyword for the 'default' case
 switch answer
 case 19 {
     println "lucky";
@@ -445,55 +422,55 @@ case 19 {
     println "too bad";
 }
 
-# pattern matching:
-# - only requires to change `==` and `else if answer ==` to `case`
-# - values inside pattern matching (i.e.: `ok` and `err`) are only available in the their block
-# - split into multiple lines if preferred
-# - short and concise
-# - can declare mutability modifiers `let` or `var` on matched values
+## pattern matching:
+## - only requires to change `==` and `else if answer ==` to `case`
+## - values inside pattern matching (i.e.: `ok` and `err`) are only available in the their block
+## - split into multiple lines if preferred
+## - short and concise
+## - can declare mutability modifiers `let` or `var` on matched values
 if answer
-case let Ok(ok) { println ok; } # ok is available only in the following block and is immutable
-case var Err(err) { println err; } # err is available only in the following block and is mutable
+case let Ok(ok) { println ok; } ## ok is available only in the following block and is immutable
+case var Err(err) { println err; } ## err is available only in the following block and is mutable
 case let Err2(var err1; err2) {
-    println err1; # err1 is available only in this block and is mutable
-    println err2; # err2 is available only in this block and is immutable
+    println err1; ## err1 is available only in this block and is mutable
+    println err2; ## err2 is available only in this block and is immutable
 }
 case var Err2(let err1; err2) {
-    println err1; # err1 is available only in this block and is immutable
-    println err2; # err2 is available only in this block and is mutable
+    println err1; ## err1 is available only in this block and is immutable
+    println err2; ## err2 is available only in this block and is mutable
 }
 
-# could benefit from rust's mutability modifiers
-# - would get rid of the initial mutabilty modifiers
+## could benefit from rust's mutability modifiers
+## - would get rid of the initial mutabilty modifiers
 if answer
-case Ok(let ok) { println ok; } # ok is available only in the following block
-case Ok_b(let ok) { println ok; } # `let` is redundant
-case Err(var err) { println err; } # err is available only in the following block and is mutable
+case Ok(let ok) { println ok; } ## ok is available only in the following block
+case Ok_b(let ok) { println ok; } ## `let` is redundant
+case Err(var err) { println err; } ## err is available only in the following block and is mutable
 case Err2(var err1; let err2) {
-    println err1; # err1 is available only in this block and is mutable
-    println err2; # err2 is available only in this block and is immutable
+    println err1; ## err1 is available only in this block and is mutable
+    println err2; ## err2 is available only in this block and is immutable
 }
 
-# rust-inspired let else syntax:
-# - `ok` will be available from now on
+## rust-inspired let else syntax:
+## - `ok` will be available from now on
 let case Ok(let ok) = answer else {
     println "err";
-    return; # branch need to diverge
+    return; ## branch need to diverge
 }
 
-# oh no! i need to access the error value
-# - literally just add the pattern corresponding to the err case
-# - 'err' will only be available in it's switch branch
-# - `case` required to allow for more consistency when adding multiple cases
+## oh no! i need to access the error value
+## - literally just add the pattern corresponding to the err case
+## - 'err' will only be available in it's switch branch
+## - `case` required to allow for more consistency when adding multiple cases
 let case Ok(let ok) = answer else
 case Err(let err) {
     println err
     return;
 }
 
-# would allow for acces to other values in other patterns if needed
-# - just add the other patterns
-# - debate wheter the repetition of the `else` kewword should be addressed
+## would allow for acces to other values in other patterns if needed
+## - just add the other patterns
+## - debate wheter the repetition of the `else` kewword should be addressed
 let Ok(ok) = answer else
 case Err0(let err0) {
     println err0;
@@ -506,7 +483,7 @@ case Err0(let err0) {
     return;
 }
 
-# would just be syntactic sugar for
+## would just be syntactic sugar for
 let ok = if answer
 case Ok(let ok) {
     break ok;
@@ -525,46 +502,46 @@ case Ok(let ok) {
 possibly allow for the operator before the first case to propagate, basically sugar for a regular if
 
 ```kay
-# this would be treated as pattern matching
+## this would be treated as pattern matching
 if answer
 case 19 ...;
 case 21 ...;
 case 42 ...;
 else ...;
 
-# this would use the `==` operator to "pattern match" on cases
+## this would use the `==` operator to "pattern match" on cases
 if answer ==
 case 19 ...;
 case 21 ...;
 case 42 ...;
 else ...;
 
-# would be sugar for this
+## would be sugar for this
 if answer == 19 ...;
 else if answer == 21 ...;
 else if answer == 42 ...;
 else ...;
 
-# this would use the `>` operator to "pattern match" on cases
+## this would use the `>` operator to "pattern match" on cases
 if answer >
 case 19 ...;
 case 21 ...;
 case 42 ...;
 else ...;
 
-# would be sugar for this
+## would be sugar for this
 if answer > 19 ...;
 else if answer > 21 ...;
 else if answer > 42 ...;
 else ...;
 
-# this would use the `%` operator to "pattern match" on cases
+## this would use the `%` operator to "pattern match" on cases
 if answer %
-case 19 == 0 ...; # same as answer % 19 == 0
-case 21 == 3 ...; # same as answer % 21 == 3
+case 19 == 0 ...; ## same as answer % 19 == 0
+case 21 == 3 ...; ## same as answer % 21 == 3
 else ...;
 
-# would be sugar for this
+## would be sugar for this
 if answer % 19 == 0 ...;
 else if answer % 21 == 3 ...;
 else if answer % 42 ...;
@@ -727,7 +704,7 @@ let ok = match answer {
 - divmod:
 
     ```kay
-    let division, remainder = 3 /% 2; # will result in 1, 1
+    let division, remainder = 3 /% 2; ## will result in 1, 1
     ```
 
 ### Revised remainder/mod operators
@@ -753,23 +730,23 @@ let ok = match answer {
 
 ```kay
 var a = 12;
-a = a + 21; # non short hand assignment
-# want to convert to short hand assignment
+a = a + 21; ## non short hand assignment
+## want to convert to short hand assignment
 
-# 1: starting state
+## 1: starting state
     a = a + 21;
-# 2:   ^^^ remove the "target" left operand
+## 2:   ^^^ remove the "target" left operand
     a =+ 21;
-# 3: oh no! the `+` operator is to the right of the `=`, need to invert the positions and done
+## 3: oh no! the `+` operator is to the right of the `=`, need to invert the positions and done
     a += 21;
 
-# want to convert from short hand assignment
+## want to convert from short hand assignment
 
-# 1: starting state
+## 1: starting state
     a += 21;
-# 2:^^^ copy the variable name to the right of the `=` and add spaces
+## 2:^^^ copy the variable name to the right of the `=` and add spaces
     a += a + 21;
-# 3:  ^ remove this `+' and done
+## 3:  ^ remove this `+' and done
     a = a + 21;
 ```
 
@@ -777,19 +754,19 @@ with inverted short hand assignment operators (`+=` -> `=+`):
 
 ```kay
 var a = 12;
-a = a + 21; # non short hand assignment
-# want to convert to short hand assignment
+a = a + 21; ## non short hand assignment
+## want to convert to short hand assignment
 
-# 1: starting state
+## 1: starting state
     a = a + 21;
-# 2:   ^^^ remove the "target" left operand and done
+## 2:   ^^^ remove the "target" left operand and done
     a =+ 21;
 
-# want to convert from short hand assignment
+## want to convert from short hand assignment
 
-# 1: starting state
+## 1: starting state
     a =+ 21;
-# 2:^ copy the variable name to the right of the `=` and add spaces and done
+## 2:^ copy the variable name to the right of the `=` and add spaces and done
     a = a + 21;
 ```
 
@@ -797,7 +774,7 @@ would need to report incorrect operators, since the majority of languages uses t
 
 ```kay
 var a = 12;
-a += 21; # Error: this language uses =+
+a += 21; ## Error: this language uses =+
 ```
 
 ## ?.?.? - Removal of the "abs" operator
@@ -806,38 +783,38 @@ the absolute value operator `+i` is inconsistent with the math prefix `+` which 
 effect on the expression, so the prefix `+` operator could just be kept for formatting reasons:
 
 ```kay
--i; # makes 12 negative
-+i; # leaves i unchanged
+-i; ## makes 12 negative
++i; ## leaves i unchanged
 ```
 
 may even remove the possibility of using the `+` operator as a prefix operator:
 
 ```kay
--i;  # safe negation
--\i; # wrapping negation
--|i; # saturating negation
+-i;  ## safe negation
+-\i; ## wrapping negation
+-|i; ## saturating negation
 
-+i;  # no effect
-+\i; # no effect
-+|i; # no effect
++i;  ## no effect
++\i; ## no effect
++|i; ## no effect
 ```
 
 ## 0.7.0 - Labels on blocks
 
 ```kay
-# possible label syntax
+## possible label syntax
 loop:label condition { ... }
 if:label condition { ... }
 :label { ... }
 break:label 21;
 
-# or
+## or
 :label loop condition { ... }
 :label if condition { ... }
 :label { ... }
 :label break 21;
 
-# or
+## or
 loop condition :label { ... }
 if condition :label { ... }
 :label { ... }
@@ -849,23 +826,23 @@ label: { ... }
 break label: 21;
 
 let x = loop:loop_label condition {
-    # implicit break from direct loop parent block
+    ## implicit break from direct loop parent block
     break 12;
 
-    # explicit break from direct loop parent block
+    ## explicit break from direct loop parent block
     break:if 12;
 
     let i = if:if_label condition {
-        # implicit break from direct if block
+        ## implicit break from direct if block
         break 12;
 
-        # explicit break from direct if parent block
+        ## explicit break from direct if parent block
         break:if 12;
 
-        # explicit break from direct loop parent block
+        ## explicit break from direct loop parent block
         break:loop 12;
 
-        # forcing breaks to "return" values from blocks and loops
+        ## forcing breaks to "return" values from blocks and loops
         break:if_label 12;
     } else {
         break:if_label 21;
@@ -880,24 +857,24 @@ let x = loop:loop_label condition {
 ```
 
 ```kay
-# no semicolon required when assigning the result of a block to a variable
+## no semicolon required when assigning the result of a block to a variable
 let i = {
-    ... # other computation
+    ... ## other computation
     break 21;
 }
 
-# i know why the semicolon is required, but i find that annoying in rust
+## i know why the semicolon is required, but i find that annoying in rust
 var i = ...;
-... # other computation
+... ## other computation
 {
     i = 21;
 }
 
-# i go to refactor
+## i go to refactor
 let i = {
-    ... # other computation
+    ... ## other computation
     break 21;
-} # if the block is long i don't like having to go to the end of the block to add a semicolon
+} ## if the block is long i don't like having to go to the end of the block to add a semicolon
 ```
 
 compared to rust:
@@ -939,7 +916,7 @@ let x = 'label: {
 
     let long_string = "long long long"
         + string_variable
-        + "other literal"; # Error: would not be allowed
+        + "other literal"; ## Error: would not be allowed
     ```
 
 - lines will have newline characters appended to them unless they end in a `\`, which can be escaped
@@ -1013,33 +990,33 @@ let x = 'label: {
 stack-allocated collection of a compile time known fixed amount of items:
 
 ```kay
-# initial capacity cannot be specified from variables
+## initial capacity cannot be specified from variables
 let capacity = 19;
-let code: i64[capacity]; # error
+let code: i64[capacity]; ## error
 
-# unless we introduce compile-time constants
+## unless we introduce compile-time constants
 const capacity = 19;
-let code: i64[capacity]; # works
+let code: i64[capacity]; ## works
 
-# initialized arrays could opt not to specify their lengths, it will get inferred where possible
-let codes: i64[] = [1; 2; 3]; # will be of length 3
-let codes: i64[3] = [1; 2; 3]; # will be of length 3
-# array of 6 items with indexes 0, 1 and 2 initialized to 1, 2, 3 and other idexes initialized to 0
+## initialized arrays could opt not to specify their lengths, it will get inferred where possible
+let codes: i64[] = [1; 2; 3]; ## will be of length 3
+let codes: i64[3] = [1; 2; 3]; ## will be of length 3
+## array of 6 items with indexes 0, 1 and 2 initialized to 1, 2, 3 and other idexes initialized to 0
 let codes: i64[6] = [1; 2; 3; .. = 0];
-# array of 6 items with indexes 1, 3 and 0 initialized to 1, 2, 3 and everything after left
-# uninitialized
+## array of 6 items with indexes 1, 3 and 0 initialized to 1, 2, 3 and everything after left
+## uninitialized
 let codes: i64[6] = [1 = 1; 3 = 2; 0 = 3; .. = ---];
-# array of 6 items with indexes 1, 3 and 0 initialized to 1, 2, 3 and everything after left
-# uninitialized
+## array of 6 items with indexes 1, 3 and 0 initialized to 1, 2, 3 and everything after left
+## uninitialized
 let codes: i64[6] = [1 = 1; 3 = 2; 0 = 3; .. = ?];
 
-# will borrow useful features from C like indexed initialization:
+## will borrow useful features from C like indexed initialization:
 let codes: i64[19] = [
-    2 = 5; # element at index 2 will contain the value 5
+    2 = 5; ## element at index 2 will contain the value 5
     0 = 9;
-    4; # Error: cannot specify positional element after index element
-    3..18 = 3; # items from index 3 to index 18 will contain the value 3
-    42 = 7; # Error: out of bounds
+    4; ## Error: cannot specify positional element after index element
+    3..18 = 3; ## items from index 3 to index 18 will contain the value 3
+    42 = 7; ## Error: out of bounds
 ];
 ```
 
@@ -1062,15 +1039,15 @@ single `u8`, or alternatively with the `bit[n]` -> `bit[8 * n + e]` -> `u8[n + c
 heap-allocated collections of a possibly unknown amount of items:
 
 ```kay
-# the question mark denotes a dynamic array, or a list
-# the initial capacity of the list will be set to some amount (e.g. 4/8/16) for performance
+## the question mark denotes a dynamic array, or a list
+## the initial capacity of the list will be set to some amount (e.g. 4/8/16) for performance
 let codes: i64[..];
 
-# an optional initial capacity can be specified
-let codes: i64[19..]; # for consistency with initializing some members
-let codes: i64[19..] = [1 = 0, 3 = 5]; # for consistency with initializing some members in arrays
+## an optional initial capacity can be specified
+let codes: i64[19..]; ## for consistency with initializing some members
+let codes: i64[19..] = [1 = 0, 3 = 5]; ## for consistency with initializing some members in arrays
 
-# initial capacity can be specified from variables
+## initial capacity can be specified from variables
 let capacity = 19;
 let code: i64[capacity..]
 ```
@@ -1080,12 +1057,12 @@ they can be manipulated in different ways (syntax yet to be dicided):
 maybe have unchecked and checked versions)
 
 ```kay
-codes.append(3); # adding an element to the end
+codes.append(3); ## adding an element to the end
 codes.pop();
 
-codes.insert(2; 4) # inserting an element at index 2
+codes.insert(2; 4) ## inserting an element at index 2
 
-codes.remove(3); # removing at index 3
+codes.remove(3); ## removing at index 3
 ```
 
 ## ?.?.? - Type unions
@@ -1098,12 +1075,12 @@ type i64_or_bool = i64 | bool;
 let x: i64_or_bool = 1;
 
 if x is i64 {
-    # x type is now inferred as i64
+    ## x type is now inferred as i64
 } else {
-    # x type is now inferred as bool
+    ## x type is now inferred as bool
 }
 
-let y: i64 | bool = true; # type unions can also be implicit
+let y: i64 | bool = true; ## type unions can also be implicit
 ```
 
 type unions can be used with if-let expressions:
@@ -1121,19 +1098,19 @@ let b = ["hello"; "from"; "kay"];
 let a = ["hello"; "from"; "stefano"];
 
 if array_eq(a; b)
-case let mismatch: none { println("equals"); } # would not be reached since there was a mismatch
-case let mismatch: u64 { println(f"mismatch at index {mismatch}"); } # mismatch would have the value of 2
-else { ... } # Error: unreachable branch, all variants have been matched
+case let mismatch: none { println("equals"); } ## would not be reached since there was a mismatch
+case let mismatch: u64 { println(f"mismatch at index {mismatch}"); } ## mismatch would have the value of 2
+else { ... } ## Error: unreachable branch, all variants have been matched
 
-# T[*: N] means just the pointer part of the array
+## T[*: N] means just the pointer part of the array
 fn mismatch_index: u64 | none = array_eq[T: type; N: u64](dst: T[*: N]; src: T[*: N]) {
     loop var i = N; i > 0; i -= 1 {
         if dst* != src* {
             return i;
         }
 
-        # incrementing the pointer based on the pointer size
-        # so a pointer to an array would get incremented by the size of a single element
+        ## incrementing the pointer based on the pointer size
+        ## so a pointer to an array would get incremented by the size of a single element
         dst += 1;
         src += 1;
     }
@@ -1147,26 +1124,26 @@ fn mismatch_index: u64 | none = array_eq[T: type; N: u64](dst: T[*: N]; src: T[*
 structs are just an aggregation of types, basically named heterogeneous arrays:
 
 ```kay
-# using round brackets instead of curly brackets for consistency with function definitions and calls
+## using round brackets instead of curly brackets for consistency with function definitions and calls
 struct Rgb(
-    r: u8;          # type specific default inizialization, which for u8 is 0
-    g: u8 = 255;    # explicit default initialization
-    b: u8 = ?;      # intentionally uninitialized member, may contain garbage
-    b: u8 = ...;    # intentionally uninitialized member, may contain garbage
-    b: u8 = ---;    # intentionally uninitialized member, may contain garbage
-                # optional trailing semicolon
+    r: u8;          ## type specific default inizialization, which for u8 is 0
+    g: u8 = 255;    ## explicit default initialization
+    b: u8 = ?;      ## intentionally uninitialized member, may contain garbage
+    b: u8 = ...;    ## intentionally uninitialized member, may contain garbage
+    b: u8 = ---;    ## intentionally uninitialized member, may contain garbage
+                ## optional trailing semicolon
 )
 
-# named arguments, just like functions
+## named arguments, just like functions
 let rgb = Rgb(r = 255; g = 255; b = 255);
 
-# or specifying the arguments in order
+## or specifying the arguments in order
 let rgb = Rgb(255; 255; 255);
 
-# will raise an error, since `r` is not marked as having a default value
+## will raise an error, since `r` is not marked as having a default value
 let rgb = Rgb(g = 255);
 
-# `b` initialized to possibly garbage values
+## `b` initialized to possibly garbage values
 let rgb = Rgb(r = 255; g = 255);
 ```
 
@@ -1178,9 +1155,9 @@ say we now create a constructor function:
 
     ```kay
     impl Rgb {
-        # associated function or java's "static" method
-        # marked as @constructor to allow modifications to fields that can only be set during
-        # construction
+        ## associated function or java's "static" method
+        ## marked as @constructor to allow modifications to fields that can only be set during
+        ## construction
         @constructor fn Self = new(...) { ... }
 
         fn self.do_stuff(...) { ... }
@@ -1191,25 +1168,25 @@ say we now create a constructor function:
     - impl markers:
 
         ```kay
-        impl Rgb; # from this point onwards every function is a function related to Rgb
+        impl Rgb; ## from this point onwards every function is a function related to Rgb
 
-        # Rust-like associated function of Rgb
+        ## Rust-like associated function of Rgb
         fn function_of_Rgb(...) { ... }
 
-        # method function of Rgb
+        ## method function of Rgb
         fn method_of_Rgb(self: Self; ...) { ... }
 
-        impl; # would reset function defintion to being normal functions
+        impl; ## would reset function defintion to being normal functions
 
         fn regular_function(...) { ... }
 
-        impl Foo; # from this point onwards every function is a function related to Foo
+        impl Foo; ## from this point onwards every function is a function related to Foo
         ...
 
-        impl Rgb; # can reopen implementations
+        impl Rgb; ## can reopen implementations
         ...
 
-        impl Bar; # now related to Bar
+        impl Bar; ## now related to Bar
         ...
         ```
 
@@ -1218,24 +1195,24 @@ say we now create a constructor function:
         ```kay
         fn Self = Rgb.new(...) { ... }
 
-        # first argument is of type Self, meaning this is a method of a variable of type Rgb
-        # the name of the first parameter could be anything, unlike Rust
+        ## first argument is of type Self, meaning this is a method of a variable of type Rgb
+        ## the name of the first parameter could be anything, unlike Rust
         fn Rgb.do_stuff(self; ...) { ... }
 
         fn Rgb.do_stuff(rgb; ...) { ... }
 
-        # no need to convert from curly brackets to round brackets, but could need to use the
-        # `struct` # keyword to avoid colliding with a possible function named `Rgb`
-        # "equivalent" constructor function, has no access to fields that can only be set inside the
-        # struct constructor
+        ## no need to convert from curly brackets to round brackets, but could need to use the
+        ## `struct` keyword to avoid colliding with a possible function named `Rgb`
+        ## "equivalent" constructor function, has no access to fields that can only be set inside the
+        ## struct constructor
         fn Rgb = Rgb(r: u8; g: u8; b: u8) {
             return struct Rgb(r; g; b);
         }
 
-        let rgb = Rgb(r = 0; g = 0; b = 0);         # this will call a function named `Rgb`
-        let rgb = struct Rgb(r = 0; g = 0; b = 0);  # this will call the struct constructor for `Rgb`
-        let rgb = Rgb { r = 0; g = 0; b = 0 };      # traditional way of calling the struct constructor for `Rgb`
-        let rgb = Rgb.new(r = 0; g = 0; b = 0);     # this will call the function `Rgb.new`
+        let rgb = Rgb(r = 0; g = 0; b = 0);         ## this will call a function named `Rgb`
+        let rgb = struct Rgb(r = 0; g = 0; b = 0);  ## this will call the struct constructor for `Rgb`
+        let rgb = Rgb { r = 0; g = 0; b = 0 };      ## traditional way of calling the struct constructor for `Rgb`
+        let rgb = Rgb.new(r = 0; g = 0; b = 0);     ## this will call the function `Rgb.new`
 
         rgb.do_stuff();
         ```
@@ -1271,76 +1248,76 @@ let rgb = Rgb::new(255, 255, 255);
 ability to specify who can read and write a struct field
 
 ```kay
-# struct methods and functions always have read access to every kind of field
-# may enforce the usage of `let` and `var`
+## struct methods and functions always have read access to every kind of field
+## may enforce the usage of `let` and `var`
 struct Foo(
-    # public read: no
-    # public write: no
-    # private read: yes
-    # private write: no
-    #
-    # only set during construction, never able to be modified again
+    ## public read: no
+    ## public write: no
+    ## private read: yes
+    ## private write: no
+    ##
+    ## only set during construction, never able to be modified again
     private let x0: i64;
-    let x0: i64; # implies private
-    x0: i64; # implies private let
+    let x0: i64; ## implies private
+    x0: i64; ## implies private let
 
-    # public read: no
-    # public write: no
-    # private read: yes
-    # private write: yes
-    #
-    # can be modified inside struct method and functions
+    ## public read: no
+    ## public write: no
+    ## private read: yes
+    ## private write: yes
+    ##
+    ## can be modified inside struct method and functions
     private var x0: i64;
-    var x0: i64; # implies private
+    var x0: i64; ## implies private
 
-    # public read: yes
-    # public write: no
-    # private read: yes
-    # private write: no
-    #
-    # only set during construction, never able to be modified again
-    # can be read from outside
+    ## public read: yes
+    ## public write: no
+    ## private read: yes
+    ## private write: no
+    ##
+    ## only set during construction, never able to be modified again
+    ## can be read from outside
     public let private let x0: i64;
-    public let x0: i64; # implies private let
-    public x0: i64; # implies public let and private let
+    public let x0: i64; ## implies private let
+    public x0: i64; ## implies public let and private let
 
-    # public read: yes
-    # public write: no
-    # private read: yes
-    # private write: yes
-    #
-    # can be modified inside struct method and functions, but only read from outside
+    ## public read: yes
+    ## public write: no
+    ## private read: yes
+    ## private write: yes
+    ##
+    ## can be modified inside struct method and functions, but only read from outside
     public let private var x0: i64;
-    public let x0: i64; # implies private let
-    public x0: i64; # implies public let and private let
+    public let x0: i64; ## implies private let
+    public x0: i64; ## implies public let and private let
 
-    # public read: yes
-    # public write: yes
-    # private read: yes
-    # private write: no
-    #
-    # disallowed: public var disagrees with private let, makes no sense being able to be modified
-    # outside of the struct methods and functions and not inside
+    ## public read: yes
+    ## public write: yes
+    ## private read: yes
+    ## private write: no
+    ##
+    ## disallowed: public var disagrees with private let, makes no sense being able to be modified
+    ## outside of the struct methods and functions and not inside
     public var private let x0: i64;
 
-    # public read: yes
-    # public write: yes
-    # private read: yes
-    # private write: yes
-    #
-    # can be accessed and modified from everywhere
+    ## public read: yes
+    ## public write: yes
+    ## private read: yes
+    ## private write: yes
+    ##
+    ## can be accessed and modified from everywhere
     public var private var x0: i64;
-    public var x0: i64; # implies private var
+    public var x0: i64; ## implies private var
 )
 ```
 
 blanket modifiers:
 
 ```kay
-# every field follows it's declaration modifiers
+## every field follows it's declaration modifiers
 var foo = struct Foo(x0 = 0);
 
-# every field is immutable, read access to fields are not changed
+## every field is immutable, read access to fields are not changed
 let foo = struct Foo(x0 = 0);
 ```
 
@@ -1355,9 +1332,9 @@ struct Point(i64; i64);
 
 let point = Point(19; 21);
 
-let x = point.0; # Point { 19; 21 }
-                 #         ^^  ^^
-                 # index:  0   1
+let x = point.0; ## Point { 19; 21 }
+                 ##         ^^  ^^
+                 ## index:  0   1
 
 let y = point.1;
 ```
@@ -1367,7 +1344,7 @@ name-less tuples:
 ```kay
 let stefano: struct(str; i64) = struct("stefano"; 23);
 
-# type can be omitted and therefore inferred
+## type can be omitted and therefore inferred
 let stefano = struct("stefano"; 23);
 
 let name = stefano.0;
@@ -1391,15 +1368,15 @@ only carrying the fields defined in the base type:
 struct Rgba(
     rgb: using Rgb;
 
-    # these fields (of the used Rgb struct are implicitly added)
-    # r: u8;
-    # g: u8;
-    # b: u8;
+    ## these fields (of the used Rgb struct are implicitly added)
+    ## r: u8;
+    ## g: u8;
+    ## b: u8;
 
     a: u8;
 )
 
-# the above type is equivalent to:
+## the above type is equivalent to:
 struct Rgba(
     union(
         rgb: Rgb;
@@ -1413,14 +1390,14 @@ struct Rgba(
     a: u8;
 )
 
-# 'using' the same struct multiple times is not allowed
+## 'using' the same struct multiple times is not allowed
 struct Rgba(
     rgb: using Rgb;
-    rgb2: using Rgb; # not allowed
+    rgb2: using Rgb; ## not allowed
     a: u8
 )
 
-# but 'using' multiple different struct is
+## but 'using' multiple different struct is
 struct Point(
     x: i64;
     y: i64;
@@ -1431,7 +1408,7 @@ struct Pixel(
     position: using Point;
 )
 
-# which is equivalent to
+## which is equivalent to
 struct Pixel(
     union(
         rgba: Rgba;
@@ -1458,18 +1435,18 @@ struct Pixel(
 
 let rgb = Rgb(r = 255; g = 255; b = 255);
 
-# this
+## this
 let rgba: Rgba = rgb;
 
-# is equivalent to:
+## is equivalent to:
 let rgba = Rgba(r = rgb.r; g = rgb.g; b = rgb.b; a = 0);
 
-# otherwise to:
+## otherwise to:
 let rgba = Rgba(rgb = rgb; a = 0);
 
-# or to:
+## or to:
 let rgba = Rgba(
-    rgb; # field with same name shorthand
+    rgb; ## field with same name shorthand
     a = 0;
 );
 ```
@@ -1478,16 +1455,16 @@ if we have a function defined for the "base" struct only the "base" part of the 
 passed:
 
 ```kay
-# so this
+## so this
 function_for_Rgb(rgba);
 
-# is desugared to
+## is desugared to
 function_for_Rgb(rgba.rgb);
 
-# and
+## and
 function_for_rgb(pixel);
 
-# is desugared to
+## is desugared to
 function_for_Rgb(pixel.rgba.rgb);
 ```
 
@@ -1501,12 +1478,12 @@ struct Rgb(
 )
 
 struct Rgba(
-    rgb: Rgb; # no explicit "using"
+    rgb: Rgb; ## no explicit "using"
     a: u8;
 )
 
-function_for_Rgb(rgba.rgb); # works
-function_for_Rgb(rgba); # doesn't work
+function_for_Rgb(rgba.rgb); ## works
+function_for_Rgb(rgba); ## doesn't work
 ```
 
 ## ?.?.? - Enums
@@ -1514,10 +1491,10 @@ function_for_Rgb(rgba); # doesn't work
 collection of constant values:
 
 ```kay
-enum Colors: u32( # optional data type
-    # default value for when converting from u32s that don't match the actual enum value
-    # for example converting from 0x00ff00 will result in GREEN being chosen
-    # when converting from 0x00beef will result in RED being chosen or the returning of an error
+enum Colors: u32( ## optional data type
+    ## default value for when converting from u32s that don't match the actual enum value
+    ## for example converting from 0x00ff00 will result in GREEN being chosen
+    ## when converting from 0x00beef will result in RED being chosen or the returning of an error
     default RED = 0xff0000;
     GREEN = 0x00ff00;
     BLUE = 0x0000ff;
@@ -1546,7 +1523,7 @@ union Rgba(
 Rust-like collection of variants:
 
 ```kay
-enum union Statement: u8( # optional discriminant type
+enum union Statement: u8( ## optional discriminant type
     Empty;
     Single(Node);
     Multiple(Node[]);
@@ -1560,7 +1537,7 @@ enum union Statement: u8( # optional discriminant type
 Having a variable such as:
 
 ```kay
-# at: file.kay:12:0
+## at: file.kay:12:0
 let name: str = "Stefano";
 ```
 
@@ -1568,7 +1545,7 @@ getting the variable layout could be done with the command `kay layout name file
 could output the following valid kay code result:
 
 ```kay
-# size = 16, align = 8
+## size = 16, align = 8
 let name: str = "Stefano";
 ```
 
@@ -1588,25 +1565,25 @@ getting the struct layout could be done with the command `kay layout Foo`, which
 following valid kay code result:
 
 ```kay
-# size = 32, align = 8
+## size = 32, align = 8
 struct Foo(
-    x: i64;   # size = 8,  offset = 0,  align = 8 -> 0:  |#|#|#|#|#|#|#|#|
-    y: ascii; # size = 1,  offset = 8,  align = 1 -> 8:  |#| | | | | | | |
-    z: str;   # size = 16, offset = 16, align = 8 -> 16: |#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
+    x: i64;   ## size = 8,  offset = 0,  align = 8 -> 0:  |#|#|#|#|#|#|#|#|
+    y: ascii; ## size = 1,  offset = 8,  align = 1 -> 8:  |#| | | | | | | |
+    z: str;   ## size = 16, offset = 16, align = 8 -> 16: |#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
 )
 ```
 
 could also emit warnings when wasting space, so a struct such as:
 
 ```kay
-# at: file.kay:12:0
+## at: file.kay:12:0
 
-# size = 40, align = 8
+## size = 40, align = 8
 struct Foo(
-    a: ascii; # size = 1,  align = 1, offset = 0:  |#| | | | | | | |
-    x: i64;   # size = 8,  align = 8, offset = 8:  |#|#|#|#|#|#|#|#|
-    y: ascii; # size = 1,  align = 1, offset = 16: |#| | | | | | | |
-    z: str;   # size = 16, align = 8, offset = 24: |#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
+    a: ascii; ## size = 1,  align = 1, offset = 0:  |#| | | | | | | |
+    x: i64;   ## size = 8,  align = 8, offset = 8:  |#|#|#|#|#|#|#|#|
+    y: ascii; ## size = 1,  align = 1, offset = 16: |#| | | | | | | |
+    z: str;   ## size = 16, align = 8, offset = 24: |#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
 )
 ```
 
@@ -1616,38 +1593,38 @@ would produce the following warnign message
 Warning: struct has unoptimal field layout
  at: file.kay:12:0
    |
-11 | # size = 40, align = 8
+11 | ## size = 40, align = 8
 12 | struct Foo(
-13 |        a: ascii; # size = 1,  align = 1,offset = 0:  |#| | | | | | | |
+13 |        a: ascii; ## size = 1,  align = 1,offset = 0:  |#| | | | | | | |
    |        ^ this field occupies only 1 byte
    |
-14 |        x: i64;   # size = 8,  align = 8, offset = 8:  |#|#|#|#|#|#|#|#|
-15 |        y: ascii; # size = 1,  align = 1, offset = 16: |#| | | | | | | |
+14 |        x: i64;   ## size = 8,  align = 8, offset = 8:  |#|#|#|#|#|#|#|#|
+15 |        y: ascii; ## size = 1,  align = 1, offset = 16: |#| | | | | | | |
    |        ^ this field also occupies only 1 byte, but is separate from the previous
    |
-16 |        z: str;   # size = 16, align = 8, offset = 24: |#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
+16 |        z: str;   ## size = 16, align = 8, offset = 24: |#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
 17 | )
    |
 Help: an optimized layout could look like this
    |
-11 | # size = 32, align = 8
+11 | ## size = 32, align = 8
 12 | struct Foo(
-13 |        a: ascii; # size = 1,  align = 1, offset = 0:  |#|_| | | | | | |
-14 |        y: ascii; # size = 1,  align = 1, offset = 1:  |_|#| | | | | | |
+13 |        a: ascii; ## size = 1,  align = 1, offset = 0:  |#|_| | | | | | |
+14 |        y: ascii; ## size = 1,  align = 1, offset = 1:  |_|#| | | | | | |
    |        ^ this field is placed next to the previous one, thus not wasting space
    |
-15 |        x: i64;   # size = 8,  align = 8, offset = 8:  |#|#|#|#|#|#|#|#|
-16 |        z: str;   # size = 16, align = 8, offset = 16: |#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
+15 |        x: i64;   ## size = 8,  align = 8, offset = 8:  |#|#|#|#|#|#|#|#|
+16 |        z: str;   ## size = 16, align = 8, offset = 16: |#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
 17 | )
    |
 Note: a packed layout could look like this
    |
-11 | # size = 26, align = 1
+11 | ## size = 26, align = 1
 12 | @packed struct Foo(
-13 |        x: i64;   # size = 8,  align = 8, offset = 8:  |#|#|#|#|#|#|#|#|
-14 |        z: str;   # size = 16, align = 8, offset = 16: |#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
-15 |        a: ascii; # size = 1,  align = 1, offset = 24: |#|_|
-16 |        y: ascii; # size = 1,  align = 1, offset = 25: |_|#|
+13 |        x: i64;   ## size = 8,  align = 8, offset = 8:  |#|#|#|#|#|#|#|#|
+14 |        z: str;   ## size = 16, align = 8, offset = 16: |#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
+15 |        a: ascii; ## size = 1,  align = 1, offset = 24: |#|_|
+16 |        y: ascii; ## size = 1,  align = 1, offset = 25: |_|#|
    |        ^ these fields are placed last, thus not wasting space
 17 | )
    |
@@ -1659,25 +1636,25 @@ a `___` could be a padding member, meaning retaining the usual padding amount:
 > this `___` field is equivalent to a `u8[N]`, basically just empty bytes
 
 ```kay
-# size = 26, align = 1
+## size = 26, align = 1
 @packed struct Foo(
-    a: ascii; # size = 1,  align = 1, offset = 0:  |#|_|_|_|_|_|_|_|_|
-    x: i64;   # size = 8,  align = 8, offset = 1:  |_|#|#|#|#|#|#|#|#|
-    y: ascii; # size = 1,  align = 1, offset = 9:  |#|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|
-    z: str;   # size = 16, align = 8, offset = 10: |_|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
+    a: ascii; ## size = 1,  align = 1, offset = 0:  |#|_|_|_|_|_|_|_|_|
+    x: i64;   ## size = 8,  align = 8, offset = 1:  |_|#|#|#|#|#|#|#|#|
+    y: ascii; ## size = 1,  align = 1, offset = 9:  |#|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|
+    z: str;   ## size = 16, align = 8, offset = 10: |_|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
 )
 ```
 
 could be use as:
 
 ```kay
-# size = 33, align = 1
+## size = 33, align = 1
 @packed struct Foo(
-    a: ascii; # size = 1,  align = 1, offset = 0:  |#|_|_|_|_|_|_|_|
-    ___;      # size = 7,  align = 1, offset = 1:  |_|#|#|#|#|#|#|#|
-    x: i64;   # size = 8,  align = 8, offset = 8:  |#|#|#|#|#|#|#|#|
-    y: ascii; # size = 1,  align = 1, offset = 16: |#|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|
-    z: str;   # size = 16, align = 8, offset = 17: |_|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
+    a: ascii; ## size = 1,  align = 1, offset = 0:  |#|_|_|_|_|_|_|_|
+    ___;      ## size = 7,  align = 1, offset = 1:  |_|#|#|#|#|#|#|#|
+    x: i64;   ## size = 8,  align = 8, offset = 8:  |#|#|#|#|#|#|#|#|
+    y: ascii; ## size = 1,  align = 1, offset = 16: |#|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|
+    z: str;   ## size = 16, align = 8, offset = 17: |_|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|#|
 )
 ```
 
@@ -1688,28 +1665,28 @@ pointers are going to come in different flavours (introducing `none` keyword):
 ```kay
 let answer = 42;
 
-# owned pointer, pointing to owned memory (will free the memory it owns when going out of scope or something)
+## owned pointer, pointing to owned memory (will free the memory it owns when going out of scope or something)
 let pointer: i64* = &answer;
-# borrowed pointer, pointing to non-owned memory (will possibly support lifetimes)
+## borrowed pointer, pointing to non-owned memory (will possibly support lifetimes)
 let reference: i64& = &answer;
-# or
+## or
 let pointer = answer.&;
 let reference = answer.&;
 
 let dereferenced: i64;
 
-# checking for none is enforced by the compiler
+## checking for none is enforced by the compiler
 if reference != none {
-    # after this point the compiler knows that "reference" is not none and can safely dereference
+    ## after this point the compiler knows that "reference" is not none and can safely dereference
     dereferenced = *reference;
-    # or
+    ## or
     dereferenced = reference.*;
 }
-# after this point the compiler can't guarantee that "reference" is not none, so from now on it's again mandatory to check for null
+## after this point the compiler can't guarantee that "reference" is not none, so from now on it's again mandatory to check for null
 
-# or you can forcefully dereference (say for example if you for sure know the pointer is valid), crashing in case of a null pointer
+## or you can forcefully dereference (say for example if you for sure know the pointer is valid), crashing in case of a null pointer
 dereferenced = ^reference;
-# or
+## or
 dereferenced = reference.^;
 dereferenced = reference.**;
 ```
@@ -1719,61 +1696,61 @@ dereferenced = reference.**;
 basically just 'type safe' indexes with semantics roughly similar to pointers and borrow checking
 
 ```kay
-# imagine there being different kinds of integers: u8, u16, u32, u64, u64
+## imagine there being different kinds of integers: u8, u16, u32, u64, u64
 
 let some_array: i64[3] = [1; 2; 3];
-# would basically get the value of the index between brackets, syntax is similar to regular pointers
-# can specify to what this index refers to
+## would basically get the value of the index between brackets, syntax is similar to regular pointers
+## can specify to what this index refers to
 let index_pointer: i64&<u8, some_array> = &some_array[0];
-# or it can be inferred from the right hand side of the assignment
+## or it can be inferred from the right hand side of the assignment
 let index_pointer: i64&<u8> = &some_array[0];
 
-# would basically be syntactic sugar for
+## would basically be syntactic sugar for
 let index_pointer: u8 = 0;
 
-# or with inference
+## or with inference
 let index_pointer = &<u8>some_array[0];
 let index_pointer = some_array[0].&<u8>;
 
-# if the array has a known length bigger that the index pointer size it would result in an error
+## if the array has a known length bigger that the index pointer size it would result in an error
 let some_array: i64[257] = [...];
-let index_pointer: i64&<u8> = &some_array[0]; # Error: index type is too small to index into all array items
+let index_pointer: i64&<u8> = &some_array[0]; ## Error: index type is too small to index into all array items
 
-# would need no bounds checking since bounds checking has already been performed during index pointer definition
+## would need no bounds checking since bounds checking has already been performed during index pointer definition
 let first_item = some_array[index_pointer];
 ```
 
 index pointer should be treated differently than regular pointers
 
 ```kay
-let list: i64[3..] = [1; 2; 3]; # growable array
-# indexes of width smaller that the list's length are allowed since length is not known at compile
-# time, hence its the programmer's responsibility to make sure to have the proper index type,
-# thus this u8 index pointer can only reach the first 255 items of the list
+let list: i64[3..] = [1; 2; 3]; ## growable array
+## indexes of width smaller that the list's length are allowed since length is not known at compile
+## time, hence its the programmer's responsibility to make sure to have the proper index type,
+## thus this u8 index pointer can only reach the first 255 items of the list
 let list_index_pointer = &<u8>list[0];
-# or force the use of the same type of index as the type of the `len` of the list
-let list_index_pointer = &<i64>list[0]; # the `len` operator currently returns i64
+## or force the use of the same type of index as the type of the `len` of the list
+let list_index_pointer = &<i64>list[0]; ## the `len` operator currently returns i64
 let list_pointer = &list[0];
 
 fn append(list: i64[..]&var; item: i64) {
-    # append operation only adds items to the end of the list:
-    # - does not invalidate previously created indexes
-    # - may invalidate regular pointers if the list were to reallocate
+    ## append operation only adds items to the end of the list:
+    ## - does not invalidate previously created indexes
+    ## - may invalidate regular pointers if the list were to reallocate
     ...
 }
 
-# could create attributes to signal possible indexs invalidation of the specified list
+## could create attributes to signal possible indexs invalidation of the specified list
 fn i64 = pop(list: i64[..]&var) @invalidates_indexes {
-    # pop operation only removes from the end of the list:
-    # - may invalidate index pointers that pointed to the end of the list
-    # - may invalidate regular pointers that pointed to the end of the list
+    ## pop operation only removes from the end of the list:
+    ## - may invalidate index pointers that pointed to the end of the list
+    ## - may invalidate regular pointers that pointed to the end of the list
     ...
 }
 
 let last_element_index = list[len list - 1].&<u8>;
-let last_element = pop(list.&var); # Error: cannot pop, it would invalidate index 'last_element_index'
+let last_element = pop(list.&var); ## Error: cannot pop, it would invalidate index 'last_element_index'
 
-# example usage
+## example usage
 fn i64& = get(list: i64[..]&var; index: i64&<u8, list>) { ... }
 ```
 
@@ -1783,28 +1760,28 @@ types that may or may not contain a value (introducing the `none` keyword/value)
 they are basically tagged unions in the case of non-pointer variables (like Rust's Options)
 
 ```kay
-# nullable pointers are just "optional pointers"
+## nullable pointers are just "optional pointers"
 let nullable: i64*?;
 let nullable: i64&?;
 let nullable: i64& | none;
 
-let option: i64? = 42; # this will create a variable that has a value
-let option: i64? = none; # this will create a variable that doesn't have a value
-let option: i64 | none = none; # this will create a variable that doesn't have a value
+let option: i64? = 42; ## this will create a variable that has a value
+let option: i64? = none; ## this will create a variable that doesn't have a value
+let option: i64 | none = none; ## this will create a variable that doesn't have a value
 
 let maybe: i64?;
 
-# checking for none is enforced by the compiler
+## checking for none is enforced by the compiler
 if option != none {
-    # after this point the compiler knows that "option" is not none and can safely dereference
-    maybe = option*; # dereferencing like pointers;
-    maybe = *option; # dereferencing like pointers;
+    ## after this point the compiler knows that "option" is not none and can safely dereference
+    maybe = option*; ## dereferencing like pointers;
+    maybe = *option; ## dereferencing like pointers;
 }
-# after this point the compiler can't guarantee that "option" is not none, so from now on it's again mandatory to check for none
+## after this point the compiler can't guarantee that "option" is not none, so from now on it's again mandatory to check for none
 
-# or you can forcefully dereference, crashing in case of a none
+## or you can forcefully dereference, crashing in case of a none
 maybe = option^;
-maybe = ^option; # or like this
+maybe = ^option; ## or like this
 ```
 
 ### Optionals/Error
@@ -1812,44 +1789,44 @@ maybe = ^option; # or like this
 maybe this is not useful, could be implemented as a type union to reduce the language complexity:
 
 ```kay
-# optionals
+## optionals
 let optional_i64: i64?;
 let optional_i64: i64 | none;
 
-# or
+## or
 type Option<T> = T | none;
 
-# or
+## or
 enum Option<T>(
     Some(T);
     None;
 )
 
-# thus
+## thus
 let optional_i64_in_rust: Option<i64>;
 
-# errors
+## errors
 let i64_or_error: i64!SomeError;
 let i64_or_error: i64 | SomeError;
-let i64_or_i64_error: i64 | i64; # would need to find a way to express this
+let i64_or_i64_error: i64 | i64; ## would need to find a way to express this
 
-# or "force" the user to find better naming (create a distinct i64 error type or alias)
+## or "force" the user to find better naming (create a distinct i64 error type or alias)
 type i64_error = i64;
 alias i64_error = i64;
 let i64_or_i64_error: i64 | i64_error;
 
-# or to avoid creating a lot of "new" error types
+## or to avoid creating a lot of "new" error types
 enum Result<T, E>(
     Ok(T);
     Err(E);
 )
 
-# thus
+## thus
 let i64_or_i64_error: Result<i64, i64>;
 
-# or create temporary distinct types (syntax subject to discussion)
-# this could introduce inline type aliases
-# so a function could use them like
+## or create temporary distinct types (syntax subject to discussion)
+## this could introduce inline type aliases
+## so a function could use them like
 fn result: i64 as ok | i64 as err = foo(i: i64) {
     if i
     case 0 { return 1 as err; }
@@ -1857,35 +1834,35 @@ fn result: i64 as ok | i64 as err = foo(i: i64) {
     case 21 { return 42 as ok; }
 }
 
-# so to match on it would look like this
+## so to match on it would look like this
 let result = foo(i);
 if result
 case let integer: ok {
-    # integer is of type `i64`
+    ## integer is of type `i64`
 } case let err_code: err {
-    # integer is of type `i64` as well
+    ## integer is of type `i64` as well
 }
 
-# different syntaxes
+## different syntaxes
 let i64_or_i64_error: i64 | err ! i64;
 let i64_or_i64_error: i64 | i64 ! err;
 let i64_or_i64_error: i64 | err: i64;
 let i64_or_i64_error: i64 | i64 alias err;
 let i64_or_i64_error: i64 | err alias i64;
 
-# or a manual implementation, akin to typescript
+## or a manual implementation, akin to typescript
 type Result<T, E> = {
     success = true;
     data: T;
 } | {
-    success: false; # or using a value as a type
+    success: false; ## or using a value as a type
     err: E;
 }
 
-# which would allow for manual optimizations
+## which would allow for manual optimizations
 type c_like_i64_return =
     None {
-        error := -1; # or with a special `value as type syntax`
+        error := -1; ## or with a special `value as type syntax`
     } | Some {
         data := 0..;
     }
@@ -1906,7 +1883,7 @@ type enum i64_or_error_code(
 
 type enum Option<T>(
     Some: T;
-    None; # empty value
+    None; ## empty value
 )
 
 type enum Result<T, E>(
@@ -1914,60 +1891,60 @@ type enum Result<T, E>(
     Err: E;
 )
 
-# so to match on it would look like this
+## so to match on it would look like this
 let result = i64_or_error_code.integer(1);
 if result
 case let i64_or_error_code.integer(integer) {
-    # `integer` is of type `i64`
+    ## `integer` is of type `i64`
 } case let i64_or_error_code.err_code(code) {
-    # `code` is of type `i64` as well
+    ## `code` is of type `i64` as well
 }
 
 let result: Result<i64, bool> = Result.Ok(1);
 if result
 case let Result.Ok(integer) {
-    # `integer` is of type `i64`
+    ## `integer` is of type `i64`
 } case let Result.Err(err) {
-    # `err` is of type `bool`
+    ## `err` is of type `bool`
 }
 
-# or
+## or
 let result: Result<i64, bool> = Result.Ok(1);
 if result
 case let integer: Result.Ok {
-    # `integer` is of type `i64`
+    ## `integer` is of type `i64`
 } case let err: Result.Err {
-    # `err` is of type `bool`
+    ## `err` is of type `bool`
 }
 
-# inline type enum
+## inline type enum
 let i64_or_bool: type enum(file: File; err: ReadFileError);
-# compared to what was discussed above
+## compared to what was discussed above
 let i64_or_bool: File | ReadFileError;
 ```
 
 or remove type unions altogether and treat enum as type unions
 
 ```kay
-# this
+## this
 type enum Result<T, E>(
     Ok: T;
     Err: E;
 )
 
-# would become
+## would become
 enum Result<T, E>(
     Ok(T);
     Err(E);
 )
 
-# which would solve type collisions, but would be more verbose
+## which would solve type collisions, but would be more verbose
 enum integer_or_error_code(
     Integer(i64);
     ErrorCode(i64);
 )
 
-# would solve this
+## would solve this
 let i64_or_i64_error: i64 | err: i64;
 type i64_or_i64_error = i64 | err: i64;
 ```
@@ -1986,7 +1963,7 @@ struct Rgba like u32(
     a: u8;
 )
 
-# or (would be more consistent with regular as conversions, e.g.: true as i64)
+## or (would be more consistent with regular as conversions, e.g.: true as i64)
 struct Rgba as u32(
     r: u8;
     g: u8;
@@ -1994,7 +1971,7 @@ struct Rgba as u32(
     a: u8;
 )
 
-# or
+## or
 struct Rgba alias u32(
     r: u8;
     g: u8;
@@ -2002,7 +1979,7 @@ struct Rgba alias u32(
     a: u8;
 )
 
-# or (would be more consistent with variable type hints)
+## or (would be more consistent with variable type hints)
 struct Rgba: u32(
     r: u8;
     g: u8;
@@ -2010,7 +1987,7 @@ struct Rgba: u32(
     a: u8;
 )
 
-# basically equivalent to, could also be the default to avoid extra language complexity
+## basically equivalent to, could also be the default to avoid extra language complexity
 union Rgba(
     rgba: u32;
     struct(
@@ -2021,7 +1998,7 @@ union Rgba(
     )
 )
 
-# this would result in a type size mismatch, or in some other constrait (need to be defined) being broken
+## this would result in a type size mismatch, or in some other constrait (need to be defined) being broken
 struct Rgba like u8(
     r: u8;
     g: u8;
@@ -2035,7 +2012,7 @@ treat the values are of different types:
 
 ```kay
 let rgba: Rgba;
-# bit-casting should be a nop, in this case just a plain copy or rgba memory
+## bit-casting should be a nop, in this case just a plain copy or rgba memory
 let rgba_u32: u32 = rgba as u32;
 let rgba_u32: u32 = rgba alias u32;
 let rgba_u32: u32 = rgba cast u32;
@@ -2044,21 +2021,21 @@ let rgba_u32: u32 = u32::rgba;
 let rgba_u32: u32 = u32:rgba;
 let rgba_u32: u32 = rgba:u32;
 let rgba_u32: u32 = rgba: u32;
-let rgba_u32: u32 = rgba `:` u32; # identifier strings would allow for `:` to be overloaded as the
-                                  # "casting" "operator", where arbitrary code would be executed,
-                                  # while the plain : would be the builtin bitwise casting operator
+let rgba_u32: u32 = rgba `:` u32; ## identifier strings would allow for `:` to be overloaded as the
+                                  ## "casting" "operator", where arbitrary code would be executed,
+                                  ## while the plain : would be the builtin bitwise casting operator
 
 let red = Rgba(r = 255);
 let green = Rgba(g = 255);
 
-# the compiler would treat this as Rgba + Rgba
+## the compiler would treat this as Rgba + Rgba
 let red_plus_green = red + green;
 
-# while this would be treated as u32 + u32 and no conversion code would be run
+## while this would be treated as u32 + u32 and no conversion code would be run
 let red_plus_green = (red as u32 + green as u32) as Rgba;
 
-# these two could both be accepted as the first one is easier to read, especially for multiline
-# statements, while the second one is more consistent with other language features
+## these two could both be accepted as the first one is easier to read, especially for multiline
+## statements, while the second one is more consistent with other language features
 let red_plus_green = Rgba:(u32:red + u32:green);
 let red_plus_green = (red: u32 + green: u32): Rgba;
 
@@ -2074,7 +2051,7 @@ let a = [
     [4; 5; 6]: i64[3];
 ]: i64[2][3];
 
-# could introduce the "any" or "automatic" casting operator, similar to jai xx
+## could introduce the "any" or "automatic" casting operator, similar to jai xx
 let f: u32 = Rgba(...)::;
 let f: u32 = ::Rgba(...);
 let f: u32 = *:Rgba(...);
@@ -2090,7 +2067,7 @@ struct SomeStruct(...)
 struct SomeOtherStruct(...)
 
 impl SomeStruct {
-    # member function
+    ## member function
     op SomeOtherStruct = cast(self; other: SomeOtherStruct) { ... }
     op SomeOtherStruct = into(self; other: SomeOtherStruct) { ... }
     op SomeOtherStruct = convert(self; other: SomeOtherStruct) { ... }
@@ -2098,7 +2075,7 @@ impl SomeStruct {
     op SomeOtherStruct = self into other: SomeOtherStruct #* how do i add other args? *# { ... }
 }
 
-# freestanding function
+## freestanding function
 op SomeOtherStruct = cast(self: SomeStruct; other: SomeOtherStruct) { ...; return ...; }
 ```
 
@@ -2115,58 +2092,58 @@ fn ... <- Foo.foo(self.: Self; a: i64; b: i64) { ... }
 fn ... <- self.foo(.: Self; a: i64; b: i64) { ... }
 fn ... <- self.foo(.: Foo; a: i64; b: i64) { ... }
 let bar = something.foo(12; 21);
-# is equivalent to
+## is equivalent to
 let bar = foo(something; 12; 21);
 
-# could provide a way of letting the `self` parameter to be anywhere
+## could provide a way of letting the `self` parameter to be anywhere
 fn ... <- foo(a: i64; self; b: i64) { ... }
 let bar = something.foo(12; 21);
-# is equivalent to
+## is equivalent to
 let bar = foo(12; something; 21);
 
-# emulating method call syntax
+## emulating method call syntax
 fn ... <- baz(a @self: i64; b: i64) { ... }
 fn ... <- baz(a @$: i64; b: i64) { ... }
 fn ... <- baz(a @.: i64; b: i64) { ... }
 fn ... <- baz(a: @.i64; b: i64) { ... }
 fn ... <- baz(.a: i64; b: i64) { ... }
 fn ... <- baz(a: .i64; b: i64) { ... }
-let bar = 12.baz(21); # 12 refers to `a`
-# is equivalent to
+let bar = 12.baz(21); ## 12 refers to `a`
+## is equivalent to
 let bar = foo(12; 21);
 
 fn ... <- baz(a: i64; b @self: i64) { ... }
-let bar = 12.baz(21); # 12 refers to `b`
-# is equivalent to
+let bar = 12.baz(21); ## 12 refers to `b`
+## is equivalent to
 let bar = foo(21; 12);
 
-# could allow explicit markers
+## could allow explicit markers
 fn ... <- baz(a: i64; b: i64) { ... }
 let bar = 12.baz(@self; 21);
 let bar = 12.baz(@$; 21);
 let bar = 12.baz(@.; 21);
-# is equivalent to
+## is equivalent to
 let bar = foo(12; 21);
 
 let bar = 12.baz(21; @self);
 let bar = 12.baz(21; @$);
 let bar = 12.baz(21; @.);
-# is equivalent to
+## is equivalent to
 let bar = foo(21; 12);
 ```
 
 ## 0.7.0 - compile time constants
 
 ```kay
-const answer = 40 + 2; # would evaluate the constant expression and just copy paste the result everytime
-let i = answer; # equivalent to `let i = 42`
+const answer = 40 + 2; ## would evaluate the constant expression and just copy paste the result everytime
+let i = answer; ## equivalent to `let i = 42`
 ```
 
 ## ?.?.? - compile time functions excution
 
 ```kay
 const fn i64 = answer() { return 42 };
-let i = const answer(); # equivalent to `let i = { return 42 }` -> `let i = 42`
+let i = const answer(); ## equivalent to `let i = { return 42 }` -> `let i = 42`
 ```
 
 ## ?.?.? - experiment with no dynamic dispatch
@@ -2183,30 +2160,30 @@ maybe optionally enable true dynamic dispatch on demand with v-tables and stuff
 ## ?.?.? - MATLAB-inspired [functions](https://www.mathworks.com/help/matlab/ref/function.html) definitions
 
 ```kay
-# introductory keyword
+## introductory keyword
 fn
 
-# return values
+## return values
 result: i64, remainder: i64
 
-# return values' names are optional
+## return values' names are optional
 i64, i64
 
-# equals sign to make it easey to copy paste this function definition in code
+## equals sign to make it easey to copy paste this function definition in code
 =
 
-# name of the function
+## name of the function
 divmod
 
-# function arguments
+## function arguments
 (dividend: i64; divisor: i64)
 
-# body of the function
+## body of the function
 {
-    # we can name our return values
+    ## we can name our return values
     return result = dividend / divisor, remainder = dividend % divisor;
 
-    # or not, where return values' names just serve as comments
+    ## or not, where return values' names just serve as comments
     return dividend / divisor, dividend % divisor;
 }
 ```
@@ -2214,15 +2191,15 @@ divmod
 putting it all together:
 
 ```kay
-# no return values
+## no return values
 fn answer() { return 42 };
 
-# with unnamed return values
+## with unnamed return values
 fn i64, i64 = divmod(dividend: i64; divisor: i64) {
     return dividend / divisor, dividend % divisor;
 }
 
-# with named return values (NOTE: naked returns are not going to be allowed)
+## with named return values (NOTE: naked returns are not going to be allowed)
 fn result: i64, remainder: i64 = divmod(dividend: i64; divisor: i64) {
     return result = dividend / divisor, remainder = dividend % divisor;
 }
@@ -2231,27 +2208,27 @@ fn result: i64, remainder: i64 = divmod(dividend: i64; divisor: i64) {
 going from function definition to usage would look like this
 
 ```kay
-# function definition
+## function definition
 fn result: i64, remainder: i64 = divmod(dividend: i64; divisor: i64) {
     return result = dividend / divisor, remainder = dividend % divisor;
 }
 
-# from here onwards we are pretending that each line is the progression of steps needed to go from function definition to the usage
+## from here onwards we are pretending that each line is the progression of steps needed to go from function definition to the usage
 
-# copy paste the definition line
+## copy paste the definition line
 fn result: i64, remainder: i64 = divmod(dividend: i64; divisor: i64) {
 
-# change 'fn' to 'let'/'var'
-# - explicit mutability qualifiers needed for each variable
+## change 'fn' to 'let'/'var'
+## - explicit mutability qualifiers needed for each variable
 let result: i64, var remainder: i64 = divmod(dividend: i64; divisor: i64) {
 
-# replace the bracket with a semicolon at the end
+## replace the bracket with a semicolon at the end
 let result: i64, var remainder: i64 = divmod(dividend: i64; divisor: i64);
 
-# remove the function arguments' type hints and you are done!
+## remove the function arguments' type hints and you are done!
 let result: i64, var remainder: i64 = divmod(dividend; divisor);
 
-# optionally remove the variables' type hints
+## optionally remove the variables' type hints
 let result, var remainder = divmod(dividend; divisor);
 ```
 
@@ -2261,36 +2238,36 @@ going from usage to function definition would look like this
 let dividend = 3;
 let divisor = 2;
 
-# usage
+## usage
 let result: i64, var remainder: i64 = dividend / divisor, dividend % divisor;
 
-# from here onwards we are pretending that each line is the progression of steps needed to go from usage to the function definition
+## from here onwards we are pretending that each line is the progression of steps needed to go from usage to the function definition
 
-# copy paste the usage
+## copy paste the usage
 let result: i64, var remainder: i64 = dividend / divisor, dividend % divisor;
 
-# remove 'let'/'var' and add the 'fn' keyword at the start of the line
+## remove 'let'/'var' and add the 'fn' keyword at the start of the line
 fn result: i64, remainder: i64 = dividend / divisor, dividend % divisor;
 
-# add the function name and arguments
+## add the function name and arguments
 fn result: i64, remainder: i64 = divmod(dividend: i64; divisor: i64) dividend / divisor, dividend % divisor;
 
-# add the function body, with no named returns
+## add the function body, with no named returns
 fn result: i64, remainder: i64 = divmod(dividend: i64; divisor: i64) {
     return dividend / divisor, dividend % divisor;
 }
 
-# optionally remove named returns
+## optionally remove named returns
 fn i64, i64 = divmod(dividend: i64; divisor: i64) {
     return dividend / divisor, dividend % divisor;
 }
 
-# or add them back
+## or add them back
 fn result: i64, remainder: i64 = divmod(dividend: i64; divisor: i64) {
     return result = dividend / divisor, remainder = dividend % divisor;
 }
 
-# and done!
+## and done!
 ```
 
 this poses a problem where functions definitions are hard to search:
@@ -2300,53 +2277,53 @@ fn result: i64 = foo(a: i64; b: i64) { ... }
 
 let result = foo(12; 21);
 
-# searching for the function definition is really hard, like in C
-# you would have to construct regexes everytime like `fn .*?= foo` to find the definition
+## searching for the function definition is really hard, like in C
+## you would have to construct regexes everytime like `fn .*?= foo` to find the definition
 
-# rust or python like definitions are very easy to search for with just `fn foo`
+## rust or python like definitions are very easy to search for with just `fn foo`
 fn foo(a: i64; b: i64) -> result: i64 { ... }
 
-# could come up with some other syntax to get the best of refactorability and searchability
+## could come up with some other syntax to get the best of refactorability and searchability
 
-# this style only replaces `=` with `<-` for easy searching,
-# so instead of `fn .*?= foo` or `fn foo` you could search for `<- foo`
+## this style only replaces `=` with `<-` for easy searching,
+## so instead of `fn .*?= foo` or `fn foo` you could search for `<- foo`
 fn result: i64 <- foo(a: i64; b: i64) { ... }
 
-# `<=` would have been even better but it conflicts with the `less than or equals to` operator
-# searching for `<= foo` would find both definition and usage
+## `<=` would have been even better but it conflicts with the `less than or equals to` operator
+## searching for `<= foo` would find both definition and usage
 fn result: i64 <= foo(a: i64; b: i64) { ... }
 if c <= foo(a; b) { ... }
 
-# nameless functions or "lambdas" could look something like this, truly nameless functions
+## nameless functions or "lambdas" could look something like this, truly nameless functions
 let nameless_function = fn result: i64 <- (a: i64; b: i64) { ... }
-filter(fn i64 <- (a: i64; b: i64) { ... }) # with type inference
-filter(fn <-(a; b) { ... }) # with type inference
+filter(fn i64 <- (a: i64; b: i64) { ... }) ## with type inference
+filter(fn <-(a; b) { ... }) ## with type inference
 
-# going from variable to usage
+## going from variable to usage
 let nameless_function = fn result: i64 <- (a: i64; b: i64) { ... }
 let  = fn result: i64 <- nameless_function(a: i64; b: i64) { ... }
 let result: i64 <- nameless_function(a: i64; b: i64) { ... }
 let result: i64 = nameless_function(a: i64; b: i64) { ... }
 let result: i64 = nameless_function(a; b) { ... }
 let result: i64 = nameless_function(a; b);
-let result = nameless_function(a; b); # optional
+let result = nameless_function(a; b); ## optional
 
-# could revert to the usual rust or python syntax for more consistent searching using the leading
-# keyword
-fn foo(a: i64; b: i64) -> result: i64 { ... } # find: `fn foo`
-fn foo(a: i64; b: i64): result: i64 { ... }   # find: `fn foo`
-let bar = 12;                                 # find: `let bar`
-struct Baz(a: i64; b: i64)                    # find: `struct Baz`
-type byte = u8;                               # find: `type byte`
-alias word = u16;                             # find: `alias word`
+## could revert to the usual rust or python syntax for more consistent searching using the leading
+## keyword
+fn foo(a: i64; b: i64) -> result: i64 { ... } ## find: `fn foo`
+fn foo(a: i64; b: i64): result: i64 { ... }   ## find: `fn foo`
+let bar = 12;                                 ## find: `let bar`
+struct Baz(a: i64; b: i64)                    ## find: `struct Baz`
+type byte = u8;                               ## find: `type byte`
+alias word = u16;                             ## find: `alias word`
 
-# even MOAR consistency, searching using `let`, and even with terminating semicolon
-let foo = fn(a: i64; b: i64) -> result: i64 { ... }; # find: `let foo`
-let foo = fn(a: i64; b: i64): result: i64 { ... };   # find: `let foo`
-let bar = 12;                                        # find: `let bar`
-let Baz = struct(a: i64; b: i64);                    # find: `let Baz`
-let byte = type u8;                                  # find: `let byte`
-let word = alias u16;                                # find: `let word`
+## even MOAR consistency, searching using `let`, and even with terminating semicolon
+let foo = fn(a: i64; b: i64) -> result: i64 { ... }; ## find: `let foo`
+let foo = fn(a: i64; b: i64): result: i64 { ... };   ## find: `let foo`
+let bar = 12;                                        ## find: `let bar`
+let Baz = struct(a: i64; b: i64);                    ## find: `let Baz`
+let byte = type u8;                                  ## find: `let byte`
+let word = alias u16;                                ## find: `let word`
 ```
 
 ### Inline functions
@@ -2355,35 +2332,35 @@ Ability to inline a function at the call site for finer granularity, while still
 the compiler to inline it when it sees fit:
 
 ```kay
-# marked as inline, the rust inspired "!" avoids extra keywords (could find another symbol)
+## marked as inline, the rust inspired "!" avoids extra keywords (could find another symbol)
 fn result: i64, remainder: i64 = divmod_inline!(dividend: i64; divisor: i64) {
     return result = dividend / divisor, remainder = dividend % divisor;
 }
 
-let result, let remainder = divmod_inline(21; 12); # regular function call would not be allowed, or would emit a warning
-let result, let remainder = divmod_inline!(21; 12); # inline function call syntax would be mandatory
-let result, let remainder = divmod_inline: { # would be inlined as this as many times as possible, could emit a warning when inlining could be performed
+let result, let remainder = divmod_inline(21; 12); ## regular function call would not be allowed, or would emit a warning
+let result, let remainder = divmod_inline!(21; 12); ## inline function call syntax would be mandatory
+let result, let remainder = divmod_inline: { ## would be inlined as this as many times as possible, could emit a warning when inlining could be performed
     let dividend = 21;
     let divisor = 12;
     break divmod_inline: result = dividend / divisor, remainder = dividend % divisor;
 }
 
-# not marked as inline
+## not marked as inline
 fn result: i64, remainder: i64 = divmod(dividend: i64; divisor: i64) {
     return result = dividend / divisor, remainder = dividend % divisor;
 }
 
-let result, let remainder = divmod(21; 12); # regular function call
-let result, let remainder = divmod!(21; 12); # inlined at the call site
+let result, let remainder = divmod(21; 12); ## regular function call
+let result, let remainder = divmod!(21; 12); ## inlined at the call site
 
-let foo = foo(...); # no inline
-let foo = foo!(...); # inline
-let foo = foo!?(...); # let the compiler decide wether to inline
+let foo = foo(...); ## no inline
+let foo = foo!(...); ## inline
+let foo = foo!?(...); ## let the compiler decide wether to inline
 
-# or
-let foo = foo!!(...); # no inline
-let foo = foo!(...); # inline
-let foo = foo(...); # let the compiler decide wether to inline
+## or
+let foo = foo!!(...); ## no inline
+let foo = foo!(...); ## inline
+let foo = foo(...); ## let the compiler decide wether to inline
 ```
 
 ## ?.?.? - Function overloading
@@ -2392,51 +2369,51 @@ function overloading should follow the function's philosofy of resembling the sh
 the function:
 
 ```kay
-# base overload
+## base overload
 fn foo[i32](a: i32) { ... }
 fn foo[f32](a: f32) { ... }
 fn foo[str](a: str) { ... }
 
-# nestable
+## nestable
 fn foo[str][i32](a: str; b: i32) { ... }; let a = foo[str][i32]("21"; 12);
 fn foo[str; i32](a: str; b: i32) { ... }; let a = foo[str; i32]("21"; 12);
 
-# base overload
+## base overload
 fn bar[str, i32](a: str; b: i32) { ... }; let a = foo[str; i32]("21"; 12);
 
-# nested overload
+## nested overload
 fn bar[str, i32][f32](a: str; b: i32; c: f32) { ... }
 fn bar[str, i32][f32](a: str; b: i32; c: f32) { ... }
 fn bar[str, i32][i64](a: str; b: i32; c: i64) { ... }
 fn bar[str, i32; f32](a: str; b: i32; c: f32) { ... }
 
-# possible type inference
-fn bar[*, *; *](a: str; b: i32; c: f32) { ... } # will produce bar[str, i32; f32]
-fn bar[*, *; *](a: i64; b: Foo; c: str) { ... } # will produce bar[i64, Foo; str]
-fn bar[*; *, *](a: i64; b: Foo; c: str) { ... } # will produce bar[i64; Foo, str]
+## possible type inference
+fn bar[*, *; *](a: str; b: i32; c: f32) { ... } ## will produce bar[str, i32; f32]
+fn bar[*, *; *](a: i64; b: Foo; c: str) { ... } ## will produce bar[i64, Foo; str]
+fn bar[*; *, *](a: i64; b: Foo; c: str) { ... } ## will produce bar[i64; Foo, str]
 
-# explicit full name qualification
-let a = bar[str, i32; f32]("21"; 12; 19.10); # will call bar[str, i32; f32]
-let b = bar[str, i32]("21"; 12; 19.10); # will call bar[str, i32; f32]
-let b = bar[str, i32]("21"; 12; 1910); # will call bar[str, i32; i64]
-let b = bar[str, i32]("21"; 12); # will call bar[str, i32]
+## explicit full name qualification
+let a = bar[str, i32; f32]("21"; 12; 19.10); ## will call bar[str, i32; f32]
+let b = bar[str, i32]("21"; 12; 19.10); ## will call bar[str, i32; f32]
+let b = bar[str, i32]("21"; 12; 1910); ## will call bar[str, i32; i64]
+let b = bar[str, i32]("21"; 12); ## will call bar[str, i32]
 
-# implicit name qualification, inferred from the arguments types
-let b = bar("21"; 12; 19.10); # will call bar[str, i32; f32]
-let b = bar("21"; 12; 1910); # will call bar[str, i32; i64]
+## implicit name qualification, inferred from the arguments types
+let b = bar("21"; 12; 19.10); ## will call bar[str, i32; f32]
+let b = bar("21"; 12; 1910); ## will call bar[str, i32; i64]
 
-# could force calling overloaded functions explicitly or with explicit request for inference
-let b = bar[**]("21"; 12; 1910); # will infer a call to bar[str, i32; i64]
-let b = bar[**; **]("21"; 12; 19.10); # will infer a call to bar[str, i32; f32]
-let b = bar[str, **; **]("21"; 12; 19.10); # will infer a call to bar[str, i32; f32]
+## could force calling overloaded functions explicitly or with explicit request for inference
+let b = bar[**]("21"; 12; 1910); ## will infer a call to bar[str, i32; i64]
+let b = bar[**; **]("21"; 12; 19.10); ## will infer a call to bar[str, i32; f32]
+let b = bar[str, **; **]("21"; 12; 19.10); ## will infer a call to bar[str, i32; f32]
 
-# or
-let b = bar("21" @ str; 12 @ i32; 19.10 @ f32); # will call bar[str, i32; f32]
-let b = bar("21" @ str; 12 @ i32; 19.10 @ i64); # will call bar[str, i32; i64]
-let b = bar("21": str; 12: i32; 1910: i64); # will call bar[str, i32; i64]
-let b = bar("21": *; 12: *; 1910: *); # will call bar[str, i32; i64]
+## or
+let b = bar("21" @ str; 12 @ i32; 19.10 @ f32); ## will call bar[str, i32; f32]
+let b = bar("21" @ str; 12 @ i32; 19.10 @ i64); ## will call bar[str, i32; i64]
+let b = bar("21": str; 12: i32; 1910: i64); ## will call bar[str, i32; i64]
+let b = bar("21": *; 12: *; 1910: *); ## will call bar[str, i32; i64]
 
-# overload types integrated into the function arguments
+## overload types integrated into the function arguments
 fn foo[a: str] {}
 fn foo[a: i32] {}
 fn foo[a: str, b: i32] {}
@@ -2450,10 +2427,10 @@ fn foo@(a: *, b: *; c: f32) {}
 let a = foo["21", 12; 19.10];
 let a = foo@("21", 12; 19.10);
 
-# function pointers
-let b = &foo[str, i32; f32]; # use the square bracket syntax to access the "name" of the overload
+## function pointers
+let b = &foo[str, i32; f32]; ## use the square bracket syntax to access the "name" of the overload
 
-# could specify alias names
+## could specify alias names
 fn foo[str, i64; f32](...) @name(foo_str_i32_f32) { ... }
 fn foo[str, i64; f32](...) @foo_str_i32_f32 { ... }
 fn foo[str, i64; f32](...) | foo_str_i32_f32 { ... }
@@ -2473,25 +2450,25 @@ alias foo = fn foo_i64_str_i32(a: i64; b: str; c: i32) { ... }
 fn foo[str, i64; f32](...) { ... }
 alias foo_str_i32_f32 = foo[str, i64; f32];
 
-foo("21"; 12; 19.10); # would call foo_str_i64_f32
-foo(12; "21"; 1910); # would call foo_i64_str_i32
-foo[i64, str, i32](12; "21"; 1910); # would call foo_i64_str_i32
-foo_i64_str_i32(12; "21"; 1910); # the original name can still be used
+foo("21"; 12; 19.10); ## would call foo_str_i64_f32
+foo(12; "21"; 1910); ## would call foo_i64_str_i32
+foo[i64, str, i32](12; "21"; 1910); ## would call foo_i64_str_i32
+foo_i64_str_i32(12; "21"; 1910); ## the original name can still be used
 something_totally_arbitrary(12; "21"; 1910);
 
-# so these would refer to the same function
+## so these would refer to the same function
 let f = foo[str, i64; f32](...);
 let f = foo_str_i64_f32(...);
 let f = foo("21"; 12; 19.10);
 
-# alias could work on names too
+## alias could work on names too
 let f alias g = foo("21"; 12; 19.10);
 ```
 
 ### Named arguments (inspired by swift)
 
 ```kay
-# dividend and divisor would be user facing named arguments
+## dividend and divisor would be user facing named arguments
 fn result: i64, remainder: i64 = divmod(dividend: i64; divisor: i64) {
     return result = dividend / divisor, remainder = dividend % divisor;
 }
@@ -2502,7 +2479,7 @@ let result, remainder = divmod(dividend: i64; divisor: i64) {
 let result, remainder = divmod(dividend = 12; divisor = 21) {
 let result, remainder = divmod(dividend = 12; divisor = 21);
 
-# a and b would be user facing named arguments
+## a and b would be user facing named arguments
 fn result: i64, remainder: i64 = divmod(a = dividend: i64; b = divisor: i64) {
     return result = dividend / divisor, remainder = dividend % divisor;
 }
@@ -2513,12 +2490,12 @@ let result, remainder = divmod(a = dividend: i64; b = divisor: i64) {
 let result, remainder = divmod(a = 12; b = 21) {
 let result, remainder = divmod(a = 12; b = 21);
 
-# could just provide multiple names
+## could just provide multiple names
 fn result: i64, remainder: i64 = divmod(
     a alias dividend alias foo: i64;
     b alias divisor alias bar: i64;
 ) { ... }
-# or
+## or
 fn result: i64, remainder: i64 = divmod(
     a | dividend | foo: i64;
     b | divisor | bar: i64;
@@ -2536,7 +2513,7 @@ fn result: i64, remainder: i64 = divmod(
     a | dividend | @deprecated_name_warning(foo) baz: i64;
     b | divisor | bar: i64;
 ) { ... }
-let result, remainder = divmod(foo = 12; bar = 21); # Warning: "foo" is deprecated, use "baz" instead
+let result, remainder = divmod(foo = 12; bar = 21); ## Warning: "foo" is deprecated, use "baz" instead
 ```
 
 ### Operator overloading
@@ -2579,10 +2556,10 @@ the function/operator, so as an example, the definition for the `+` operator mig
     op Foo = [Bar + i32](lhs: Bar; rhs: Foo) { ... }
     op i64 = lhs: f32 [+] rhs: f32 { ... }
     op Foo = lhs: Bar [+] rhs: Foo { ... }
-    op Foo = lhs: Bar [+] rhs: Foo alias `Bar + Foo` { ... } # could require the usare of aliases
+    op Foo = lhs: Bar [+] rhs: Foo alias `Bar + Foo` { ... } ## could require the usare of aliases
 
-    let i = Bar + Foo; # would call `Bar + Foo`
-    let i = Bar [+] Foo; # would call `Bar + Foo`
+    let i = Bar + Foo; ## would call `Bar + Foo`
+    let i = Bar [+] Foo; ## would call `Bar + Foo`
     ```
 
 might also be able to specify that the function should track the caller's line and column for error
@@ -2600,22 +2577,22 @@ so going from usage to function would look like this;
 let lhs = 21;
 let rhs = 42;
 
-# 1
+## 1
 let i = lhs + rhs;
 
-# 2
+## 2
 op i = lhs + rhs;
 
-# 3a
+## 3a
 op i: i64 = lhs + rhs;
 
-# 3b
+## 3b
 op i64 = lhs + rhs;
 
-# 4
+## 4
 op i64 = lhs: i64 + rhs: i64;
 
-# 5
+## 5
 op i64 = lhs: i64 + rhs: i64 {
     return lhs + rhs;
 }
@@ -2624,21 +2601,21 @@ op i64 = lhs: i64 + rhs: i64 {
 and back from function to usage would look like this;
 
 ```kay
-# 1
+## 1
 op i64 = lhs: i64 + rhs: i64 {
     return lhs + rhs;
 }
 
-# 2
+## 2
 op i64 = lhs: i64 + rhs: i64;
 
-# 3
+## 3
 op i64 = lhs + rhs;
 
-# 4
+## 4
 let i64 = lhs + rhs;
 
-# 5
+## 5
 let i = lhs + rhs;
 ```
 
@@ -2658,12 +2635,12 @@ op i64 = lhs: Vec2 `.` rhs: Vec2 {
     return lhs.x * rhs.x + lhs.y * rhs.y;
 }
 
-# or
+## or
 op i64 = lhs: Vec2 `.*` rhs: Vec2 {
     return lhs.x * rhs.x + lhs.y * rhs.y;
 }
 
-# or
+## or
 fn i64 = `.*`(lhs: Vec2; rhs: Vec2) {
     return lhs.x * rhs.x + lhs.y * rhs.y;
 }
@@ -2681,64 +2658,64 @@ let dot_product = lhs.`.*`(rhs);
 op i64 = lhs: i64 plus rhs: i64 { ... }; let twenty_one = 9 plus 10;
 op i64 = lhs: i64 `+` rhs: i64 { ... }; let twenty_one = 9 `+` 10;
 
-# could specify what kind of operator it is
+## could specify what kind of operator it is
 op(infix) i64 = lhs: i64 `+` rhs: i64 { ... }
 op(prefix) i64 = `+` lhs: i64 { ... }
 op(postfix) i64 = lhs: i64 `*` { ... }
 
-# the "*" inside the parentheses would be a placeholder for the operator
-# the types in the shape specification would allow to avoid repeating them in the function signature
+## the "*" inside the parentheses would be a placeholder for the operator
+## the types in the shape specification would allow to avoid repeating them in the function signature
 op(i64 * i64) i64 = lhs `*` rhs { ... }
 
-# could force explicit usage of the keyword during usage to encode the shape of the operator
+## could force explicit usage of the keyword during usage to encode the shape of the operator
 op i64 = first: i64 op `+` second: i64 { ... }
 op i64 = first: i64 op plus second: i64 { ... }
 let twenty_one = 9 op`+` 10;
 let twenty_one = 9 op plus 10;
 
-# this could allow for emulation of arbitrary expressions
+## this could allow for emulation of arbitrary expressions
 op i64 = condition: bool op `?` value_if_true: i64 op `:` value_if_false: i64 { ... }
-# could allow specifying the name of the underlying function
+## could allow specifying the name of the underlying function
 op i64 = condition: bool op `?` value_if_true: i64 op `:` value_if_false: i64
 fn i64 = ternary(condition: bool; value_if_true: i64; value_if_false) { ... }
 
 let twenty_one = true op`?` 21 op`:` 19;
 let twenty_one = ternary(true; 21; 19);
 
-# "operator overloading" could be become syntactic sugar for any function
+## "operator overloading" could be become syntactic sugar for any function
 fn i64 = ternary(condition: bool; value_if_true: i64; value_if_false: i64)
 op condition op `?` value_if_true op `:` value_if_false { ... }
 
 fn i64 = dot(lhs: Matrix; rhs: Matrix)
 op lhs op `.*` rhs { ... }
 
-# this would play nicely with function overloading
+## this would play nicely with function overloading
 fn i64 = ternary[bool; i64, i64](condition: bool; value_if_true: i64; value_if_false: i64)
 op condition op `?` value_if_true op `:` value_if_false { ... }
 
 fn Foo = ternary[bool; Foo, Foo](condition: bool; value_if_true: Foo; value_if_false: Foo)
 op condition op `?` value_if_true op `:` value_if_false { ... }
 
-# could remove the op keyword entirely
+## could remove the op keyword entirely
 fn i64 = negate(value: i64) -> op`!` value { ... }
-fn i64 = unwrap(value: Option<i64>) -> value op`?` { ... }; let f = option op`?`; let f = unwrap(option) # borrowing from rust
+fn i64 = unwrap(value: Option<i64>) -> value op`?` { ... }; let f = option op`?`; let f = unwrap(option) ## borrowing from rust
 fn i64 = dot(lhs: Matrix; rhs: Matrix) -> lhs op `.*` rhs { ... }
 fn i64 = dot(lhs: Matrix; rhs: Matrix)
 -> lhs op `.*` rhs { ... }
 
-# would need to provide a way to specify precedence
-fn i64 = dot(lhs: Matrix; rhs: Matrix) -> lhs op`.*` rhs alias * { ... } # same precedence as the * operator
-fn i64 = dot(lhs: Matrix; rhs: Matrix) -> lhs op`.*` rhs | alias * { ... } # same precedence as the * operator
-fn i64 = dot(lhs: Matrix; rhs: Matrix) -> lhs op`.*` rhs => * { ... } # same precedence as the * operator
-fn i64 = dot(lhs: Matrix; rhs: Matrix) -> lhs op`.*` rhs == * { ... } # same precedence as the * operator
-fn i64 = dot(lhs: Matrix; rhs: Matrix) -> lhs op`.*` rhs as * { ... } # same precedence as the * operator
-fn i64 = dot(lhs: Matrix; rhs: Matrix) -> lhs op`.*` rhs -> * { ... } # same precedence as the * operator
+## would need to provide a way to specify precedence
+fn i64 = dot(lhs: Matrix; rhs: Matrix) -> lhs op`.*` rhs alias * { ... } ## same precedence as the * operator
+fn i64 = dot(lhs: Matrix; rhs: Matrix) -> lhs op`.*` rhs | alias * { ... } ## same precedence as the * operator
+fn i64 = dot(lhs: Matrix; rhs: Matrix) -> lhs op`.*` rhs => * { ... } ## same precedence as the * operator
+fn i64 = dot(lhs: Matrix; rhs: Matrix) -> lhs op`.*` rhs == * { ... } ## same precedence as the * operator
+fn i64 = dot(lhs: Matrix; rhs: Matrix) -> lhs op`.*` rhs as * { ... } ## same precedence as the * operator
+fn i64 = dot(lhs: Matrix; rhs: Matrix) -> lhs op`.*` rhs -> * { ... } ## same precedence as the * operator
 
-# "operator overloading" could become this, so this would tell the compiler to add "+[i64, i64]" to
-# the overloads for the operator "+", thus inferring the usage from the operator
+## "operator overloading" could become this, so this would tell the compiler to add "+[i64, i64]" to
+## the overloads for the operator "+", thus inferring the usage from the operator
 fn i64 = +[i64, i64](lhs: i64; rhs: i64) { ... }
 
-# casting and conversion functions could look like operators
+## casting and conversion functions could look like operators
 fn<D, S> D = into(dst: type S) -> dst op into S { ... }
 ```
 
@@ -2778,24 +2755,24 @@ pub(crate) struct TokenNew {
 
 ```kay
 let a = 12;
-alias b = a; # a and b would be treated as if they were the same entity
-alias ascii = u8; # ascii is totally equivalent to u8, basically a form of "name overloading"
-# is the same as in C `#define ascii u8`
+alias b = a; ## a and b would be treated as if they were the same entity
+alias ascii = u8; ## ascii is totally equivalent to u8, basically a form of "name overloading"
+## is the same as in C `#define ascii u8`
 
 let a: u8 = 12;
-let b: ascii = b; # fine, since ascii is just an other name for u8
+let b: ascii = b; ## fine, since ascii is just an other name for u8
 
-type ascii = u8; # ascii is a different type from u8
+type ascii = u8; ## ascii is a different type from u8
 let a: u8 = 12;
-let b: ascii = a; # Error: ascii is a different type from u8
+let b: ascii = a; ## Error: ascii is a different type from u8
 
-# could use the `alias` keyword for compile time contants, similar to rust's `const`s
-alias MAX = 21; # basically #define MAX 21
-const MAX = 21; # instead of this, saving on the `const` keyword, since const means `not mutable` in
-                # other languages using `alias` would make it more clear
-let f = MAX - 1; # equivalent to `let f = 21 - 1;`
+## could use the `alias` keyword for compile time contants, similar to rust's `const`s
+alias MAX = 21; ## basically #define MAX 21
+const MAX = 21; ## instead of this, saving on the `const` keyword, since const means `not mutable` in
+                ## other languages using `alias` would make it more clear
+let f = MAX - 1; ## equivalent to `let f = 21 - 1;`
 
-# could use the `macro` keyword to replace the `alias` keyword
+## could use the `macro` keyword to replace the `alias` keyword
 macro MAX = 21;
 macro fn i64 <- foo(a: i64, b: i64) { return a + b; }
 ```
@@ -2808,40 +2785,40 @@ Ability to capture only specific variables from the surrounding environment:
 let outer_0 = ...;
 let outer_1 = ...;
 {
-    let inner_0 = outer_0; # can see outer_0
-    let inner_1 = outer_1; # can see outer_1
+    let inner_0 = outer_0; ## can see outer_0
+    let inner_1 = outer_1; ## can see outer_1
 }
 ```
 
 ```kay
-# restrict capturing to only specific entities
+## restrict capturing to only specific entities
 let outer_0 = ...;
 let outer_1 = ...;
 
-# syntax subject to change
+## syntax subject to change
 @capture(outer_0) #* only capture outer_0 *# {
-    let inner_0 = outer_0; # can see outer_0
-    let inner_1 = outer_1; # Error: cannot see outer_1, not specified in the capturing group
+    let inner_0 = outer_0; ## can see outer_0
+    let inner_1 = outer_1; ## Error: cannot see outer_1, not specified in the capturing group
 }
 @capture(outer_0; outer_1) #* only capture outer_0 and outer_1 *# {
-    let inner_0 = outer_0; # can see outer_0
-    let inner_1 = outer_1; # can see outer_1
+    let inner_0 = outer_0; ## can see outer_0
+    let inner_1 = outer_1; ## can see outer_1
 }
 
 @capture(!outer_0) #* capture everyting except outer_0 *# {
-    let inner_0 = outer_0; # Error: cannot see outer_0, not specified in the capturing group
-    let inner_1 = outer_1; # can see outer_1
+    let inner_0 = outer_0; ## Error: cannot see outer_0, not specified in the capturing group
+    let inner_1 = outer_1; ## can see outer_1
 }
 @capture() #* capture nothing *# {
-    let inner_0 = outer_0; # Error: cannot see outer_0, not specified in the capturing group
-    let inner_1 = outer_1; # Error: cannot see outer_1, not specified in the capturing group
+    let inner_0 = outer_0; ## Error: cannot see outer_0, not specified in the capturing group
+    let inner_1 = outer_1; ## Error: cannot see outer_1, not specified in the capturing group
 }
 #* capture from outer scope *# {
-    let inner_0 = outer_0; # can see outer_0
-    let inner_1 = outer_1; # can see outer_1
+    let inner_0 = outer_0; ## can see outer_0
+    let inner_1 = outer_1; ## can see outer_1
 }
 
-# need to implement other ways to specify what to capture
+## need to implement other ways to specify what to capture
 ```
 
 could be applied to functions as well (when global variables will be implemented):
@@ -2850,12 +2827,12 @@ could be applied to functions as well (when global variables will be implemented
 let global_0 = ...;
 let global_1 = ...;
 fn foo(...) @capture(global_0) {
-    let inner_0 = global_0; # can see global_0
-    let inner_1 = global_1; # Error: cannot see global_1, not specified in the capturing group
+    let inner_0 = global_0; ## can see global_0
+    let inner_1 = global_1; ## Error: cannot see global_1, not specified in the capturing group
 }
 fn foo(...) [global_0] {
-    let inner_0 = global_0; # can see global_0
-    let inner_1 = global_1; # Error: cannot see global_1, not specified in the capturing group
+    let inner_0 = global_0; ## can see global_0
+    let inner_1 = global_1; ## Error: cannot see global_1, not specified in the capturing group
 }
 ```
 
@@ -2870,7 +2847,7 @@ let a = ...;
 {
     let b = a;
 }
-let c = b; # Error: not in scope
+let c = b; ## Error: not in scope
 ```
 
 `no_scope`: basically just a way to group statements with no scoping rules
@@ -2879,15 +2856,15 @@ let c = b; # Error: not in scope
 @no_scope {
     let b = a;
 }
-# valid, in scope, as the @no_scope directive specifies that the block should not have scoping
-# rules applied
+## valid, in scope, as the @no_scope directive specifies that the block should not have scoping
+## rules applied
 let c = b;
 ```
 
 Would only work on stand alone blocks, control flow and functions cannot be marked as `no_scope`:
 
 ```kay
-if condition @no_scope { # Error: @no_scope directive cannot be applied to if blocks
+if condition @no_scope { ## Error: @no_scope directive cannot be applied to if blocks
     ...
 }
 ```
@@ -2895,17 +2872,17 @@ if condition @no_scope { # Error: @no_scope directive cannot be applied to if bl
 ## ?.?.? - Embeddable intermediate representation
 
 ```kay
-# other calculations in kay language
+## other calculations in kay language
 @kbe {
-    # calculations in kbe language
+    ## calculations in kbe language
     let a = 12;
     let b = 21;
     $0 = a + b;
     println($0);
 }
-# other calculations in kay language
+## other calculations in kay language
 
-# or entire functions
+## or entire functions
 fn foo(a: i64, b: i64) @kbe {
     $0 = a + b;
     println($0);
@@ -2915,15 +2892,15 @@ fn foo(a: i64, b: i64) @kbe {
 ## ?.?.? - Embeddable assembly
 
 ```kay
-# other calculations in kay language
+## other calculations in kay language
 @asm {
-    # calculations in assembly language (need to decide for what architecture)
+    ## calculations in assembly language (need to decide for what architecture)
 }
-# other calculations in kay language
+## other calculations in kay language
 
-# could specify what architecture, based on compiler support
+## could specify what architecture, based on compiler support
 @asm(x86_64) {
-    # calculations in x86_64 assembly language
+    ## calculations in x86_64 assembly language
     mov rdi, 12
     add rdi, 21
     call i64_print
@@ -2931,7 +2908,7 @@ fn foo(a: i64, b: i64) @kbe {
     call ascii_print
 }
 
-# or entire functions
+## or entire functions
 fn foo(a: i64, b: i64) @asm(x86_64, rdi.a, rsi.b) {
     add rdi.a, rsi.b
     call i64_print
@@ -3063,33 +3040,33 @@ loop_0_end:
 ## 0.6.4 - More escape characters
 
 ```kay
-# enclosed in parentheses to avoid confusions such as "...\cNULL..." where \cNULL are two
-# distinct characters \cNUL and L, or "...\b11111111..." where \b1111111 is one character and 1 is
-# another character, since ascii characters only use 7 bits and it's difficult to count 7 vs 8 1s
+## enclosed in parentheses to avoid confusions such as "...\cNULL..." where \cNULL are two
+## distinct characters \cNUL and L, or "...\b11111111..." where \b1111111 is one character and 1 is
+## another character, since ascii characters only use 7 bits and it's difficult to count 7 vs 8 1s
 
-# ASCII and Extended ASCII full name escape characters controls
-"\c(NUL)"; # ASCII controls groud C0
-"\C(NUL)"; # extended ASCII controls in group C1
+## ASCII and Extended ASCII full name escape characters controls
+"\c(NUL)"; ## ASCII controls groud C0
+"\C(NUL)"; ## extended ASCII controls in group C1
 
-# binary\octal\decimal\hexadecimal escapes similar to regular integer literals
+## binary\octal\decimal\hexadecimal escapes similar to regular integer literals
 "\(0b1111111)";
 "\(0o177)";
 "\(0d127)";
 "\(127)";
 "\(0x7f)";
 
-# Unicode binary\octal\decimal\hexadecimal codepoints
+## Unicode binary\octal\decimal\hexadecimal codepoints
 "\u(0b...)";
 "\u(0o...)";
 "\u(0d...)";
 "\u(...)";
 "\u(0x...)";
 
-# maybe make all number escape sequences delimited by `\`
-"\(0x7f)"; # is clunky and overly long with `(` and `)` extra characters
-"\0x7f"; # normally \0 and x7f are distinct characters with the current syntax
-"\0x7f\"; # \0x7f are a single character delimited by `\`
-"\65\"; # character `A`
+## maybe make all number escape sequences delimited by `\`
+"\(0x7f)"; ## is clunky and overly long with `(` and `)` extra characters
+"\0x7f"; ## normally \0 and x7f are distinct characters with the current syntax
+"\0x7f\"; ## \0x7f are a single character delimited by `\`
+"\65\"; ## character `A`
 "\u0b01\";
 "\u0o12\";
 "\u0d21\";
@@ -3097,31 +3074,31 @@ loop_0_end:
 "\u0x7f\";
 "\cNUL\"
 
-# could use a different closing symbol to disambiguate cases like these
-"\64\n"; # actual characters: \64\, n | could be confuse with: \64, \n
-"\64]"; # the documentation would state that every number escape is terminated by `]`
-"\^\n"; # but then this already exists, although here the confusion is less since there can only be
-        # one character after `\^` as per the documentation, while for numbers there can be multiple
-        # digits
+## could use a different closing symbol to disambiguate cases like these
+"\64\n"; ## actual characters: \64\, n | could be confuse with: \64, \n
+"\64]"; ## the documentation would state that every number escape is terminated by `]`
+"\^\n"; ## but then this already exists, although here the confusion is less since there can only be
+        ## one character after `\^` as per the documentation, while for numbers there can be multiple
+        ## digits
 ```
 
 ### ?.?.? - os specific line terminations
 
 ```kay
-"first line\nsecond line"; # works on unix systems, not on windows
-"first line\r\nsecond line"; # works on windows systems, not on unix
-"first line\Nsecond line"; # inserts \r\n or \n depending on the operating system
+"first line\nsecond line"; ## works on unix systems, not on windows
+"first line\r\nsecond line"; ## works on windows systems, not on unix
+"first line\Nsecond line"; ## inserts \r\n or \n depending on the operating system
 
-# could just implement a way of concatenating constants
+## could just implement a way of concatenating constants
 alias CR = '\r';
 alias LF = '\n';
 alias NL = break @if windows "\{CR}\{LF}"; else @if linux "\{LF}"; else @if oldMac "\{CR}";
 alias NL = break @if windows CR + LF; else @if linux LF; else @if oldMac CR;
 
-# need to chose a syntax for string compile time interpolation
+## need to chose a syntax for string compile time interpolation
 alias NL = break @if windows CR + LF; else @if linux LF; else @if oldMax CR;
-"first line\{NL}second line"; # arguments inside \{...} need to evaluate to constant strings/characters
-"first line" + NL + "second line"; # could allow the usage of the + operator for constant strings/characters
+"first line\{NL}second line"; ## arguments inside \{...} need to evaluate to constant strings/characters
+"first line" + NL + "second line"; ## could allow the usage of the + operator for constant strings/characters
 ```
 
 ## 0.7.0 - Revised raw string/character literals and identifier strings
@@ -3130,47 +3107,47 @@ use a rust-like solution for quotes in raw strings:
 
 ```kay
 r"" -> r#"""# -> r##""""## -> r###"""""###
-#         ^          ^^            ^^^      these are the valid characters
+##         ^          ^^            ^^^      these are the valid characters
 r"" -> rr"""r -> rrr""""rr -> rrrr"""""rrr
-#         ^          ^^            ^^^      these are the valid characters
+##         ^          ^^            ^^^      these are the valid characters
 ```
 
 identifier strings could use the same syntax with the `i` prefix:
 
 ```kay
-`current ` identifier string` # does not allow for backticks inside
-i"current ` identifier string" # does allow for anything inside
+`current ` identifier string` ## does not allow for backticks inside
+i"current ` identifier string" ## does allow for anything inside
 
 i"" -> i#"""# -> i##""""## -> i###"""""###
-#         ^          ^^            ^^^      these are the valid characters
+##         ^          ^^            ^^^      these are the valid characters
 i"" -> ii"""i -> iii""""ii -> iiii"""""iii
-#         ^          ^^            ^^^      these are the valid characters
+##         ^          ^^            ^^^      these are the valid characters
 ```
 
 could be extended to character literals:
 
 ```kay
 '\'' -> r#'''#
-#          ^    this is the valid character, but its longer than the escaped version,
-#               so what's the point?
+##          ^    this is the valid character, but its longer than the escaped version,
+##               so what's the point?
 '\'' -> r'''
-#         ^ this is the valid character
+##         ^ this is the valid character
 '\\' -> r'\'
-#         ^ this is the valid character
+##         ^ this is the valid character
 ```
 
 ## ?.?.? - explicit out parameters
 
 ```kay
-# more high level function, this lets the compiler chose where to pass the argument, i guess
-# depending on the ABI
+## more high level function, this lets the compiler chose where to pass the argument, i guess
+## depending on the ABI
 fn struct Foo <- new_foo(...) { ... }
-# what most likely happens
+## what most likely happens
 fn new_foo(..., foo: struct Foo&) { ... }
-# system-v abi passes the out parameter in rdi and returns the same out parameter in rax
+## system-v abi passes the out parameter in rdi and returns the same out parameter in rax
 fn struct Foo& <- new_foo(foo: struct Foo&, ...) { ... }
 
-# could allow customizing where out parameters are placed (syntax up to revision)
+## could allow customizing where out parameters are placed (syntax up to revision)
 fn struct Foo @0 <- new_foo(foo: @0&, ...) { ... }
 fn struct Foo @0 <- new_foo(..., foo: @0&) { ... }
 fn struct Foo @0 <- new_foo(..., foo: @0&, ...) { ... }
@@ -3183,43 +3160,43 @@ fn success: bool #* regular return value *#, struct Foo @0, i64 @1, bool @2, str
     foobar: @2&,
 ) { ... }
 
-# in C you would do
+## in C you would do
 struct Foo foo;
 i64 bar;
 bool foobar;
 str baz;
 bool success = new_foo(..., &foo, &bar, ..., &baz, &foobar)
 
-# in kay you could do
+## in kay you could do
 let success, foo @0, bar @1, foobar @2, baz @3 = new_foo(..., @0&, @1&, ..., @3&, @2&);
 
-# or do the same this as in C, but with first class uninitialized variables support
-# (syntax up to revision)
-let foo: struct Foo = ?; # ? as "just allocate the space on the stack"
-let bar: i64 = ---; # --- instead of ?
-let bar: i64 = ...; # ... instead of ?
-let bar: i64 = .; # . instead of ?
-let bar: i64...; # ... instead of ?
-let foobar: bool =; # =; "operator", this avoids extra --- or ? symbols, but is confusing
+## or do the same this as in C, but with first class uninitialized variables support
+## (syntax up to revision)
+let foo: struct Foo = ?; ## ? as "just allocate the space on the stack"
+let bar: i64 = ---; ## --- instead of ?
+let bar: i64 = ...; ## ... instead of ?
+let bar: i64 = .; ## . instead of ?
+let bar: i64...; ## ... instead of ?
+let foobar: bool =; ## =; "operator", this avoids extra --- or ? symbols, but is confusing
 let baz: str...;
 
-# baz has type `str...` (uninitialized str) before the call
+## baz has type `str...` (uninitialized str) before the call
 let success: bool = new_foo(..., foo&, bar&, ..., baz&, foobar&);
 
-# baz has type `str` (initialized str), would need to implement a way to signal that a true
-# `success` variable means that uninitialized variables are now properly initialized
+## baz has type `str` (initialized str), would need to implement a way to signal that a true
+## `success` variable means that uninitialized variables are now properly initialized
 
 ```
 
 ## ?.?.? - Removal of type inference
 
 ```kay
-let i = 12; # could raise an error
-let i: i64 = 21; # would need an explicit type
+let i = 12; ## could raise an error
+let i: i64 = 21; ## would need an explicit type
 
-# could also enable type inference only for literals where its really obvious
+## could also enable type inference only for literals where its really obvious
 let i = 42;
 let i = "hello";
-let i: struct Foo = struct Foo(...); # obvious case, so type inference would help
+let i: struct Foo = struct Foo(...); ## obvious case, so type inference would help
 let i = struct Foo(...);
 ```

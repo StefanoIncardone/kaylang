@@ -656,18 +656,32 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             }
                             Err(())
                         },
-                        Some(_) => {
+                        Some(b'#') => {
                             while let Some(_) = tokenizer.get_next_byte_singleline() {
                                 // consume next character
                             }
                             let comment_text = tokenizer.token_text();
                             let comment_index = tokenizer.new_token_text(comment_text);
                             Ok(TokenKind::LineComment(comment_index))
-                        },
-                        None => {
+                        }
+                        Some(_) | None => {
+                            tokenizer.errors.push(Msg {
+                                severity: MsgSeverity::NonTerminalError,
+                                kind: ErrorKind::OldStyleLineComment,
+                                col: tokenizer.token_start_col,
+                                pointers_count: 1,
+                            });
+                            // continue tokenizing the old style
+                            while let Some(_) = tokenizer.get_next_byte_singleline() {
+                                // consume next character
+                            }
                             let comment_text = tokenizer.token_text();
                             let comment_index = tokenizer.new_token_text(comment_text);
-                            Ok(TokenKind::LineComment(comment_index))
+                            Err(())
+                            // unimplemented!("Error: comments are now '##' instead of '#'");
+                            // let comment_text = tokenizer.token_text();
+                            // let comment_index = tokenizer.new_token_text(comment_text);
+                            // Ok(TokenKind::LineComment(comment_index))
                         },
                     },
                     b'(' => {
@@ -876,6 +890,9 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                 _ => Ok(TokenKind::Op(Op::SaturatingTimes)),
                             }
                         },
+                        // Some(b'#') => {
+                        //     unimplemented!("Error: unopened block comment");
+                        // }
                         _ => Ok(TokenKind::Op(Op::Times)),
                     },
                     b'/' => match tokenizer.current_byte_multiline() {
@@ -1118,6 +1135,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
             let kind = match token_kind_result {
                 Ok(kind) => kind,
                 Err(()) => {
+                    // TODO: check if the error is terminal or not
                     let unexpected_text = tokenizer.token_text();
                     let unexpected_index = tokenizer.new_token_text(unexpected_text);
                     TokenKind::Unexpected(unexpected_index)
@@ -1907,6 +1925,8 @@ impl Base {
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum ErrorKind<'code> {
+    // REMOVE(stefano, 0.7.0):
+    OldStyleLineComment,
     UnclosedBlockComment,
 
     UnclosedRoundBracket,
@@ -1950,6 +1970,10 @@ pub enum ErrorKind<'code> {
 impl IntoMsgInfo for ErrorKind<'_> {
     fn info(&self) -> MsgInfo {
         let (error_message, error_cause_message) = match self {
+            Self::OldStyleLineComment => (
+                "old style line comment".into(),
+                "comments now start with '##' instead of '#'".into(),
+            ),
             Self::UnclosedBlockComment => (
                 "unclosed block comment".into(),
                 "missing closing `*#`".into(),

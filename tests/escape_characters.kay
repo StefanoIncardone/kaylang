@@ -1,4 +1,4 @@
-# strings: valid
+## strings: valid
 "\\";
 "\'";
 "\"";
@@ -40,7 +40,7 @@
 "\^_";
 "\^?";
 
-# "\^""; # COUGHT
+## "\^""; ## COUGHT
 
 "\0\"";
 "\0b0\";
@@ -57,7 +57,7 @@
 "\0 aasdasd"
 `asdasd
 
-# characters: "regular"
+## characters: "regular"
 '\\';
 '\'';
 '\"';
@@ -66,7 +66,7 @@
 '\r';
 '\t';
 
-# characters: caret
+## characters: caret
 '\^@';
 '\^A';
 '\^B';

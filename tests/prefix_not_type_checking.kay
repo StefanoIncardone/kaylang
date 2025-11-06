@@ -1,6 +1,6 @@
-# IDEA(stefano): create a .rs file to "check" these statements for correctness
-    # IDEA(stefano): make Token pub and extract the positions of the `Correct`\`Error` comments
-        # and use them to detect test statements
+## IDEA(stefano): create a .rs file to "check" these statements for correctness
+    ## IDEA(stefano): make Token pub and extract the positions of the `Correct`\`Error` comments
+        ## and use them to detect test statements
 
 let s = "s";
 let a = 'a';
@@ -12,27 +12,27 @@ let aa = ['a'];
 let ai = [1];
 let ab = [true];
 
-# let test_not_literal_string = !"s";  #* Error *#
+## let test_not_literal_string = !"s";  #* Error *#
 let test_not_literal_ascii  = !'a';  #* Correct *#
 let test_not_literal_i64    = !12;   #* Correct *#
 let test_not_literal_bool   = !true; #* Correct *#
 
-# let test_not_literal_array_of_string = !["s"];  #* Error *#
-# let test_not_literal_array_of_ascii  = !['a'];  #* Error *#
-# let test_not_literal_array_of_i64    = ![12];   #* Error *#
-# let test_not_literal_array_of_bool   = ![true]; #* Error *#
+## let test_not_literal_array_of_string = !["s"];  #* Error *#
+## let test_not_literal_array_of_ascii  = !['a'];  #* Error *#
+## let test_not_literal_array_of_i64    = ![12];   #* Error *#
+## let test_not_literal_array_of_bool   = ![true]; #* Error *#
 
-# let test_not_variable_string  = !s; #* Error *#
+## let test_not_variable_string  = !s; #* Error *#
 let test_not_variable_ascii   = !a; #* Correct *#
 let test_not_variable_i64     = !i; #* Correct *#
 let test_not_variable_bool    = !b; #* Correct *#
 
-# let test_not_variable_array_of_string = !as; #* Error *#
-# let test_not_variable_array_of_ascii  = !aa; #* Error *#
-# let test_not_variable_array_of_i64    = !ai; #* Error *#
-# let test_not_variable_array_of_bool   = !ab; #* Error *#
+## let test_not_variable_array_of_string = !as; #* Error *#
+## let test_not_variable_array_of_ascii  = !aa; #* Error *#
+## let test_not_variable_array_of_i64    = !ai; #* Error *#
+## let test_not_variable_array_of_bool   = !ab; #* Error *#
 
-# let test_not_index_variable_array_of_string  = !as[0]; #* Error *#
+## let test_not_index_variable_array_of_string  = !as[0]; #* Error *#
 let test_not_index_variable_array_of_ascii   = !aa[0]; #* Correct *#
 let test_not_index_variable_array_of_i64     = !ai[0]; #* Correct *#
 let test_not_index_variable_array_of_bool    = !ab[0]; #* Correct *#
