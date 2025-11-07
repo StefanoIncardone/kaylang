@@ -7,6 +7,7 @@ use std::path::Path;
 use back_to_front::offset32;
 use unicode_width::UnicodeWidthChar as _;
 
+// IDEA(stefano): move to back-to-front
 // IDEA(stefano): rename to PointersLen or something that refers to the fact that it's not
 // calculating the actual visible length of characters, but rather the length of the pointers in
 // error messages

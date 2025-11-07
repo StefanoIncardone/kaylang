@@ -12,6 +12,7 @@ use alloc::borrow::Cow;
 use back_to_front::offset32;
 use std::path::Path;
 
+// IDEA(stefano): move to back-to-front
 #[derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
 pub(crate) struct SliceIndexPtr<T>(pub(crate) offset32, core::marker::PhantomData<T>);

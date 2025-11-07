@@ -295,7 +295,6 @@ pub(crate) type TokenIndex<'code> = SliceIndexPtr<Token<'code>>;
 pub(crate) enum TokenKind<'code> {
     LineComment(TextIndex<'code>),
     BlockComment(TextIndex<'code>),
-    // IDEA(stefano): remove from the returned tokens, to avoid encountering them during the parsing stage
     Unexpected(TextIndex<'code>),
 
     // Symbols
@@ -675,13 +674,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             while let Some(_) = tokenizer.get_next_byte_singleline() {
                                 // consume next character
                             }
-                            let comment_text = tokenizer.token_text();
-                            let comment_index = tokenizer.new_token_text(comment_text);
                             Err(())
-                            // unimplemented!("Error: comments are now '##' instead of '#'");
-                            // let comment_text = tokenizer.token_text();
-                            // let comment_index = tokenizer.new_token_text(comment_text);
-                            // Ok(TokenKind::LineComment(comment_index))
                         },
                     },
                     b'(' => {
@@ -1178,6 +1171,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
     }
 }
 
+// IDEA(stefano): move to back-to-front
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 enum LineEnd {
     LF = 1,
@@ -1910,14 +1904,16 @@ impl Base {
         };
     }
 
+    // REMOVE(stefano): let the caller just access the inner field and function
     #[must_use]
-    #[inline]
+    #[inline(always)]
     pub const fn range(self) -> &'static [RangeInclusive<utf32>] {
         return self.0.range_ops();
     }
 
+    // REMOVE(stefano): let the caller just access the inner field and function
     #[must_use]
-    #[inline]
+    #[inline(always)]
     pub const fn range_ascii(self) -> &'static [RangeInclusive<ascii>] {
         return self.0.range_ascii_ops();
     }

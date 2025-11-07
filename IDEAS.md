@@ -263,7 +263,7 @@ kay run main.kay -n-obj foo -o-asm bar/ -n-asm bar -n-exe baz # foo.obj in ./, b
 kay run main.kay -n-obj foo -o-asm bar/ -n-asm bar -n-exe baz # foo.obj in ./, bar.asm in bar/, baz.exe or baz in ./
 ```
 
-## 0.7.0 - Configuration files
+## ?.?.? - Configuration files
 
 ability to take in configurations from a file, akin to a project file like `Cargo.toml`:
 
@@ -399,6 +399,18 @@ let Ok(19) {
     println "too bad";
 }
 
+## note: this code makes no sense, it's just to showcase possible syntaxes
+if case answer
+case Ok(19) {
+    println "lucky";
+} case if answer >= 21 {
+    println "you stoopid";
+} case 42 {
+    println "that's the right answer";
+} else {
+    println "too bad";
+}
+
 ## alternative switch statement:
 ## - 1 level of indentation
 ## - two keywords plus the two from before: `if`, `else`, `switch`, `case`
@@ -440,8 +452,7 @@ case var Err2(let err1; err2) {
     println err2; ## err2 is available only in this block and is mutable
 }
 
-## could benefit from rust's mutability modifiers
-## - would get rid of the initial mutabilty modifiers
+## or get rid of the initial mutabilty modifiers
 if answer
 case Ok(let ok) { println ok; } ## ok is available only in the following block
 case Ok_b(let ok) { println ok; } ## `let` is redundant
@@ -483,7 +494,7 @@ case Err0(let err0) {
     return;
 }
 
-## would just be syntactic sugar for
+## would just be syntactic sugar for, this could just be the default
 let ok = if answer
 case Ok(let ok) {
     break ok;
@@ -2095,6 +2106,12 @@ let bar = something.foo(12; 21);
 ## is equivalent to
 let bar = foo(something; 12; 21);
 
+fn ... <- Foo.foo(a: i64; self.: Self; b: i64) { ... } ## could allow custom self position
+let bar = something.foo(12; 21);
+let bar = something.foo(12; .; 21);
+## is equivalent to
+let bar = foo(12; something; 21);
+
 ## could provide a way of letting the `self` parameter to be anywhere
 fn ... <- foo(a: i64; self; b: i64) { ... }
 let bar = something.foo(12; 21);
@@ -2719,38 +2736,6 @@ fn i64 = +[i64, i64](lhs: i64; rhs: i64) { ... }
 fn<D, S> D = into(dst: type S) -> dst op into S { ... }
 ```
 
-## ?.?.? - Better memory layout
-
-```rust
-pub(crate) union TokenPayload {
-    text: TextIndex,
-    bracket: Bracket,
-    op: Op,
-    ascii: ascii,
-    none: (),
-}
-
-#[repr(u8)]
-pub(crate) enum TokenTag {
-    Foo,
-    Bar,
-    Baz,
-}
-
-// saves 3 bytes of padding per token
-pub(crate) struct TokensNew {
-    tags: Vec<TokenTag>,
-    payload: Vec<TokenPayload>,
-    col: Vec<offset32>,
-}
-
-pub(crate) struct TokenNew {
-    tags: TokenTag,
-    payload: TokenPayload,
-    col: offset32,
-}
-```
-
 ## 0.7.0 - Distinct types and aliases
 
 ```kay
@@ -3188,14 +3173,14 @@ let success: bool = new_foo(..., foo&, bar&, ..., baz&, foobar&);
 
 ```
 
-## ?.?.? - Removal of type inference
+## ?.?.? - Mandatory type annotations
 
 ```kay
 let i = 12; ## could raise an error
 let i: i64 = 21; ## would need an explicit type
 
 ## could also enable type inference only for literals where its really obvious
-let i = 42;
+let i = 42; ## but what integer is this? i64? i32? u8? u16?
 let i = "hello";
 let i: struct Foo = struct Foo(...); ## obvious case, so type inference would help
 let i = struct Foo(...);
