@@ -852,7 +852,7 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
 
     // IDEA(stefano): move to `back-to-front`
     #[must_use]
-    fn split_prefix(arg: &'args str) -> (FlagPrefix, &'args str) {
+    fn split_prefix(arg: &str) -> (FlagPrefix, &str) {
         let arg_characters = arg.as_bytes();
         let (prefix, prefix_len) = match arg_characters.get(0) {
             Some(b'/') => (FlagPrefix::Slash, 1),

@@ -2560,7 +2560,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     }
 }
 
-// variables and typesk
+// variables and types
 impl<'code> Parser<'_, '_, 'code, '_> {
     fn resolve_variable(&self, name: &'code str) -> Option<VariableIndex> {
         if let Some(variable) = self.resolve_let_variable(name) {
