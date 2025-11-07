@@ -6,7 +6,7 @@ use super::{
 };
 use crate::{
     error::DisplayLen as _,
-    front_end::{MsgSeverity, SliceIndexPtr},
+    front_end::{MsgSeverity, Index32},
 };
 use back_to_front::{digit::{self, AsciiDigit}, offset32};
 use core::{fmt::Display, ops::RangeInclusive};
@@ -288,8 +288,8 @@ impl Op {
     }
 }
 
-pub(crate) type TextIndex<'code> = SliceIndexPtr<&'code str>;
-pub(crate) type TokenIndex<'code> = SliceIndexPtr<Token<'code>>;
+pub(crate) type TextIndex<'code> = Index32<&'code str>;
+pub(crate) type TokenIndex<'code> = Index32<Token<'code>>;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum TokenKind<'code> {

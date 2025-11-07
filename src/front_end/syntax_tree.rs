@@ -3,7 +3,7 @@ use super::{
     tokenizer::{Op, TextIndex, Token, TokenIndex, TokenKind, Tokens},
     IntoMsgInfo, Msg, MsgDisplay, MsgInfo,
 };
-use crate::front_end::{tokenizer::ascii, MsgSeverity, SliceIndexPtr};
+use crate::front_end::{tokenizer::ascii, MsgSeverity, Index32};
 use core::{fmt::Display, marker::PhantomData, num::NonZero};
 extern crate alloc;
 use alloc::borrow::Cow;
@@ -263,7 +263,7 @@ impl PrefixAssignmentOp {
     }
 }
 
-pub(crate) type ExpressionIndex<'code> = SliceIndexPtr<Expression<'code>>;
+pub(crate) type ExpressionIndex<'code> = Index32<Expression<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Expression<'code> {
@@ -389,7 +389,7 @@ impl PartialEq for ArrayItemSeparator {
     }
 }
 
-pub(crate) type ArrayItemsIndex<'code> = SliceIndexPtr<ArrayItem<'code>>;
+pub(crate) type ArrayItemsIndex<'code> = Index32<ArrayItem<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 #[repr(C)]
@@ -398,7 +398,7 @@ pub(crate) struct ArrayItem<'code> {
     pub(crate) separator: ArrayItemSeparator,
 }
 
-pub(crate) type ArrayDimensionIndex<'code> = SliceIndexPtr<ArrayDimension<'code>>;
+pub(crate) type ArrayDimensionIndex<'code> = Index32<ArrayDimension<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct ArrayDimension<'code> {
@@ -422,7 +422,7 @@ pub(crate) struct InitialValue<'code> {
     pub(crate) expression: ExpressionIndex<'code>,
 }
 
-pub(crate) type VariableDefinitionIndex<'code> = SliceIndexPtr<VariableDefinition<'code>>;
+pub(crate) type VariableDefinitionIndex<'code> = Index32<VariableDefinition<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct VariableDefinition<'code> {
@@ -432,7 +432,7 @@ pub(crate) struct VariableDefinition<'code> {
     pub(crate) initial_value: Option<InitialValue<'code>>,
 }
 
-pub(crate) type NodeIndex<'code> = SliceIndexPtr<Node<'code>>;
+pub(crate) type NodeIndex<'code> = Index32<Node<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Node<'code> {

@@ -1,7 +1,7 @@
 use crate::front_end::{
     src_file::DisplayPosition,
     tokenizer::{self, TokenKind, Tokens},
-    MsgDisplay, MsgSeverity, SliceIndexPtr,
+    MsgDisplay, MsgSeverity, Index32,
 };
 use back_to_front::{digit::{self, Digit}, offset32};
 
@@ -826,8 +826,8 @@ impl BooleanBinaryAssignmentOp {
     }
 }
 
-pub(crate) type ExpressionIndex<'code> = SliceIndexPtr<Expression<'code>>;
-pub(crate) type ArrayItemsIndex<'code> = SliceIndexPtr<Expression<'code>>;
+pub(crate) type ExpressionIndex<'code> = Index32<Expression<'code>>;
+pub(crate) type ArrayItemsIndex<'code> = Index32<Expression<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Expression<'code> {
@@ -936,7 +936,7 @@ impl Expression<'_> {
     }
 }
 
-pub(crate) type ScopeIndex<'code> = SliceIndexPtr<Scope<'code>>;
+pub(crate) type ScopeIndex<'code> = Index32<Scope<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct Scope<'code> {
@@ -946,7 +946,7 @@ pub(crate) struct Scope<'code> {
     pub(crate) var_variables: Vec<VariableDefinitionIndex<'code>>,
 }
 
-pub(crate) type VariableDefinitionIndex<'code> = SliceIndexPtr<VariableDefinition<'code>>;
+pub(crate) type VariableDefinitionIndex<'code> = Index32<VariableDefinition<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct VariableDefinition<'code> {
@@ -956,7 +956,7 @@ pub(crate) struct VariableDefinition<'code> {
     pub(crate) value: ExpressionIndex<'code>,
 }
 
-pub(crate) type NodeIndex<'code> = SliceIndexPtr<Node<'code>>;
+pub(crate) type NodeIndex<'code> = Index32<Node<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Node<'code> {

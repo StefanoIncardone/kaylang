@@ -15,19 +15,19 @@ use std::path::Path;
 // IDEA(stefano): move to back-to-front
 #[derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
-pub(crate) struct SliceIndexPtr<T>(pub(crate) offset32, core::marker::PhantomData<T>);
+pub(crate) struct Index32<T>(pub(crate) offset32, core::marker::PhantomData<T>);
 
 #[expect(clippy::missing_trait_methods)]
-impl<T> Clone for SliceIndexPtr<T> {
+impl<T> Clone for Index32<T> {
     #[expect(clippy::non_canonical_clone_impl, reason = "false positive due to return")]
     fn clone(&self) -> Self {
         return *self;
     }
 }
 
-impl<T> Copy for SliceIndexPtr<T> {}
+impl<T> Copy for Index32<T> {}
 
-impl<T> SliceIndexPtr<T> {
+impl<T> Index32<T> {
     #[must_use]
     #[inline(always)]
     pub(crate) const fn new_offset32(index: offset32) -> Self {
@@ -57,42 +57,42 @@ impl<T> SliceIndexPtr<T> {
     }
 }
 
-impl<T> core::ops::Index<SliceIndexPtr<T>> for [T] {
+impl<T> core::ops::Index<Index32<T>> for [T] {
     type Output = T;
 
     #[track_caller]
     #[must_use]
     #[inline(always)]
-    fn index(&self, index: SliceIndexPtr<T>) -> &Self::Output {
+    fn index(&self, index: Index32<T>) -> &Self::Output {
         return &self[index.0 as usize];
     }
 }
 
-impl<T> core::ops::IndexMut<SliceIndexPtr<T>> for [T] {
+impl<T> core::ops::IndexMut<Index32<T>> for [T] {
     #[track_caller]
     #[must_use]
     #[inline(always)]
-    fn index_mut(&mut self, index: SliceIndexPtr<T>) -> &mut Self::Output {
+    fn index_mut(&mut self, index: Index32<T>) -> &mut Self::Output {
         return &mut self[index.0 as usize];
     }
 }
 
-impl<T> core::ops::Index<SliceIndexPtr<T>> for Vec<T> {
+impl<T> core::ops::Index<Index32<T>> for Vec<T> {
     type Output = T;
 
     #[track_caller]
     #[must_use]
     #[inline(always)]
-    fn index(&self, index: SliceIndexPtr<T>) -> &Self::Output {
+    fn index(&self, index: Index32<T>) -> &Self::Output {
         return self.as_slice().index(index);
     }
 }
 
-impl<T> core::ops::IndexMut<SliceIndexPtr<T>> for Vec<T> {
+impl<T> core::ops::IndexMut<Index32<T>> for Vec<T> {
     #[track_caller]
     #[must_use]
     #[inline(always)]
-    fn index_mut(&mut self, index: SliceIndexPtr<T>) -> &mut Self::Output {
+    fn index_mut(&mut self, index: Index32<T>) -> &mut Self::Output {
         return self.as_mut_slice().index_mut(index);
     }
 }
