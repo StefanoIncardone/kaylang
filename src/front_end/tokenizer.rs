@@ -1171,7 +1171,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
     }
 }
 
-// IDEA(stefano): move to back-to-front
+// TODO(stefano): use the enum from `back-to-front`
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 enum LineEnd {
     LF = 1,
@@ -1904,14 +1904,14 @@ impl Base {
         };
     }
 
-    // REMOVE(stefano): let the caller just access the inner field and function
+    #[deprecated(since = "0.6.4", note = "just access the inner field")]
     #[must_use]
     #[inline(always)]
     pub const fn range(self) -> &'static [RangeInclusive<utf32>] {
         return self.0.range_ops();
     }
 
-    // REMOVE(stefano): let the caller just access the inner field and function
+    #[deprecated(since = "0.6.4", note = "just access the inner field")]
     #[must_use]
     #[inline(always)]
     pub const fn range_ascii(self) -> &'static [RangeInclusive<ascii>] {
@@ -2029,7 +2029,7 @@ impl IntoMsgInfo for ErrorKind<'_> {
                 format!(
                     "digit '{escaped}' ({raw}) is out of the valid range for a base {} number {:?}",
                     base.0 as u8,
-                    base.range(),
+                    base.0.range(),
                     escaped = *digit as utf32,
                     raw = digit,
                 ).into(),

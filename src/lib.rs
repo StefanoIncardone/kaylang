@@ -850,7 +850,7 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
         return Some(arg_str);
     }
 
-    // IDEA(stefano): move to `back-to-front`
+    // TODO(stefano): use the function from `back-to-front`
     #[must_use]
     fn split_prefix(arg: &str) -> (FlagPrefix, &str) {
         let arg_characters = arg.as_bytes();
