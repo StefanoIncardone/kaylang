@@ -2,7 +2,7 @@ ASCII_valid_character = ? U+0032..U+0126 ?;
 UTF-8_character = ? U+0080.. ?;
 
 (* comments *)
-line_comment  = "#",  [{ASCII_valid_character | UTF-8_character}], "\n";
+line_comment  = "##",  [{ASCII_valid_character | UTF-8_character}], "\n";
 block_comment = "#*", [{ASCII_valid_character | UTF-8_character | "\n" | block_comment}], "*#";
 
 (* booleans *)

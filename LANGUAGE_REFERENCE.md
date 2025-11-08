@@ -9,7 +9,7 @@ println "Kay let's go!";
 line comments start with `#` and ignore everything until the end of the line:
 
 ```kay
-# lines starting with the `#` symbol will be ignored by the compiler
+## lines starting with the `#` symbol will be ignored by the compiler
 ```
 
 block comments start with `#*` and ignore everthing until the next matched `*#`:
@@ -23,7 +23,7 @@ by
 the compiler
 *#
 
-# blocks inside other statements will be ignored
+## blocks inside other statements will be ignored
 println #* lucky *# 12;
 ```
 
@@ -38,7 +38,7 @@ nested block comments are allowed:
 Each valid statement must end in a semicolon:
 
 ```kay
-"Kay " # Error: missing semicolon
+"Kay " ## Error: missing semicolon
 "let's go";
 ```
 
@@ -51,12 +51,12 @@ string and character literals.
 As of now UTF-8 characters are only allowed in comments:
 
 ```kay
-# UTF-8 characters 🤪 are allowed in comments
+## UTF-8 characters 🤪 are allowed in comments
 
-# will eventually be supported in strings and character literals
+## will eventually be supported in strings and character literals
 "hi 👋";
 
-# Error: UTF-8 characters will not be allowed in any other place
+## Error: UTF-8 characters will not be allowed in any other place
 menù;
 ```
 
@@ -66,10 +66,10 @@ Integers, of type `i64`, are represented in source code as base 10 numbers, and 
 memory as signed 64 bit values:
 
 ```kay
-21;      # valid number
-021;     # leading zeroes are allowed
-1_2_3_4; # separating underscores are allowed
-21a;     # Error: integer literals cannot contain non-digit characters
+21;      ## valid number
+021;     ## leading zeroes are allowed
+1_2_3_4; ## separating underscores are allowed
+21a;     ## Error: integer literals cannot contain non-digit characters
 ```
 
 ### Alternative number literals bases
@@ -99,12 +99,12 @@ Characters, of type `ascii`, are used to represent a single ASCII character, and
 in source code as being surrounded by `'`:
 
 ```kay
-'f';  # must contain a single ASCII characters
-'\n'; # or a valid escape character
-'';   # Error: empty characters are not allowed
-'f;   # Error: unclosed character
-'\f;  # Error: unclosed character
-'\    # Error: unclosed character
+'f';  ## must contain a single ASCII characters
+'\n'; ## or a valid escape character
+'';   ## Error: empty characters are not allowed
+'f;   ## Error: unclosed character
+'\f;  ## Error: unclosed character
+'\    ## Error: unclosed character
 ```
 
 ### Escape sequences
@@ -113,17 +113,17 @@ It is also possible to represent special characters by **escaping** them with ba
 These are the available escaped characters:
 
 ```kay
-'\\'; # backslash
-'\''; # single quote
-'\"'; # double quote
-'\e'; # escape
-'\n'; # newline
-'\r'; # carriage return
-'\t'; # tab character
-'\0'; # null character
-'\^@'; '\^A'; ..; '\^Z'; '\^['; '\^\'; '\^]'; '\^^'; '\^_'; '\^?'; # ASCII caret notation
+'\\'; ## backslash
+'\''; ## single quote
+'\"'; ## double quote
+'\e'; ## escape
+'\n'; ## newline
+'\r'; ## carriage return
+'\t'; ## tab character
+'\0'; ## null character
+'\^@'; '\^A'; ..; '\^Z'; '\^['; '\^\'; '\^]'; '\^^'; '\^_'; '\^?'; ## ASCII caret notation
 
-'\f'; '\^f'; # anything not in the previous list is considered an invalid escape sequence
+'\f'; '\^f'; ## anything not in the previous list is considered an invalid escape sequence
 ```
 
 ## ASCII Strings
@@ -134,7 +134,7 @@ code as being surrounded by `"` and contain any number of regular or escaped cha
 ```kay
 "Kay\nlet's go";
 
-# Error: unclosed string
+## Error: unclosed string
 "Kay\nlet's go
 ```
 
@@ -147,20 +147,20 @@ sequences would be escaped double quotes `\"` for consistency with regular strin
 ```kay
 "Escaped\nstring";
 
-# taken 'as is' from source code
+## taken 'as is' from source code
 r"Raw\nstring";
 
-# taken 'as is' from source code, except for `\"` escapes
+## taken 'as is' from source code, except for `\"` escapes
 r"Raw\n\"string\"";
 
-# Error: unclosed string
+## Error: unclosed string
 r"Kay let's go\"
 ```
 
 Strings can also be indexed with zero-based indexing to gain access to individual character:
 
 ```kay
-"01234"[3]; # will return the character '3'
+"01234"[3]; ## will return the character '3'
 ```
 
 ## Arrays
@@ -175,20 +175,17 @@ array of three `i64` would be of type `i64[3]`.
 Arrays are defined as semicolon-separated lists of items, as follows:
 
 ```kay
-[];                       # Error: arrays of zero items are not allowed
-[12; 21];                 # this declares an array of two items, namely `i64[2]`
-["Kay"; "let's"; "go!";]; # trailing semicolons are allowed, thus the array would be of type `str[3]]
+[];                       ## Error: arrays of zero items are not allowed
+[12; 21];                 ## this declares an array of two items, namely `i64[2]`
+["Kay"; "let's"; "go!";]; ## trailing semicolons are allowed, thus the array would be of type `str[3]`
 ```
 
 Arrays can also be indexed with zero-based indexing, to gain access to individual items:
 
 ```kay
-[0; 1; 2; 3; 4][3]; # will return the integer 3
-["01234"; "56789"][0][3]; # will return the string "01234", and access the character '3'
+[0; 1; 2; 3; 4][3]; ## will return the integer 3
+["01234"; "56789"][0][3]; ## will return the string "01234", and access the character '3'
 ```
-
->[!NOTE]
-> As a usability experiment `;` are also allowed as items separator like `[1; 2; 3;]`
 
 ## Variables
 
@@ -213,34 +210,34 @@ rules:
 So following the specified rules here are a few examples on how to create variables:
 
 ```kay
-# 1. mutability class
-let kay = "kay"; # immutable variable named `kay` with value "kay"
-kay = "let's go!"; # Error: cannot mutate immutable variable
+## 1. mutability class
+let kay = "kay"; ## immutable variable named `kay` with value "kay"
+kay = "let's go!"; ## Error: cannot mutate immutable variable
 
-var one = 1; # mutable variable named `one` with value 1
-one = 2; # `one` will from now on contain the value 2
+var one = 1; ## mutable variable named `one` with value 1
+one = 2; ## `one` will from now on contain the value 2
 
-# 2.0 variable names
-let kay_lets_go = "kay, let's go!"; # can contain underscores
-let two_plus_2 = "two + 2"; # can contain numbers
-let 2plus2 = 2 + 2; # Error: not a valid name, cannot start with a number
-let longlonglonglonglonglonglonglonglonglonglonglonglonglonglonglong; # Error: over the limit of 63 characters
+## 2.0 variable names
+let kay_lets_go = "kay, let's go!"; ## can contain underscores
+let two_plus_2 = "two + 2"; ## can contain numbers
+let 2plus2 = 2 + 2; ## Error: not a valid name, cannot start with a number
+let longlonglonglonglonglonglonglonglonglonglonglonglonglonglonglong; ## Error: over the limit of 63 characters
 
-# 2.1 identifier strings
-let `2 + 2` = 2 + 2; # identifier strings can contain any ASCII characters, functionally equivalent to strings without escapes
-let `longlonglonglonglonglonglonglonglonglonglonglonglonglonglonglong`; # Error: over the limit of 63 characters
+## 2.1 identifier strings
+let `2 + 2` = 2 + 2; ## identifier strings can contain any ASCII characters, functionally equivalent to strings without escapes
+let `longlonglonglonglonglonglonglonglonglonglonglonglonglonglonglong`; ## Error: over the limit of 63 characters
 
-# 3. optional type annotations
-let inferred = 42; # the type will be inferred as `i64` by the expression to the right of the `=` sign
-let explicit: i64 = 42; # with the type annotation the type is specified to be `i64
-let mismatched: i64 = "42"; # Error: annotated type differs from actual value, expected `i64` but got `str`
+## 3. optional type annotations
+let inferred = 42; ## the type will be inferred as `i64` by the expression to the right of the `=` sign
+let explicit: i64 = 42; ## with the type annotation the type is specified to be `i64
+let mismatched: i64 = "42"; ## Error: annotated type differs from actual value, expected `i64` but got `str`
 
-# 4. mandatory variable values
-let missing_initial_value: i64; # Error: missing initial value
+## 4. mandatory variable values
+let missing_initial_value: i64; ## Error: missing initial value
 
-# since all variables must hold a concrete type, there needs to be specified either a type annotation
-# or an initial value to be able to determine the type of the variable
-let cannot_infer_type; # Error: missing either type annotation or initial value to determine the type of the variable
+## since all variables must hold a concrete type, there needs to be specified either a type annotation
+## or an initial value to be able to determine the type of the variable
+let cannot_infer_type; ## Error: missing either type annotation or initial value to determine the type of the variable
 ```
 
 ## Expressions
@@ -258,7 +255,7 @@ let cannot_infer_type; # Error: missing either type annotation or initial value 
 >
 > ```kay
 > var twentyone = 9;
-> twentyone += 10; # equivalent to "twentyone = twentyone + 10;"
+> twentyone += 10; ## equivalent to "twentyone = twentyone + 10;"
 > ```
 
 >[!NOTE]
@@ -270,97 +267,97 @@ Expressions follow this order of operations (precedence from highest to lowest):
     - unary string and array length operator `len`:
 
         ```kay
-        len [12; 21; 42; 19] # -> 4
-        len "kay" # -> 3
+        len [12; 21; 42; 19] ## -> 4
+        len "kay" ## -> 3
         ```
 
     - unary integer negation `-`, `-\`, `-|`:
 
         ```kay
-        -twelve # -> -12
-        -I64_MIN # -> crash: overflow, -I64_MIN -> I64_MAX + 1
-        
-        -\twelve # -> -12
-        -\I64_MIN # -> I64_MAX + 1 -> I64_MIN
+        -twelve ## -> -12
+        -I64_MIN ## -> crash: overflow, -I64_MIN -> I64_MAX + 1
 
-        -|twelve # -> -12
-        -|I64_MIN # -> I64_MAX + 1 -> I64_MAX
+        -\twelve ## -> -12
+        -\I64_MIN ## -> I64_MAX + 1 -> I64_MIN
+
+        -|twelve ## -> -12
+        -|I64_MIN ## -> I64_MAX + 1 -> I64_MAX
         ```
 
     - unary integer absolute value `+`, `+\`, `+|`:
 
         ```kay
-        +twelve # |12| == +12 -> 12
-        +(-twelve) #|-12| == +(-12) -> 12
-        +I64_MIN # -> crash: overflow, +I64_MIN -> I64_MAX + 1
+        +twelve ## |12| == +12 -> 12
+        +(-twelve) ## |-12| == +(-12) -> 12
+        +I64_MIN ## -> crash: overflow, +I64_MIN -> I64_MAX + 1
 
-        +\twelve # -> -12
-        +\(-twelve) #|-12| == +\(-12) -> 12
-        +\I64_MIN # -> I64_MAX + 1 -> I64_MAX
+        +\twelve ## -> -12
+        +\(-twelve) ## |-12| == +\(-12) -> 12
+        +\I64_MIN ## -> I64_MAX + 1 -> I64_MAX
 
-        +|twelve # -> 12
-        +|(-twelve) #|-12| == +|(-12) -> 12
-        +|I64_MIN # -> I64_MAX + 1 -> I64_MIN
+        +|twelve ## -> 12
+        +|(-twelve) ## |-12| == +|(-12) -> 12
+        +|I64_MIN ## -> I64_MAX + 1 -> I64_MIN
         ```
 
     - unary integer bitwise one's complement and boolean negation `!`:
 
         ```kay
-        !4 # 0100 -> !0100 == 1011
-        !true # -> false
+        !4 ## 0100 -> !0100 == 1011
+        !true ## -> false
         ```
 
     - round brackets `\(`, `)`
 - binary exponentiation `**`, `**\`, `**|`:
 
     ```kay
-    3 ** 2 # -> 9
-    I64_MAX ** 2 # -> crash: overflow
+    3 ** 2 ## -> 9
+    I64_MAX ** 2 ## -> crash: overflow
 
-    3 **\ 2 # -> 9
-    I64_MAX **\ 2 # -> 1
+    3 **\ 2 ## -> 9
+    I64_MAX **\ 2 ## -> 1
 
-    3 **| 2 # -> 9
-    I64_MAX **| 2 # -> I64_MAX
+    3 **| 2 ## -> 9
+    I64_MAX **| 2 ## -> I64_MAX
     ```
 
 - binary multiplication `*`, `*\`, `*|`, binary division `/`, `/\`, `/|` and binary remainder `%`:
 
     ```kay
-    3 * 2 # -> 6
-    I64_MAX * 2 # -> crash: overlflow
-    I64_MIN * -1 # -> equivalent to -I64_MIN
-    
-    3 *\ 2 # -> 6
-    I64_MAX *\ 2 # -> -2
-    I64_MIN *\ -1 # equivalent to -\I64_MIN
-    
-    3 *| 2 # -> 6
-    I64_MAX *| 2 # -> -2
-    I64_MIN *| -1 # equivalent to -|I64_MIN
-    
-    6 / 2 # -> 3
-    I64_MIN / -1 # -> crash: overflow, equivalent to -I64_MIN
+    3 * 2 ## -> 6
+    I64_MAX * 2 ## -> crash: overlflow
+    I64_MIN * -1 ## -> equivalent to -I64_MIN
 
-    6 /\ 2 # -> 3
-    I64_MIN /\ -1 # -> I64_MIN, equivalent to -\I64_MIN
+    3 *\ 2 ## -> 6
+    I64_MAX *\ 2 ## -> -2
+    I64_MIN *\ -1 ## equivalent to -\I64_MIN
 
-    6 /| 2 # -> 3
-    I64_MIN /| -1 # -> I64_MAX, equivalent to -|I64_MIN
+    3 *| 2 ## -> 6
+    I64_MAX *| 2 ## -> -2
+    I64_MIN *| -1 ## equivalent to -|I64_MIN
+
+    6 / 2 ## -> 3
+    I64_MIN / -1 ## -> crash: overflow, equivalent to -I64_MIN
+
+    6 /\ 2 ## -> 3
+    I64_MIN /\ -1 ## -> I64_MIN, equivalent to -\I64_MIN
+
+    6 /| 2 ## -> 3
+    I64_MIN /| -1 ## -> I64_MAX, equivalent to -|I64_MIN
     ```
 
 - binary addition `+` and binary subtraction `-`:
 
     ```kay
-    12 + 21 # -> 33
-    42 - 12 # -> 30
-    I64_MAX + 1 # -> error
+    12 + 21 ## -> 33
+    42 - 12 ## -> 30
+    I64_MAX + 1 ## -> error
     ```
 
 - binary left shift `<<` and binary right shift `>>`:
 
     ```kay
-    1 << 2 # 0001 << 2 == 0100
+    1 << 2 ## 0001 << 2 == 0100
     ```
 
 - binary bitwise and `&`
@@ -389,8 +386,8 @@ Expressions follow this order of operations (precedence from highest to lowest):
 > boolean expressions implicit convert to `1` if `true` or `0` if `false` inside math expressions,
 >
 > ```kay
-> 1 + true; # -> 2: 1 + true -> 1 + 1
-> 1 + false; # -> 1: 1 + false -> 1 + 0
+> 1 + true; ## -> 2: 1 + true -> 1 + 1
+> 1 + false; ## -> 1: 1 + false -> 1 + 0
 > ```
 
 ## Printing
@@ -404,7 +401,7 @@ let lucky = ten + nine;
 
 println lucky;
 print 42;
-println; # omitting the println argument will just print a newline
+println; ## omitting the println argument will just print a newline
 ```
 
 >[!NOTE]
@@ -436,7 +433,7 @@ print "ten = "; println ten;
 
 print "ten in the inner scope = "; println ten;
 
-# Error: "nine" was not defined in this scope
+## Error: "nine" was not defined in this scope
 print "nine in the inner scope = "; println nine;
 ```
 
@@ -501,13 +498,13 @@ var i = 0;
 loop false {
     i += 1;
 }
-println i; # will print 0 since the increment inside the loop was never executed
+println i; ## will print 0 since the increment inside the loop was never executed
 
 var j = 0;
 do loop false {
     j += 1;
 }
-println j; # will print 1 since the increment inside the loop was executed at least once
+println j; ## will print 1 since the increment inside the loop was executed at least once
 ```
 
 ### break and continue statements
@@ -517,18 +514,18 @@ They can be used to alter the normal flow of the loop:
 ```kay
 var i = 0;
 loop i < 10 {
-    # Warning: this will never reach the increment statement, thus creating an infinite loop
+    ## Warning: this will never reach the increment statement, thus creating an infinite loop
     if i == 3 {
         continue;
     }
 
-    # Correct way of skipping an iteration
+    ## Correct way of skipping an iteration
     if i == 4 {
-        i += 1; # incrementint the loop counter variable to avoid an infinite loop
+        i += 1; ## incrementint the loop counter variable to avoid an infinite loop
         continue;
     }
 
-    # numbers 7, 8, 9 will not be printed
+    ## numbers 7, 8, 9 will not be printed
     if i == 6 {
         break;
     }
