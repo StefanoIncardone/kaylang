@@ -1,3 +1,4 @@
+// REMOVE(stefano): this module is very short, could be integrate into back_end.rs
 use crate::{error::MsgWithCause, ERROR};
 use core::fmt::{Display, Write as _};
 use std::{

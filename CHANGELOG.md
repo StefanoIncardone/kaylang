@@ -31,7 +31,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
     `i = !i;` -> `!=i;`
 - More string and characters escape codes:
     - `\e` -> ASCII `ESC` (`0x1b`)
-    - [ASCII caret escape characters](https://en.wikipedia.org/wiki/ASCII#:~:text=%5Bedit%5D-,Control%20code%20table,-%5Bedit%5D):
+    - [ASCII caret escape characters](https://en.wikipedia.org/wiki/ASCII#:~:text=%5Bedit%5D-,Control%20code%20table):
         - `\^@` -> `NUL` (`Null`, `0x00`)
         - ...
         - `\^?` -> `DEL` (`Delete`, `0x7f`)

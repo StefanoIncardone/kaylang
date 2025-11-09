@@ -18,7 +18,7 @@ loop a < a_max && !found {
     var b = a + 1;
     loop b < b_max {
         let c = 1000 - b - a;
-        if a**2 + b**2 == c**2 {
+        if a ** 2 + b ** 2 == c ** 2 {
             print "expected: "; println 31875000;
             print "actual:   "; println a * b * c;
 

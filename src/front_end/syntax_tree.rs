@@ -485,7 +485,6 @@ pub(crate) enum Node<'code> {
         semicolon_column: offset32,
     },
 
-    // TODO(stefano): parse in self.expression
     BinaryAssignment {
         target: ExpressionIndex<'code>,
         operator: BinaryAssignmentOp,
@@ -493,7 +492,6 @@ pub(crate) enum Node<'code> {
         new_value: ExpressionIndex<'code>,
         semicolon_column: offset32,
     },
-    // TODO(stefano): parse in self.expression
     PrefixAssignment {
         operator: PrefixAssignmentOp,
         operator_column: offset32,

@@ -42,18 +42,6 @@ impl BaseType {
             _ => None,
         };
     }
-
-    // #[must_use]
-    // #[inline]
-    // fn matches(self, name: &str) -> bool {
-    //     let self_str = match self {
-    //         Self::I64 => Self::I64_STR,
-    //         Self::Ascii => Self::ASCII_STR,
-    //         Self::Bool => Self::BOOL_STR,
-    //         Self::Str => Self::STR_STR,
-    //     };
-    //     return name == self_str;
-    // }
 }
 
 impl BaseType {

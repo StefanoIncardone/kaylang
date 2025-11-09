@@ -58,11 +58,16 @@ fn run_project_euler() -> Result<(), ExitCode> {
             Ok(path) => path.path(),
             Err(err) => panic!("could not get path: {err}"),
         };
+        let Some(extension) = src_path.extension() else {
+            continue;
+        };
+        if extension != "kay" {
+            continue;
+        }
 
         let Some(file_name) = src_path.file_name() else {
             continue;
         };
-
         if file_name == "features_test.kay" || file_name == "fizzbuzz.kay" {
             continue;
         }

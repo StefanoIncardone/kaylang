@@ -2,17 +2,9 @@
 //! This file is also an example of how it's possible to create cli tools based on this compiler
 
 use kaylang::{
-    back_end::{artifacts::Artifacts, Compiler},
-    error::MsgSimple,
-    front_end::{
-        ast::Parser,
-        src_file::SrcFile,
-        tokenizer::{TokenizedCode, Tokenizer},
-    },
-    Args, ArgsParser, Command, Help, Language, Logger, Verbosity, Version, ASSEMBLING,
-    ASSEMBLING_ERROR, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE,
-    COULD_NOT_RUN_LINKER, COULD_NOT_WRITE_COMPILED_CODE, DONE, GENERATING_ASM, LINKING,
-    LINKING_ERROR, LOADING_SOURCE, PARSING_AST, RUNNING, SUBSTEP_DONE, TOKENIZATION,
+    ASSEMBLING, ASSEMBLING_ERROR, Args, ArgsParser, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER, COULD_NOT_WRITE_COMPILED_CODE, Command, DONE, GENERATING_ASM, Help, LINKING, LINKING_ERROR, LOADING_SOURCE, Language, Logger, PARSING_AST, PARSING_SYNTAX_TREE, RUNNING, SUBSTEP_DONE, TOKENIZATION, TYPE_CHECKING, Verbosity, Version, back_end::{Compiler, artifacts::Artifacts}, error::MsgSimple, front_end::{
+        ast::Parser, src_file::SrcFile, syntax_tree, tokenizer::{TokenizedCode, Tokenizer}, typed_abstract_syntax_tree
+    }
 };
 use std::{
     path::{Path, PathBuf},
@@ -92,6 +84,36 @@ fn main() -> ExitCode {
             tokenization_sub_step.sub_step_with_verbosity(&TOKENIZATION, None, verbosity);
             match result {
                 Ok(tokens) => (src, tokens),
+                Err(errors) => {
+                    for error in errors {
+                        eprintln!("{}\n", error.display(&src));
+                    }
+                    return ExitCode::FAILURE;
+                },
+            }
+        };
+
+        let st = {
+            let building_st_sub_step = Logger::new();
+            let building_st_result = syntax_tree::Parser::parse(&src, &tokens);
+            building_st_sub_step.sub_step_with_verbosity(&PARSING_SYNTAX_TREE, None, verbosity);
+            match building_st_result {
+                Ok(st) => st,
+                Err(errors) => {
+                    for error in errors {
+                        eprintln!("{}\n", error.display(&src));
+                    }
+                    return ExitCode::FAILURE;
+                },
+            }
+        };
+
+        let _tast = {
+            let building_tast_sub_step = Logger::new();
+            let building_tast_result = typed_abstract_syntax_tree::Parser::parse(&src, &tokens, &st);
+            building_tast_sub_step.sub_step_with_verbosity(&TYPE_CHECKING, None, verbosity);
+            match building_tast_result {
+                Ok(tast) => tast,
                 Err(errors) => {
                     for error in errors {
                         eprintln!("{}\n", error.display(&src));
