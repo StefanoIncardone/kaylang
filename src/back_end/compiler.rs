@@ -6,10 +6,10 @@ use crate::front_end::{
     },
     src_file::{Position, SrcCode},
 };
+use back_to_front::offset32;
 #[expect(clippy::useless_attribute, reason = "false positive")]
 #[expect(clippy::pub_use)]
 pub use back_to_front::x86_64::Reg64;
-use back_to_front::offset32;
 use core::fmt::{Display, Write as _};
 use Reg64::{Rcx, Rdi, Rdx, Rsi};
 extern crate alloc;

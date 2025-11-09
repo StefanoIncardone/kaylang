@@ -2,7 +2,10 @@
 // IDEA(stefano): fuse tokenization and parsing, making the tokenizer a generator of tokens
 // TODO(stefano): multidimensional arrays
 
-use back_to_front::{digit::{self, Digit}, offset32};
+use back_to_front::{
+    digit::{self, Digit},
+    offset32,
+};
 
 use crate::front_end::{tokenizer, MsgSeverity};
 
@@ -1449,7 +1452,11 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         };
     }
 
-    fn parse_positive_i64(literal_str: &'code str, base: digit::Base, extended_prefix: bool) -> Option<i64> {
+    fn parse_positive_i64(
+        literal_str: &'code str,
+        base: digit::Base,
+        extended_prefix: bool,
+    ) -> Option<i64> {
         let mut integer: i64 = 0;
         let mut digit_index = if extended_prefix {
             tokenizer::Base(base).prefix_extended().len()
@@ -1486,7 +1493,11 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         return Some(integer);
     }
 
-    fn parse_negative_i64(literal_str: &'code str, base: digit::Base, extended_prefix: bool) -> Option<i64> {
+    fn parse_negative_i64(
+        literal_str: &'code str,
+        base: digit::Base,
+        extended_prefix: bool,
+    ) -> Option<i64> {
         let mut integer: i64 = 0;
         let mut digit_index = if extended_prefix {
             tokenizer::Base(base).prefix_extended().len()
@@ -1588,9 +1599,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     }),
                 }
             },
-            TokenKind::Ascii(_, value) => {
-                Ok(Expression::Ascii(value))
-            },
+            TokenKind::Ascii(_, value) => Ok(Expression::Ascii(value)),
             TokenKind::Str(string_index) => {
                 let string_label = self.string_label;
                 let string = self.tokens.text[string_index];
@@ -2081,7 +2090,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     TokenKind::HexadecimalInteger(literal_index) => {
                         let literal = self.tokens.text[literal_index];
                         if should_be_negated {
-                            match Self::parse_negative_i64(literal, digit::Base::Hexadecimal, false) {
+                            match Self::parse_negative_i64(literal, digit::Base::Hexadecimal, false)
+                            {
                                 Some(0) => Err(Msg {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::MinusZeroInteger,
@@ -2101,7 +2111,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                 }),
                             }
                         } else {
-                            match Self::parse_positive_i64(literal, digit::Base::Hexadecimal, false) {
+                            match Self::parse_positive_i64(literal, digit::Base::Hexadecimal, false)
+                            {
                                 Some(integer) => Ok(Expression::I64(integer)),
                                 None => Err(Msg {
                                     severity: MsgSeverity::Error,

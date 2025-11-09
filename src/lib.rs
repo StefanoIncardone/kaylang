@@ -824,7 +824,9 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
                 None => {},
             }
 
-            parser.errors.push(Error { kind: ErrorKind::Unrecognized, arg_index: current_flag_index });
+            parser
+                .errors
+                .push(Error { kind: ErrorKind::Unrecognized, arg_index: current_flag_index });
             parser.arg_index += 1;
         }
 
@@ -944,18 +946,11 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
 
     #[must_use]
     fn parse_help_command(&mut self, prefix: FlagPrefix, arg: &'args str) -> Option<CommandFlag> {
-        use FlagPrefix::{Dash, DashDash, Empty, Slash};
         use CommandFlag::{
-            Help,
-            HelpLong,
-            HelpLongSlash,
-            HelpShort,
-            HelpShortSlash,
-            HelpQuestion,
-            HelpQuestionLong,
-            HelpQuestionShort,
-            HelpQuestionShortSlash,
+            Help, HelpLong, HelpLongSlash, HelpQuestion, HelpQuestionLong, HelpQuestionShort,
+            HelpQuestionShortSlash, HelpShort, HelpShortSlash,
         };
+        use FlagPrefix::{Dash, DashDash, Empty, Slash};
         let command_flag = match arg {
             "help" => match prefix {
                 Empty => Help,
@@ -987,14 +982,10 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
         prefix: FlagPrefix,
         arg: &'args str,
     ) -> Option<CommandFlag> {
-        use FlagPrefix::{Dash, DashDash, Empty, Slash};
         use CommandFlag::{
-            Version,
-            VersionLong,
-            VersionLongSlash,
-            VersionShort,
-            VersionShortSlash,
+            Version, VersionLong, VersionLongSlash, VersionShort, VersionShortSlash,
         };
+        use FlagPrefix::{Dash, DashDash, Empty, Slash};
         let command_flag = match arg {
             "version" => match prefix {
                 Empty => Version,
@@ -1153,7 +1144,11 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
         return Some(language_and_flag);
     }
 
-    fn parse_src_path(&mut self, command_flag_index: usize, command_flag: CommandFlag) -> Result<&'args Path, ()> {
+    fn parse_src_path(
+        &mut self,
+        command_flag_index: usize,
+        command_flag: CommandFlag,
+    ) -> Result<&'args Path, ()> {
         let Some(src_path_str) = self.get_arg(self.arg_index) else {
             self.errors.push(Error {
                 kind: ErrorKind::MustBeFollowedBySourceFilePath(command_flag),
@@ -1223,7 +1218,11 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
                 _ => return ArgResult::Unrecognized,
             };
             #[expect(clippy::cast_possible_truncation)]
-            (&arg[start_of_path_index..], out_path_arg_index, (start_of_path_index + prefix_len) as u8)
+            (
+                &arg[start_of_path_index..],
+                out_path_arg_index,
+                (start_of_path_index + prefix_len) as u8,
+            )
         };
         self.arg_index += 1;
 
@@ -1272,7 +1271,10 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
     ) -> Option<(Verbosity, VerbosityFlag)> {
         use FlagPrefix::{Dash, DashDash, Empty, Slash};
         use Verbosity::{Quiet, Verbose};
-        use VerbosityFlag::{QuietLong, QuietLongSlash, QuietShort, QuietShortSlash, VerboseLong, VerboseLongSlash, VerboseShort, VerboseShortSlash};
+        use VerbosityFlag::{
+            QuietLong, QuietLongSlash, QuietShort, QuietShortSlash, VerboseLong, VerboseLongSlash,
+            VerboseShort, VerboseShortSlash,
+        };
         let verbosity_and_flag = match arg {
             "quiet" => match prefix {
                 DashDash => (Quiet, QuietLong),

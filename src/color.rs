@@ -118,7 +118,8 @@ pub(super) fn print_color(
     }
 
     fn u8_2_digits_to_str(mut value: u8, codes: &mut Codes, digit_index: &mut usize) {
-        let mut digit = value % 10; value /= 10;
+        let mut digit = value % 10;
+        value /= 10;
         codes[*digit_index] = digit.wrapping_add(b'0');
         *digit_index = digit_index.wrapping_sub(1);
 
@@ -129,11 +130,13 @@ pub(super) fn print_color(
 
     #[expect(clippy::single_call_fn)]
     fn u8_3_digits_to_str(mut value: u8, codes: &mut Codes, digit_index: &mut usize) {
-        let mut digit = value % 10; value /= 10;
+        let mut digit = value % 10;
+        value /= 10;
         codes[*digit_index] = digit.wrapping_add(b'0');
         *digit_index = digit_index.wrapping_sub(1);
 
-        digit = value % 10; value /= 10;
+        digit = value % 10;
+        value /= 10;
         codes[*digit_index] = digit.wrapping_add(b'0');
         *digit_index = digit_index.wrapping_sub(1);
 
@@ -143,6 +146,7 @@ pub(super) fn print_color(
     }
 
     // precalculated from the max amount of digits that can appear in fg, bg and flags
+    #[rustfmt::skip]
     let mut codes: Codes = [
         b';', b';', b';', b';', b';', b';', b';', b';',
         b';', b';', b';', b';', b';', b';', b';', b';',

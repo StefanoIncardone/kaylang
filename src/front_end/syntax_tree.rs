@@ -3,7 +3,7 @@ use super::{
     tokenizer::{Op, TextIndex, Token, TokenIndex, TokenKind, Tokens},
     IntoMsgInfo, Msg, MsgDisplay, MsgInfo,
 };
-use crate::front_end::{tokenizer::ascii, MsgSeverity, Index32};
+use crate::front_end::{tokenizer::ascii, Index32, MsgSeverity};
 use core::{fmt::Display, marker::PhantomData, num::NonZero};
 extern crate alloc;
 use alloc::borrow::Cow;
@@ -1673,7 +1673,9 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             TokenKind::HexadecimalInteger(literal) => {
                 Expression::HexadecimalInteger { literal, column: token.col }
             },
-            TokenKind::Ascii(literal, value) => Expression::Ascii { literal, value, column: token.col },
+            TokenKind::Ascii(literal, value) => {
+                Expression::Ascii { literal, value, column: token.col }
+            },
             TokenKind::Str(literal) => Expression::Str { literal, column: token.col },
             TokenKind::RawStr(literal) => Expression::RawStr { literal, column: token.col },
             TokenKind::Identifier(identifier) => {
@@ -2485,19 +2487,23 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         unreachable!();
                     };
                     break;
-                }
+                },
                 TokenKind::If => {
-                    let start_of_else_if_condition_token = self.next_expected_token(Expected::Expression)?;
+                    let start_of_else_if_condition_token =
+                        self.next_expected_token(Expected::Expression)?;
                     let else_if_condition = self.expression(start_of_else_if_condition_token)?;
                     let end_of_else_if_condition_token = self.peek_previous_token();
 
-                    let after_else_if_condition_token = self.next_expected_token(Expected::OpenCurlyBracket)?;
+                    let after_else_if_condition_token =
+                        self.next_expected_token(Expected::OpenCurlyBracket)?;
                     let TokenKind::OpenCurlyBracket = after_else_if_condition_token.kind else {
                         self.errors.push(Msg {
                             severity: MsgSeverity::Error,
                             kind: ErrorKind::IfMustBeFollowedByBlock,
                             col: end_of_else_if_condition_token.col,
-                            pointers_count: end_of_else_if_condition_token.kind.display_len(self.tokens),
+                            pointers_count: end_of_else_if_condition_token
+                                .kind
+                                .display_len(self.tokens),
                         });
                         return Err(());
                     };
@@ -2511,7 +2517,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     let ParsedNode::ScopeEnd = self.any(after_else_if_condition_token)? else {
                         unreachable!();
                     };
-                }
+                },
                 TokenKind::Do
                 | TokenKind::Colon
                 | TokenKind::SemiColon
@@ -2551,10 +2557,10 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         pointers_count: else_token.kind.display_len(self.tokens),
                     });
                     return Err(());
-                }
-                TokenKind::Unexpected(_) | TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {
-                    self.should_have_been_skipped(after_else_token)
-                }
+                },
+                TokenKind::Unexpected(_)
+                | TokenKind::LineComment(_)
+                | TokenKind::BlockComment(_) => self.should_have_been_skipped(after_else_token),
             }
         }
 

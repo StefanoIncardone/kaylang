@@ -2,9 +2,20 @@
 //! This file is also an example of how it's possible to create cli tools based on this compiler
 
 use kaylang::{
-    ASSEMBLING, ASSEMBLING_ERROR, Args, ArgsParser, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER, COULD_NOT_WRITE_COMPILED_CODE, Command, DONE, GENERATING_ASM, Help, LINKING, LINKING_ERROR, LOADING_SOURCE, Language, Logger, PARSING_AST, PARSING_SYNTAX_TREE, RUNNING, SUBSTEP_DONE, TOKENIZATION, TYPE_CHECKING, Verbosity, Version, back_end::{Compiler, artifacts::Artifacts}, error::MsgSimple, front_end::{
-        ast::Parser, src_file::SrcFile, syntax_tree, tokenizer::{TokenizedCode, Tokenizer}, typed_abstract_syntax_tree
-    }
+    back_end::{Artifacts, compiler::Compiler},
+    error::MsgSimple,
+    front_end::{
+        ast::Parser,
+        src_file::SrcFile,
+        syntax_tree,
+        tokenizer::{TokenizedCode, Tokenizer},
+        typed_abstract_syntax_tree,
+    },
+    Args, ArgsParser, Command, Help, Language, Logger, Verbosity, Version, ASSEMBLING,
+    ASSEMBLING_ERROR, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE,
+    COULD_NOT_RUN_LINKER, COULD_NOT_WRITE_COMPILED_CODE, DONE, GENERATING_ASM, LINKING,
+    LINKING_ERROR, LOADING_SOURCE, PARSING_AST, PARSING_SYNTAX_TREE, RUNNING, SUBSTEP_DONE,
+    TOKENIZATION, TYPE_CHECKING,
 };
 use std::{
     path::{Path, PathBuf},
@@ -110,7 +121,8 @@ fn main() -> ExitCode {
 
         let _tast = {
             let building_tast_sub_step = Logger::new();
-            let building_tast_result = typed_abstract_syntax_tree::Parser::parse(&src, &tokens, &st);
+            let building_tast_result =
+                typed_abstract_syntax_tree::Parser::parse(&src, &tokens, &st);
             building_tast_sub_step.sub_step_with_verbosity(&TYPE_CHECKING, None, verbosity);
             match building_tast_result {
                 Ok(tast) => tast,

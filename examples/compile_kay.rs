@@ -1,7 +1,7 @@
 #![expect(clippy::print_stderr, reason = "it's a cli tool")]
 
 use kaylang::{
-    back_end::{artifacts::Artifacts, Compiler},
+    back_end::{Artifacts, compiler::Compiler},
     error::MsgSimple,
     front_end::{
         ast::Parser,

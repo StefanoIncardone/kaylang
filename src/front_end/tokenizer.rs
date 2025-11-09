@@ -6,9 +6,12 @@ use super::{
 };
 use crate::{
     error::DisplayLen as _,
-    front_end::{MsgSeverity, Index32},
+    front_end::{Index32, MsgSeverity},
 };
-use back_to_front::{digit::{self, AsciiDigit}, offset32};
+use back_to_front::{
+    digit::{self, AsciiDigit},
+    offset32,
+};
 use core::{fmt::Display, ops::RangeInclusive};
 use unicode_segmentation::UnicodeSegmentation as _;
 
@@ -578,9 +581,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             tokenizer.col += 1;
                             tokenizer.integer_hexadecimal()
                         },
-                        Some(_) => {
-                            tokenizer.integer_decimal()
-                        }
+                        Some(_) => tokenizer.integer_decimal(),
                     },
                     b'1'..=b'9' => tokenizer.integer_decimal(),
                     b'\'' => tokenizer.ascii_literal(),
@@ -594,7 +595,8 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                     Some(b'*') => match tokenizer.get_next_byte_multiline() {
                                         Some(b'#') => {
                                             let comment_text = tokenizer.token_text();
-                                            let comment_index = tokenizer.new_token_text(comment_text);
+                                            let comment_index =
+                                                tokenizer.new_token_text(comment_text);
                                             if back_patches.len()
                                                 == previous_block_comments_token_start_len
                                             {
@@ -662,7 +664,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             let comment_text = tokenizer.token_text();
                             let comment_index = tokenizer.new_token_text(comment_text);
                             Ok(TokenKind::LineComment(comment_index))
-                        }
+                        },
                         Some(_) | None => {
                             tokenizer.errors.push(Msg {
                                 severity: MsgSeverity::NonTerminalError,
@@ -1322,7 +1324,7 @@ impl<'code> Tokenizer<'code> {
                     let grapheme = self.current_grapheme();
                     self.col += grapheme.len() as offset32;
                     self.push_utf8_error(grapheme);
-                }
+                },
             }
         }
     }
@@ -1367,7 +1369,7 @@ impl<'code> Tokenizer<'code> {
             return Err(());
         }
         let literal_text = self.token_text();
-        return Ok(literal_text)
+        return Ok(literal_text);
     }
 
     fn digits_text(&mut self, base: digit::Base) -> Result<TextIndex<'code>, ()> {
@@ -1435,12 +1437,12 @@ impl<'code> Tokenizer<'code> {
         let escaped_character = match current_character {
             b'\\' => b'\\',
             b'\'' => b'\'',
-            b'"'  => b'\"',
-            b'e'  => b'\x1b',
-            b'n'  => b'\n',
-            b'r'  => b'\r',
-            b't'  => b'\t',
-            b'0'  => b'\0',
+            b'"' => b'\"',
+            b'e' => b'\x1b',
+            b'n' => b'\n',
+            b'r' => b'\r',
+            b't' => b'\t',
+            b'0' => b'\0',
             b'^' => {
                 let caret_character = match self.current_ascii_singleline() {
                     Some(Ok(escape_character)) => escape_character,
@@ -1632,7 +1634,7 @@ impl<'code> Tokenizer<'code> {
             return Err(());
         };
         let literal_text = self.token_text();
-        return Ok(literal_text)
+        return Ok(literal_text);
     }
 
     fn str_literal(&mut self) -> Result<TokenKind<'code>, ()> {
@@ -1707,7 +1709,7 @@ impl<'code> Tokenizer<'code> {
             return Err(());
         }
         let literal_text = self.token_text();
-        return Ok(literal_text)
+        return Ok(literal_text);
     }
 
     fn raw_str_literal(&mut self) -> Result<TokenKind<'code>, ()> {

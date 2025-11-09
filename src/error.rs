@@ -1,5 +1,7 @@
 use crate::{
-    color::{ansi_flag, AnsiFlag, Bg, Colored, Fg}, front_end::tokenizer::{ascii, utf32}, AT, BAR, CAUSE
+    color::{ansi_flag, AnsiFlag, Bg, Colored, Fg},
+    front_end::tokenizer::{ascii, utf32},
+    AT, BAR, CAUSE,
 };
 use core::fmt::Display;
 use std::path::Path;

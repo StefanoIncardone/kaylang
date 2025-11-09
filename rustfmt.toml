@@ -78,4 +78,4 @@ use_try_shorthand = true
 # version = "One" # unstable
 # where_single_line = false # unstable
 # wrap_comments = false # unstable
-newline_style = "Native"
+newline_style = "Auto"

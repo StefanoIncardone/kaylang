@@ -63,8 +63,10 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
     - `Command::Help` no longer contains the executable name
     - `Command::Check`, `Command::Compile` and `Command::Run` now contain `&Path`
 - `error::Msg` is now `error::MsgSimple`
+- `back_end::artifacts` module inlined into `back_end`
 <!--  -->
 - [Syntax specification](SYNTAX.ebnf) only considers syntax and not typing
+- `back_end::artifacts` module inlined into `back_end`
 
 #### Fixed
 

@@ -1,9 +1,12 @@
 use crate::front_end::{
     src_file::DisplayPosition,
     tokenizer::{self, TokenKind, Tokens},
-    MsgDisplay, MsgSeverity, Index32,
+    Index32, MsgDisplay, MsgSeverity,
 };
-use back_to_front::{digit::{self, Digit}, offset32};
+use back_to_front::{
+    digit::{self, Digit},
+    offset32,
+};
 
 use super::{
     src_file::SrcCode,
@@ -1611,7 +1614,11 @@ impl<'code> TypedSyntaxTree<'_, '_, 'code> {
 }
 
 impl<'code> Parser<'_, '_, '_, 'code, '_> {
-    fn parse_positive_i64(literal_str: &'code str, base: digit::Base, extended_prefix: bool) -> Result<i64, ()> {
+    fn parse_positive_i64(
+        literal_str: &'code str,
+        base: digit::Base,
+        extended_prefix: bool,
+    ) -> Result<i64, ()> {
         let mut integer: i64 = 0;
         let mut digit_index = if extended_prefix {
             tokenizer::Base(base).prefix_extended().len()
@@ -1648,7 +1655,11 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         return Ok(integer);
     }
 
-    fn parse_negative_i64(literal_str: &'code str, base: digit::Base, extended_prefix: bool) -> Result<i64, ()> {
+    fn parse_negative_i64(
+        literal_str: &'code str,
+        base: digit::Base,
+        extended_prefix: bool,
+    ) -> Result<i64, ()> {
         let mut integer: i64 = 0;
         let mut digit_index = if extended_prefix {
             tokenizer::Base(base).prefix_extended().len()
@@ -1840,7 +1851,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             st::Expression::True { column } => Expression::True { column: *column },
             st::Expression::DecimalInteger { literal, column } => {
                 let literal_text = self.tokens.text[*literal];
-                let Ok(value) = Self::parse_positive_i64(literal_text, digit::Base::Decimal, false) else {
+                let Ok(value) = Self::parse_positive_i64(literal_text, digit::Base::Decimal, false)
+                else {
                     return Err(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::DecimalIntegerOverflow,
@@ -1853,7 +1865,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             },
             st::Expression::DecimalIntegerPrefix { literal, column } => {
                 let literal_text = self.tokens.text[*literal];
-                let Ok(value) = Self::parse_positive_i64(literal_text, digit::Base::Decimal, true) else {
+                let Ok(value) = Self::parse_positive_i64(literal_text, digit::Base::Decimal, true)
+                else {
                     return Err(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::DecimalIntegerOverflow,
@@ -1866,7 +1879,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             },
             st::Expression::BinaryInteger { literal, column } => {
                 let literal_text = self.tokens.text[*literal];
-                let Ok(value) = Self::parse_positive_i64(literal_text, digit::Base::Binary, false) else {
+                let Ok(value) = Self::parse_positive_i64(literal_text, digit::Base::Binary, false)
+                else {
                     return Err(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::BinaryIntegerOverflow,
@@ -1879,7 +1893,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             },
             st::Expression::OctalInteger { literal, column } => {
                 let literal_text = self.tokens.text[*literal];
-                let Ok(value) = Self::parse_positive_i64(literal_text, digit::Base::Octal, false) else {
+                let Ok(value) = Self::parse_positive_i64(literal_text, digit::Base::Octal, false)
+                else {
                     return Err(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::OctalIntegerOverflow,
@@ -1892,7 +1907,9 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             },
             st::Expression::HexadecimalInteger { literal, column } => {
                 let literal_text = self.tokens.text[*literal];
-                let Ok(value) = Self::parse_positive_i64(literal_text, digit::Base::Hexadecimal, false) else {
+                let Ok(value) =
+                    Self::parse_positive_i64(literal_text, digit::Base::Hexadecimal, false)
+                else {
                     return Err(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::HexadecimalIntegerOverflow,
@@ -2091,30 +2108,31 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                     match st_right_operand {
                         st::Expression::BinaryInteger { literal, column } => {
                             let literal_text = self.tokens.text[*literal];
-                            let right_operand_expression =
-                                match Self::parse_negative_i64(literal_text, digit::Base::Binary, false) {
-                                    Ok(0) => {
-                                        return Err(Msg {
-                                            severity: MsgSeverity::Error,
-                                            kind: ErrorKind::MinusZeroInteger,
-                                            col: *column,
-                                            #[expect(clippy::cast_possible_truncation)]
-                                            pointers_count: literal_text.len() as offset32,
-                                        })
-                                    },
-                                    Ok(integer) => {
-                                        Expression::I64 { value: integer, column: *column }
-                                    },
-                                    Err(()) => {
-                                        return Err(Msg {
-                                            severity: MsgSeverity::Error,
-                                            kind: ErrorKind::BinaryIntegerUnderflow,
-                                            col: *column,
-                                            #[expect(clippy::cast_possible_truncation)]
-                                            pointers_count: literal_text.len() as offset32,
-                                        })
-                                    },
-                                };
+                            let right_operand_expression = match Self::parse_negative_i64(
+                                literal_text,
+                                digit::Base::Binary,
+                                false,
+                            ) {
+                                Ok(0) => {
+                                    return Err(Msg {
+                                        severity: MsgSeverity::Error,
+                                        kind: ErrorKind::MinusZeroInteger,
+                                        col: *column,
+                                        #[expect(clippy::cast_possible_truncation)]
+                                        pointers_count: literal_text.len() as offset32,
+                                    })
+                                },
+                                Ok(integer) => Expression::I64 { value: integer, column: *column },
+                                Err(()) => {
+                                    return Err(Msg {
+                                        severity: MsgSeverity::Error,
+                                        kind: ErrorKind::BinaryIntegerUnderflow,
+                                        col: *column,
+                                        #[expect(clippy::cast_possible_truncation)]
+                                        pointers_count: literal_text.len() as offset32,
+                                    })
+                                },
+                            };
 
                             Expression::Prefix {
                                 operator: (*operator).into(),
@@ -2124,30 +2142,31 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         },
                         st::Expression::OctalInteger { literal, column } => {
                             let literal_text = self.tokens.text[*literal];
-                            let right_operand_expression =
-                                match Self::parse_negative_i64(literal_text, digit::Base::Octal, false) {
-                                    Ok(0) => {
-                                        return Err(Msg {
-                                            severity: MsgSeverity::Error,
-                                            kind: ErrorKind::MinusZeroInteger,
-                                            col: *column,
-                                            #[expect(clippy::cast_possible_truncation)]
-                                            pointers_count: literal_text.len() as offset32,
-                                        })
-                                    },
-                                    Ok(integer) => {
-                                        Expression::I64 { value: integer, column: *column }
-                                    },
-                                    Err(()) => {
-                                        return Err(Msg {
-                                            severity: MsgSeverity::Error,
-                                            kind: ErrorKind::OctalIntegerUnderflow,
-                                            col: *column,
-                                            #[expect(clippy::cast_possible_truncation)]
-                                            pointers_count: literal_text.len() as offset32,
-                                        })
-                                    },
-                                };
+                            let right_operand_expression = match Self::parse_negative_i64(
+                                literal_text,
+                                digit::Base::Octal,
+                                false,
+                            ) {
+                                Ok(0) => {
+                                    return Err(Msg {
+                                        severity: MsgSeverity::Error,
+                                        kind: ErrorKind::MinusZeroInteger,
+                                        col: *column,
+                                        #[expect(clippy::cast_possible_truncation)]
+                                        pointers_count: literal_text.len() as offset32,
+                                    })
+                                },
+                                Ok(integer) => Expression::I64 { value: integer, column: *column },
+                                Err(()) => {
+                                    return Err(Msg {
+                                        severity: MsgSeverity::Error,
+                                        kind: ErrorKind::OctalIntegerUnderflow,
+                                        col: *column,
+                                        #[expect(clippy::cast_possible_truncation)]
+                                        pointers_count: literal_text.len() as offset32,
+                                    })
+                                },
+                            };
 
                             Expression::Prefix {
                                 operator: (*operator).into(),
@@ -2157,30 +2176,31 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         },
                         st::Expression::DecimalInteger { literal, column } => {
                             let literal_text = self.tokens.text[*literal];
-                            let right_operand_expression =
-                                match Self::parse_negative_i64(literal_text, digit::Base::Decimal, false) {
-                                    Ok(0) => {
-                                        return Err(Msg {
-                                            severity: MsgSeverity::Error,
-                                            kind: ErrorKind::MinusZeroInteger,
-                                            col: *column,
-                                            #[expect(clippy::cast_possible_truncation)]
-                                            pointers_count: literal_text.len() as offset32,
-                                        })
-                                    },
-                                    Ok(integer) => {
-                                        Expression::I64 { value: integer, column: *column }
-                                    },
-                                    Err(()) => {
-                                        return Err(Msg {
-                                            severity: MsgSeverity::Error,
-                                            kind: ErrorKind::DecimalIntegerUnderflow,
-                                            col: *column,
-                                            #[expect(clippy::cast_possible_truncation)]
-                                            pointers_count: literal_text.len() as offset32,
-                                        })
-                                    },
-                                };
+                            let right_operand_expression = match Self::parse_negative_i64(
+                                literal_text,
+                                digit::Base::Decimal,
+                                false,
+                            ) {
+                                Ok(0) => {
+                                    return Err(Msg {
+                                        severity: MsgSeverity::Error,
+                                        kind: ErrorKind::MinusZeroInteger,
+                                        col: *column,
+                                        #[expect(clippy::cast_possible_truncation)]
+                                        pointers_count: literal_text.len() as offset32,
+                                    })
+                                },
+                                Ok(integer) => Expression::I64 { value: integer, column: *column },
+                                Err(()) => {
+                                    return Err(Msg {
+                                        severity: MsgSeverity::Error,
+                                        kind: ErrorKind::DecimalIntegerUnderflow,
+                                        col: *column,
+                                        #[expect(clippy::cast_possible_truncation)]
+                                        pointers_count: literal_text.len() as offset32,
+                                    })
+                                },
+                            };
 
                             Expression::Prefix {
                                 operator: (*operator).into(),
@@ -2190,30 +2210,31 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         },
                         st::Expression::DecimalIntegerPrefix { literal, column } => {
                             let literal_text = self.tokens.text[*literal];
-                            let right_operand_expression =
-                                match Self::parse_negative_i64(literal_text, digit::Base::Decimal, true) {
-                                    Ok(0) => {
-                                        return Err(Msg {
-                                            severity: MsgSeverity::Error,
-                                            kind: ErrorKind::MinusZeroInteger,
-                                            col: *column,
-                                            #[expect(clippy::cast_possible_truncation)]
-                                            pointers_count: literal_text.len() as offset32,
-                                        })
-                                    },
-                                    Ok(integer) => {
-                                        Expression::I64 { value: integer, column: *column }
-                                    },
-                                    Err(()) => {
-                                        return Err(Msg {
-                                            severity: MsgSeverity::Error,
-                                            kind: ErrorKind::DecimalIntegerUnderflow,
-                                            col: *column,
-                                            #[expect(clippy::cast_possible_truncation)]
-                                            pointers_count: literal_text.len() as offset32,
-                                        })
-                                    },
-                                };
+                            let right_operand_expression = match Self::parse_negative_i64(
+                                literal_text,
+                                digit::Base::Decimal,
+                                true,
+                            ) {
+                                Ok(0) => {
+                                    return Err(Msg {
+                                        severity: MsgSeverity::Error,
+                                        kind: ErrorKind::MinusZeroInteger,
+                                        col: *column,
+                                        #[expect(clippy::cast_possible_truncation)]
+                                        pointers_count: literal_text.len() as offset32,
+                                    })
+                                },
+                                Ok(integer) => Expression::I64 { value: integer, column: *column },
+                                Err(()) => {
+                                    return Err(Msg {
+                                        severity: MsgSeverity::Error,
+                                        kind: ErrorKind::DecimalIntegerUnderflow,
+                                        col: *column,
+                                        #[expect(clippy::cast_possible_truncation)]
+                                        pointers_count: literal_text.len() as offset32,
+                                    })
+                                },
+                            };
 
                             Expression::Prefix {
                                 operator: (*operator).into(),
@@ -2223,30 +2244,31 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         },
                         st::Expression::HexadecimalInteger { literal, column } => {
                             let literal_text = self.tokens.text[*literal];
-                            let right_operand_expression =
-                                match Self::parse_negative_i64(literal_text, digit::Base::Hexadecimal, false) {
-                                    Ok(0) => {
-                                        return Err(Msg {
-                                            severity: MsgSeverity::Error,
-                                            kind: ErrorKind::MinusZeroInteger,
-                                            col: *column,
-                                            #[expect(clippy::cast_possible_truncation)]
-                                            pointers_count: literal_text.len() as offset32,
-                                        })
-                                    },
-                                    Ok(integer) => {
-                                        Expression::I64 { value: integer, column: *column }
-                                    },
-                                    Err(()) => {
-                                        return Err(Msg {
-                                            severity: MsgSeverity::Error,
-                                            kind: ErrorKind::HexadecimalIntegerUnderflow,
-                                            col: *column,
-                                            #[expect(clippy::cast_possible_truncation)]
-                                            pointers_count: literal_text.len() as offset32,
-                                        })
-                                    },
-                                };
+                            let right_operand_expression = match Self::parse_negative_i64(
+                                literal_text,
+                                digit::Base::Hexadecimal,
+                                false,
+                            ) {
+                                Ok(0) => {
+                                    return Err(Msg {
+                                        severity: MsgSeverity::Error,
+                                        kind: ErrorKind::MinusZeroInteger,
+                                        col: *column,
+                                        #[expect(clippy::cast_possible_truncation)]
+                                        pointers_count: literal_text.len() as offset32,
+                                    })
+                                },
+                                Ok(integer) => Expression::I64 { value: integer, column: *column },
+                                Err(()) => {
+                                    return Err(Msg {
+                                        severity: MsgSeverity::Error,
+                                        kind: ErrorKind::HexadecimalIntegerUnderflow,
+                                        col: *column,
+                                        #[expect(clippy::cast_possible_truncation)]
+                                        pointers_count: literal_text.len() as offset32,
+                                    })
+                                },
+                            };
 
                             Expression::Prefix {
                                 operator: (*operator).into(),
