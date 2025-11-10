@@ -7,7 +7,7 @@ use back_to_front::{
     offset32,
 };
 
-use crate::front_end::{tokenizer, MsgSeverity};
+use crate::front_end::{tokenizer::{self, EscapedAscii}, MsgSeverity};
 
 use super::{
     src_file::{Position, SrcCode},
@@ -626,7 +626,7 @@ impl<'ast, 'code: 'ast> ExpressionDisplay<'ast, 'code> {
             Expression::False => write!(f, "false"),
             Expression::True => write!(f, "true"),
             Expression::I64(integer) => write!(f, "{integer}"),
-            Expression::Ascii(code) => write!(f, "'{}'", code.escape_ascii()),
+            Expression::Ascii(code) => write!(f, "'{}'", EscapedAscii { ch: *code }),
             Expression::Str { label, .. } => write!(f, "str_{label}"),
             Expression::Array { items, .. } => {
                 write!(f, "[")?;

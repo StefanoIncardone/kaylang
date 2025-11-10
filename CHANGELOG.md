@@ -66,7 +66,8 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - `back_end::artifacts` module inlined into `back_end`
 <!--  -->
 - [Syntax specification](SYNTAX.ebnf) only considers syntax and not typing
-- `back_end::artifacts` module inlined into `back_end`
+<!--  -->
+- String and raw string literals now contain a null terminator by default
 
 #### Fixed
 

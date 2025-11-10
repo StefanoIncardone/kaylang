@@ -123,65 +123,75 @@ impl<'ast, 'src: 'ast, 'code: 'src, 'path: 'code> Compiler<'ast, 'src, 'code, 'p
                 }
             }
 
-            // TODO(stefano): dump raw string/character bytes instead of their "human readable text"
-            // form strings
             for (label, string) in &this.ast.string_labels {
-                // FIX(stefano): proper empty string handling, consecutive empty strings have the
-                // same memory address
-                if string.len() == 0 {
-                    _ = writeln!(strings, " str str_{label}, ``");
-                } else {
-                    _ = write!(strings, " str str_{label}, `");
-                    let mut chars_index = 0;
-                    let chars = string.as_bytes();
-                    while chars_index < chars.len() {
-                        let ch = chars[chars_index];
-                        chars_index += 1;
-                        match ch {
-                            b'\\' => {
-                                _ = write!(strings, "\\");
-                                let escape = chars[chars_index];
-                                chars_index += 1;
-                                _ = write!(strings, "{}", escape as char);
-                            },
-                            other => {
-                                _ = write!(strings, "{}", other as char);
-                            },
+                _ = write!(strings, " str str_{label}, `");
+                let mut string_bytes_iter = string.as_bytes().iter();
+                while let Some(ch) = string_bytes_iter.next() {
+                    _ = match ch {
+                        b'\\' => {
+                            let Some(escape) = string_bytes_iter.next() else {
+                                unreachable!();
+                            };
+                            match escape {
+                                b'\\' => write!(strings, "\\\\"),
+                                b'\'' => write!(strings, "\\'"),
+                                b'"' => write!(strings, "\\\""),
+                                b'e' => write!(strings, "\\e"),
+                                b'n' => write!(strings, "\\n"),
+                                b'r' => write!(strings, "\\r"),
+                                b't' => write!(strings, "\\t"),
+                                b'0' => write!(strings, "\\0"),
+                                b'^' => {
+                                    let Some(caret) = string_bytes_iter.next() else {
+                                        unreachable!();
+                                    };
+                                    match caret {
+                                        b'@' => write!(strings, "\\0"),
+                                        b'I' => write!(strings, "\\t"),
+                                        b'J' => write!(strings, "\\n"),
+                                        b'M' => write!(strings, "\\r"),
+                                        b'A'..=b'Z' => {
+                                            let caret_value = caret - b'@';
+                                            write!(strings, "\\x{caret_value:02x}")
+                                        }
+                                        b'[' => write!(strings, "\\e"),
+                                        b'\\'..=b'_' => {
+                                            let caret_value = caret - b'[' + b'Z' - b'@' + 1;
+                                            write!(strings, "\\x{caret_value:02x}")
+                                        }
+                                        b'?' => write!(strings, "\\x7f"),
+                                        _ => unreachable!(),
+                                    }
+                                }
+                                _ => unreachable!(),
+                            }
                         }
-                    }
-                    _ = writeln!(strings, "`");
+                        b'\x00'..=b'\x1F' | b'\x7f' => unreachable!(),
+                        other => write!(strings, "{}", *other as char),
+                    };
                 }
+                _ = writeln!(strings, "`");
             }
 
             for (label, string) in &this.ast.raw_string_labels {
-                // FIX(stefano): proper empty string handling
-                if string.len() == 0 {
-                    _ = writeln!(strings, " str str_{label}, ``");
-                } else {
-                    _ = write!(strings, " str str_{label}, `");
-                    let mut chars_index = 0;
-                    let chars = string.as_bytes();
-                    while chars_index < chars.len() {
-                        let ch = chars[chars_index];
-                        chars_index += 1;
-                        match ch {
-                            b'\\' => {
-                                _ = write!(strings, "\\");
-                                let escape = chars[chars_index];
-                                if escape == b'"' {
-                                    chars_index += 1;
-                                    _ = write!(strings, "\"");
-                                } else {
-                                    _ = write!(strings, "\\");
-                                }
-                            },
-                            other => {
-                                _ = write!(strings, "{}", other as char);
-                            },
+                _ = write!(strings, " str str_{label}, `");
+                let mut string_bytes_iter = string.as_bytes().iter();
+                while let Some(ch) = string_bytes_iter.next() {
+                    _ = match ch {
+                        b'\\' => {
+                            let Some(escape) = string_bytes_iter.next() else {
+                                unreachable!();
+                            };
+                            match escape {
+                                b'"' => write!(strings, "\\\""),
+                                other => write!(strings, "\\\\{}", *other as char),
+                            }
                         }
-                    }
-                    _ = writeln!(strings, "`");
+                        b'\x00'..=b'\x1F' | b'\x7f' => unreachable!(),
+                        other => write!(strings, "{}", *other as char),
+                    };
                 }
+                _ = writeln!(strings, "`");
             }
 
             // variables
@@ -339,8 +349,8 @@ _start:
 {STR_ARRAY_DEBUG_EPRINT_ASM}
 
 %macro str 2
- %1: db %2
- %1_len: equ $ - %1
+ %1: db %2, 0
+ %1_len: equ $ - %1 - 1
 %endmacro
 
 section .rodata

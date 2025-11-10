@@ -1,5 +1,3 @@
-// TODO(stefano): implement own escaping
-
 use super::{
     src_file::{Line, SrcCode, SrcFile},
     IntoMsgInfo, Msg, MsgInfo,
@@ -13,6 +11,7 @@ use back_to_front::{
     offset32,
 };
 use core::{fmt::Display, ops::RangeInclusive};
+use std::fmt::Write;
 use unicode_segmentation::UnicodeSegmentation as _;
 
 // TODO(stefano): move to primitives.rs
@@ -475,7 +474,6 @@ pub struct Tokenizer<'code> {
 }
 
 impl<'code, 'path: 'code> Tokenizer<'code> {
-    // TODO(stefano): move actual tokenization of tokens to own function to use self instead of tokenizer
     pub fn tokenize(src_file: &'code SrcFile<'path>) -> TokenizedCode<'code, 'path> {
         #[repr(C)]
         union BackPatch<'code> {
@@ -1410,10 +1408,32 @@ enum EscapeSequence {
     ErrContinue,
 }
 
+#[derive(Clone)]
+pub(crate) struct EscapedAscii {
+    pub(crate) ch: u8,
+}
+
+impl Display for EscapedAscii {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        return match self.ch {
+            control @ (b'\x00'..=b'\x1A') => {
+                let caret = (b'@' + control) as utf32;
+                write!(f, "\\^{caret}")
+            }
+            control @ b'\x1B'..=b'\x1F' => {
+                let offset = control - b'\x1B';
+                let caret = (b'[' + offset) as utf32;
+                write!(f, "\\^{caret}")
+            }
+            b'\x7F' => write!(f, "\\^?"),
+            other => f.write_char(other as utf32),
+        }
+    }
+}
+
 // tokenization of strings and character literals
 impl<'code> Tokenizer<'code> {
     fn escape_sequence(&mut self, start_of_character: offset32) -> EscapeSequence {
-        // TODO: factor out this peeking of the next character in quoted literal
         let current_character = match self.current_ascii_singleline() {
             Some(Ok(current_character)) => current_character,
             #[expect(clippy::cast_possible_truncation)]
@@ -1923,7 +1943,6 @@ impl Base {
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum ErrorKind<'code> {
-    // REMOVE(stefano, 0.7.0):
     OldStyleLineComment,
     UnclosedBlockComment,
 
