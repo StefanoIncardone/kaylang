@@ -371,50 +371,16 @@ pub enum Command<'args> {
     #[default]
     Help,
     Version,
-    Check {
-        src_path: &'args Path,
-        verbosity: Verbosity,
-    },
 
-    Compile {
-        language: Language,
-        src_path: &'args Path,
-        out_path: &'args Path,
-        verbosity: Verbosity,
-    },
-    Run {
-        language: Language,
-        src_path: &'args Path,
-        out_path: &'args Path,
-        verbosity: Verbosity,
-    },
-}
+    Check { src_path: &'args Path, verbosity: Verbosity },
 
-// IDEA(stefano): remove standalone language flags, to remove complexity
-#[rustfmt::skip]
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
-pub enum LanguageFlag {
-    KayLong  = flag!(Language::Kay as u8, DashDash, Long),
-    KaySlash = flag!(Language::Kay as u8, Slash,    Long),
-    AsmLong  = flag!(Language::Asm as u8, DashDash, Long),
-    AsmSlash = flag!(Language::Asm as u8, Slash,    Long),
-    ObjLong  = flag!(Language::Obj as u8, Dash,     Long),
-    ObjSlash = flag!(Language::Obj as u8, Slash,    Long),
-}
+    Compile { src_path: &'args Path, verbosity: Verbosity, out_path: &'args Path },
+    CompileAsm { src_path: &'args Path, verbosity: Verbosity, out_path: &'args Path },
+    CompileObj { src_path: &'args Path, verbosity: Verbosity, out_path: &'args Path },
 
-impl Display for LanguageFlag {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        #[rustfmt::skip]
-        return match self {
-            Self::KayLong  => write!(f, "--kay"),
-            Self::KaySlash => write!(f, "/kay"),
-            Self::AsmLong  => write!(f, "--asm"),
-            Self::AsmSlash => write!(f, "/asm"),
-            Self::ObjLong  => write!(f, "--obj"),
-            Self::ObjSlash => write!(f, "/obj"),
-        };
-    }
+    Run { src_path: &'args Path, verbosity: Verbosity, out_path: &'args Path },
+    RunAsm { src_path: &'args Path, verbosity: Verbosity, out_path: &'args Path },
+    RunObj { src_path: &'args Path, verbosity: Verbosity, out_path: &'args Path },
 }
 
 #[rustfmt::skip]
@@ -557,24 +523,12 @@ impl Display for Help {
         static USAGE:     Colored<&str> = Colored { text: "Usage",     fg, bg, flags };
         static OPTIONS:   Colored<&str> = Colored { text: "Options",   fg, bg, flags };
         static COMMAND:   Colored<&str> = Colored { text: "Command",   fg, bg, flags };
-        static MODE:      Colored<&str> = Colored { text: "Mode",      fg, bg, flags };
-        static LANGUAGE:  Colored<&str> = Colored { text: "Language",  fg, bg, flags };
+        static COLOR:     Colored<&str> = Colored { text: "color",     fg, bg, flags };
         static FILE:      Colored<&str> = Colored { text: "file",      fg, bg, flags };
         static PATH:      Colored<&str> = Colored { text: "path",      fg, bg, flags };
         static OUTPUT:    Colored<&str> = Colored { text: "Output",    fg, bg, flags };
         static VERBOSITY: Colored<&str> = Colored { text: "Verbosity", fg, bg, flags };
 
-        /* IDEA(stefano): move verbosity flag to appear after the command
-        so:
-        {check}              <{FILE}>          [{VERBOSITY}]
-        {compile} [{LANGUAGE}] <{FILE}> <{OUTPUT}> [{VERBOSITY}]
-        {run}     [{LANGUAGE}] <{FILE}> <{OUTPUT}> [{VERBOSITY}]
-
-        becomes:
-        {check}              [{VERBOSITY}] <{FILE}>
-        {compile} [{LANGUAGE}] [{VERBOSITY}] <{FILE}> <{OUTPUT}>
-        {run}     [{LANGUAGE}] [{VERBOSITY}] <{FILE}> <{OUTPUT}>
-        */
         return write!(
             f,
             r"{Version}
@@ -582,9 +536,9 @@ impl Display for Help {
 {USAGE}: {executable_name} [{OPTIONS}] [{COMMAND}]
 
 [{OPTIONS}]:
-    {__color}, {Scolor}, {_c}, {Sc} <{MODE}>
+    {__color}, {Scolor}, {_c}, {Sc} <{COLOR}>
 
-    <{MODE}> (supports '*-{MODE}' and '*={MODE}' variations: '-c=auto'):
+    <{COLOR}> (supports '*-{COLOR}' and '*={COLOR}' variations: '-c=auto'):
         {auto} (default)    only print colored output if supported
         {always}            always print colored output, even if not supported
         {never}             never print colored output
@@ -596,32 +550,39 @@ impl Display for Help {
     {version}, {__version}, {Sversion}, {_v}, {Sv}
         Display the compiler version
 
-    {check}              <{FILE}>          [{VERBOSITY}]
-        Check the source code for correctness
+    {check}       [{VERBOSITY}] <{FILE}>
+        Check <{FILE}> for correctness
 
-    {compile} [{LANGUAGE}] <{FILE}> <{OUTPUT}> [{VERBOSITY}]
-        Compile the source code down to an executable
+    {compile}     [{VERBOSITY}] <{FILE}> <{OUTPUT}>
+        Compile <{FILE}> down to an executable
 
-    {run}     [{LANGUAGE}] <{FILE}> <{OUTPUT}> [{VERBOSITY}]
-        Compile and run the generated executable
+    {compile}-{asm} [{VERBOSITY}] <{FILE}> <{OUTPUT}>
+        Compile assembly <{FILE}> down to an executable
 
-    [{LANGUAGE}] (supports '*-{LANGUAGE}' variations: 'run-kay'):
-        {__kay}, {Skay} (default)   Compile <{FILE}> as a kay file
-        {__asm}, {Sasm}             Compile <{FILE}> as an assembly file
-        {__obj}, {Sobj}             Compile <{FILE}> as an object file
+    {compile}-{obj} [{VERBOSITY}] <{FILE}> <{OUTPUT}>
+        Compile object <{FILE}> down to an executable
 
-    <{OUTPUT}>:
-        {__output}, {Soutput}, {_o}, {So} <{PATH}>
+    {run}         [{VERBOSITY}] <{FILE}> <{OUTPUT}>
+        Compile object <{FILE}> and run the generated executable
 
-        <{PATH}> (supports '*={PATH}' variations: '-o=out'):
-            Folder to populate with compilation artifacts
+    {run}-{asm}     [{VERBOSITY}] <{FILE}> <{OUTPUT}>
+        Compile assembly <{FILE}> and run the generated executable
+
+    {run}-{obj}     [{VERBOSITY}] <{FILE}> <{OUTPUT}>
+        Compile object <{FILE}> and run the generated executable
 
     [{VERBOSITY}]:
         {__quiet},   {Squiet},   {_q}, {Sq}
             Don't display any compilation information
 
         {__Verbose}, {SVerbose}, {_V}, {SV}
-            Display extra compilation information",
+            Display extra compilation information
+
+    <{OUTPUT}>:
+        {__output}, {Soutput}, {_o}, {So} <{PATH}>
+
+        <{PATH}> (supports '*={PATH}' variations: '-o=out'):
+            Folder to populate with compilation artifacts",
 
             Version = Version { color: self.color },
             executable_name = self.executable_name.display(),
@@ -654,12 +615,8 @@ impl Display for Help {
             compile = CommandFlag::Compile,
             run = CommandFlag::Run,
 
-            __kay = LanguageFlag::KayLong,
-            Skay = LanguageFlag::KaySlash,
-            __asm = LanguageFlag::AsmLong,
-            Sasm = LanguageFlag::AsmSlash,
-            __obj = LanguageFlag::ObjLong,
-            Sobj = LanguageFlag::ObjSlash,
+            asm = Language::Asm,
+            obj = Language::Obj,
 
             __output = OutputFlag::Long,
             Soutput = OutputFlag::LongSlash,
@@ -678,6 +635,7 @@ impl Display for Help {
     }
 }
 
+#[must_use]
 #[derive(Debug)]
 enum ArgResult<P> {
     Ok(P),
@@ -744,8 +702,7 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
 
             match parser.parse_help_command(prefix, arg) {
                 Some(command_flag) => {
-                    let command = Command::Help;
-                    parser.set_help_command(command, command_flag, current_flag_index);
+                    parser.set_command(Command::Help, command_flag, current_flag_index);
                     continue;
                 },
                 None => {},
@@ -753,52 +710,37 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
 
             match parser.parse_version_command(prefix, arg) {
                 Some(command_flag) => {
-                    let command = Command::Version;
-                    parser.set_help_command(command, command_flag, current_flag_index);
+                    parser.set_command(Command::Version, command_flag, current_flag_index);
                     continue;
                 },
                 None => {},
             }
 
             match parser.parse_check_command(prefix, arg) {
-                ArgResult::Ok((src_path, verbosity)) => {
-                    let command = Command::Check { src_path, verbosity };
-                    parser.set_build_command(command, CommandFlag::Check, current_flag_index);
+                ArgResult::Ok(command) => {
+                    parser.set_command(command, CommandFlag::Check, current_flag_index);
                     continue;
                 },
                 ArgResult::Err => continue,
                 ArgResult::Unrecognized => {},
             }
 
-            match parser.parse_build_command(prefix, arg, "compile", CommandFlag::Compile) {
-                ArgResult::Ok((language, src_path, out_path, verbosity)) => {
-                    let command = Command::Compile { language, src_path, out_path, verbosity };
-                    parser.set_build_command(command, CommandFlag::Compile, current_flag_index);
+            match parser.parse_compile_command(prefix, arg) {
+                ArgResult::Ok(command) => {
+                    parser.set_command(command, CommandFlag::Compile, current_flag_index);
                     continue;
                 },
                 ArgResult::Err => continue,
                 ArgResult::Unrecognized => {},
             }
 
-            match parser.parse_build_command(prefix, arg, "run", CommandFlag::Run) {
-                ArgResult::Ok((language, src_path, out_path, verbosity)) => {
-                    let command = Command::Run { language, src_path, out_path, verbosity };
-                    parser.set_build_command(command, CommandFlag::Run, current_flag_index);
+            match parser.parse_run_command(prefix, arg) {
+                ArgResult::Ok(command) => {
+                    parser.set_command(command, CommandFlag::Run, current_flag_index);
                     continue;
                 },
                 ArgResult::Err => continue,
                 ArgResult::Unrecognized => {},
-            }
-
-            match parser.parse_language_flag(prefix, arg) {
-                Some((_, flag)) => {
-                    parser.errors.push(Error {
-                        kind: ErrorKind::StrayLanguageFlag(flag),
-                        arg_index: current_flag_index,
-                    });
-                    continue;
-                },
-                None => {},
             }
 
             match parser.parse_out_path(prefix, arg) {
@@ -824,9 +766,8 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
                 None => {},
             }
 
-            parser
-                .errors
-                .push(Error { kind: ErrorKind::Unrecognized, arg_index: current_flag_index });
+            let error = Error { kind: ErrorKind::Unrecognized, arg_index: current_flag_index };
+            parser.errors.push(error);
             parser.arg_index += 1;
         }
 
@@ -871,7 +812,6 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
 }
 
 impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
-    #[must_use]
     fn parse_color_flag(
         &mut self,
         prefix: FlagPrefix,
@@ -1005,12 +945,11 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
         return Some(command_flag);
     }
 
-    #[must_use]
     fn parse_check_command(
         &mut self,
         prefix: FlagPrefix,
         arg: &'args str,
-    ) -> ArgResult<(&'args Path, Verbosity)> {
+    ) -> ArgResult<Command<'args>> {
         use FlagPrefix::{Dash, DashDash, Empty, Slash};
         const CHECK_LONG: &str = "check";
         #[expect(non_upper_case_globals)]
@@ -1027,23 +966,58 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
         let command_flag_index = self.arg_index;
         self.arg_index += 1;
 
+        let verbosity = self.parse_verbosity_or_default();
+
         let Ok(src_path) = self.parse_src_path(command_flag_index, command_flag) else {
             return ArgResult::Err;
         };
 
-        let verbosity = self.parse_verbosity_or_default();
-
-        return ArgResult::Ok((src_path, verbosity));
+        return ArgResult::Ok(Command::Check { src_path, verbosity });
     }
 
-    #[must_use]
+    #[inline(always)]
+    fn parse_compile_command(
+        &mut self,
+        prefix: FlagPrefix,
+        arg: &'args str,
+    ) -> ArgResult<Command<'args>> {
+        let result = self.parse_build_command(prefix, arg, "compile", CommandFlag::Compile);
+        return match result {
+            ArgResult::Ok((language, src_path, verbosity, out_path)) => match language {
+                Language::Kay => ArgResult::Ok(Command::Compile { src_path, verbosity, out_path }),
+                Language::Asm => ArgResult::Ok(Command::CompileAsm { src_path, verbosity, out_path }),
+                Language::Obj => ArgResult::Ok(Command::CompileObj { src_path, verbosity, out_path }),
+            }
+            ArgResult::Err => ArgResult::Err,
+            ArgResult::Unrecognized => ArgResult::Unrecognized,
+        };
+    }
+
+    #[inline(always)]
+    fn parse_run_command(
+        &mut self,
+        prefix: FlagPrefix,
+        arg: &'args str,
+    ) -> ArgResult<Command<'args>> {
+        let result = self.parse_build_command(prefix, arg, "run", CommandFlag::Run);
+        return match result {
+            ArgResult::Ok((language, src_path, verbosity, out_path)) => match language {
+                Language::Kay => ArgResult::Ok(Command::Run { src_path, verbosity, out_path }),
+                Language::Asm => ArgResult::Ok(Command::RunAsm { src_path, verbosity, out_path }),
+                Language::Obj => ArgResult::Ok(Command::RunObj { src_path, verbosity, out_path }),
+            }
+            ArgResult::Err => ArgResult::Err,
+            ArgResult::Unrecognized => ArgResult::Unrecognized,
+        };
+    }
+
     fn parse_build_command(
         &mut self,
         prefix: FlagPrefix,
         arg: &'args str,
         command_str: &str,
         command_flag: CommandFlag,
-    ) -> ArgResult<(Language, &'args Path, &'args Path, Verbosity)> {
+    ) -> ArgResult<(Language, &'args Path, Verbosity, &'args Path)> {
         use FlagPrefix::{Dash, DashDash, Empty, Slash};
 
         let separator_index = if arg.starts_with(command_str) {
@@ -1059,18 +1033,8 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
         let (language, language_flag_index) = 'language: {
             let Some(separator) = arg.as_bytes().get(separator_index) else {
                 self.arg_index += 1;
-                let Some(language_str) = self.get_arg(self.arg_index) else {
-                    break 'language (Language::default(), command_flag_index);
-                };
-
                 let language_flag_index = self.arg_index;
-
-                let (language_prefix, language_mode_str) = Self::split_prefix(language_str);
-                let language = match self.parse_language_flag(language_prefix, language_mode_str) {
-                    Some((language, _)) => language,
-                    None => Language::default(),
-                };
-                break 'language (language, language_flag_index);
+                break 'language (Language::Kay, language_flag_index);
             };
 
             let start_of_language_index = match separator {
@@ -1081,7 +1045,6 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
             self.arg_index += 1;
             let language_str = &arg[start_of_language_index..];
             let language = match language_str {
-                "kay" => Language::Kay,
                 "asm" => Language::Asm,
                 "obj" => Language::Obj,
                 _ => {
@@ -1099,49 +1062,18 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
             (language, command_flag_index)
         };
 
+        let verbosity = self.parse_verbosity_or_default();
+
+        let src_path_index = self.arg_index;
         let Ok(src_path) = self.parse_src_path(language_flag_index, command_flag) else {
             return ArgResult::Err;
         };
 
-        let Ok(out_path) = self.parse_out_path_flag(command_flag) else {
+        let Ok(out_path) = self.parse_out_path_flag(src_path_index, command_flag) else {
             return ArgResult::Err;
         };
 
-        let verbosity = self.parse_verbosity_or_default();
-
-        return ArgResult::Ok((language, src_path, out_path, verbosity));
-    }
-
-    #[must_use]
-    fn parse_language_flag(
-        &mut self,
-        prefix: FlagPrefix,
-        arg: &'args str,
-    ) -> Option<(Language, LanguageFlag)> {
-        use FlagPrefix::{Dash, DashDash, Empty, Slash};
-        use Language::{Asm, Kay, Obj};
-        use LanguageFlag::{AsmLong, AsmSlash, KayLong, KaySlash, ObjLong, ObjSlash};
-        let language_and_flag = match arg {
-            "kay" => match prefix {
-                DashDash => (Kay, KayLong),
-                Slash => (Kay, KaySlash),
-                Empty | Dash => return None,
-            },
-            "asm" => match prefix {
-                DashDash => (Asm, AsmLong),
-                Slash => (Asm, AsmSlash),
-                Empty | Dash => return None,
-            },
-            "obj" => match prefix {
-                DashDash => (Obj, ObjLong),
-                Slash => (Obj, ObjSlash),
-                Empty | Dash => return None,
-            },
-            _ => return None,
-        };
-        self.arg_index += 1;
-
-        return Some(language_and_flag);
+        return ArgResult::Ok((language, src_path, verbosity, out_path));
     }
 
     fn parse_src_path(
@@ -1151,13 +1083,12 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
     ) -> Result<&'args Path, ()> {
         let Some(src_path_str) = self.get_arg(self.arg_index) else {
             self.errors.push(Error {
-                kind: ErrorKind::MustBeFollowedBySourceFilePath(command_flag),
+                kind: ErrorKind::MissingSourceFilePath(command_flag),
                 arg_index: command_flag_index,
             });
             return Err(());
         };
         let src_path_index = self.arg_index;
-        // BUG(stefano): causes an invalid index if the output flag is missing
         self.arg_index += 1;
 
         let src_path = Path::new(src_path_str);
@@ -1168,7 +1099,6 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
         return Ok(src_path);
     }
 
-    #[must_use]
     fn parse_out_path(
         &mut self,
         prefix: FlagPrefix,
@@ -1238,15 +1168,18 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
         return ArgResult::Ok((out_path, out_flag));
     }
 
-    fn parse_out_path_flag(&mut self, command_flag: CommandFlag) -> Result<&'args Path, ()> {
+    fn parse_out_path_flag(
+        &mut self,
+        src_path_index: usize,
+        command_flag: CommandFlag
+    ) -> Result<&'args Path, ()> {
         let Some(out_path_flag_str) = self.get_arg(self.arg_index) else {
             self.errors.push(Error {
                 kind: ErrorKind::MustBeFollowedByOutputFlag(command_flag),
-                arg_index: self.arg_index,
+                arg_index: src_path_index,
             });
             return Err(());
         };
-        let command_flag_index = self.arg_index;
 
         let (out_path_prefix, out_path_flag) = Self::split_prefix(out_path_flag_str);
         let out_path = match self.parse_out_path(out_path_prefix, out_path_flag) {
@@ -1255,7 +1188,7 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
             ArgResult::Unrecognized => {
                 self.errors.push(Error {
                     kind: ErrorKind::MustBeFollowedByOutputFlag(command_flag),
-                    arg_index: command_flag_index,
+                    arg_index: src_path_index,
                 });
                 return Err(());
             },
@@ -1305,52 +1238,28 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
 
     #[must_use]
     fn parse_verbosity_or_default(&mut self) -> Verbosity {
-        let Some(verbosity_flag_str) = self.get_arg(self.arg_index) else {
+        let Some(raw_verbosity_flag) = self.get_arg(self.arg_index) else {
             return Verbosity::default();
         };
 
-        let (verbosity_prefix, verbosity_flag) = Self::split_prefix(verbosity_flag_str);
-        return match self.parse_verbosity_flag(verbosity_prefix, verbosity_flag) {
+        let (prefix, verbosity_flag) = Self::split_prefix(raw_verbosity_flag);
+        return match self.parse_verbosity_flag(prefix, verbosity_flag) {
             Some((verbosity, _)) => verbosity,
             None => Verbosity::default(),
         };
     }
 
-    fn set_help_command(
+    fn set_command(
         &mut self,
         command: Command<'args>,
         command_flag: CommandFlag,
         command_flag_index: usize,
     ) {
-        match &self.selected_command {
-            Some((previous_command_flag, Command::Help | Command::Version)) => {
-                self.errors.push(Error {
-                    kind: ErrorKind::CommandAlreadySelected {
-                        current: command_flag,
-                        previous: *previous_command_flag,
-                    },
-                    arg_index: command_flag_index,
-                });
-            },
-            Some((_, Command::Check { .. } | Command::Compile { .. } | Command::Run { .. }))
-            | None => {
-                self.selected_command = Some((command_flag, command));
-            },
-        }
-    }
+        use Command::{Help, Version, Check, Compile, CompileAsm, CompileObj, Run, RunAsm, RunObj};
 
-    fn set_build_command(
-        &mut self,
-        command: Command<'args>,
-        command_flag: CommandFlag,
-        command_flag_index: usize,
-    ) {
-        match &self.selected_command {
-            Some((previous_command_flag, previous_command)) => match previous_command {
-                Command::Help | Command::Version => {
-                    // make sure the command is properly formatted
-                },
-                Command::Check { .. } | Command::Compile { .. } | Command::Run { .. } => {
+        match command {
+            Help | Version => match &self.selected_command {
+                Some((previous_command_flag, Help | Version)) => {
                     self.errors.push(Error {
                         kind: ErrorKind::CommandAlreadySelected {
                             current: command_flag,
@@ -1359,10 +1268,29 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
                         arg_index: command_flag_index,
                     });
                 },
-            },
-            None => {
-                self.selected_command = Some((command_flag, command));
-            },
+                Some((_, Check { .. } | Compile { .. } | CompileAsm { .. } | CompileObj { .. }
+                    | Run { .. } | RunAsm { .. } | RunObj { .. })) | None => {
+                    self.selected_command = Some((command_flag, command));
+                },
+            }
+            Check { .. } | Compile { .. } | CompileAsm { .. } | CompileObj { .. }
+            | Run { .. } | RunAsm { .. } | RunObj { .. } => match &self.selected_command {
+                Some((_, Help | Version)) => {
+                    // make sure the command is properly formatted
+                },
+                Some((previous_command_flag,
+                    Check { .. } | Compile { .. } | CompileAsm { .. } | CompileObj { .. }
+                    | Run { .. } | RunAsm { .. } | RunObj { .. })) => {
+                    self.errors.push(Error {
+                        kind: ErrorKind::CommandAlreadySelected {
+                            current: command_flag,
+                            previous: *previous_command_flag,
+                        },
+                        arg_index: command_flag_index,
+                    });
+                },
+                None => self.selected_command = Some((command_flag, command)),
+            }
         }
     }
 }
@@ -1375,13 +1303,12 @@ pub enum ErrorKind {
     UnrecognizedColorMode { start_of_color_index: u8 },
 
     UnrecognizedLanguageMode { start_of_language_index: u8 },
-    MustBeFollowedBySourceFilePath(CommandFlag),
+    MissingSourceFilePath(CommandFlag),
     MustBeAFilePath,
     MustBeFollowedByOutputFlag(CommandFlag),
     MissingOutputDirectoryPath(OutputFlag),
     MustBeADirectoryPath { start_of_path_index: u8 },
 
-    StrayLanguageFlag(LanguageFlag),
     StrayOutputDirectoryFlag(OutputFlag),
     StrayVerbosityOption(VerbosityFlag),
 
@@ -1393,7 +1320,7 @@ pub enum ErrorKind {
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct Error {
     pub kind: ErrorKind,
-    // IDEA(stefano): use a u16, who needs more than 65k arguments?
+    // IDEA(stefano): use a u16/u32, who needs more than 65K/4G arguments?
     pub arg_index: usize,
 }
 
@@ -1488,15 +1415,14 @@ impl<S: AsRef<str>> Display for Errors<'_, '_, S> {
                     _ = write!(error_message, "unrecognized language mode '{language}'");
                     _ = write!(
                         error_cause_message,
-                        "must be one of '{kay}', '{asm}' or '{obj}'",
-                        kay = Language::Kay,
+                        "must be one of '{asm}' or '{obj}'",
                         asm = Language::Asm,
                         obj = Language::Obj,
                     );
                 },
-                ErrorKind::MustBeFollowedBySourceFilePath(command) => {
+                ErrorKind::MissingSourceFilePath(command) => {
                     _ = write!(error_message, "invalid '{command}' command");
-                    _ = write!(error_cause_message, "must be followed by a source file path");
+                    _ = write!(error_cause_message, "missing source file path");
                 },
                 ErrorKind::MustBeAFilePath => {
                     _ = write!(error_message, "invalid '{erroneous_arg}' path");
@@ -1506,9 +1432,11 @@ impl<S: AsRef<str>> Display for Errors<'_, '_, S> {
                     _ = write!(error_message, "invalid '{command}' command");
                     _ = write!(
                         error_cause_message,
-                        "must be followed by '{_o}' or '{__output}'",
-                        _o = OutputFlag::Short,
+                        "must be followed by '{__output}', '{Soutput}', '{_o}' or '{So}'",
                         __output = OutputFlag::Long,
+                        Soutput = OutputFlag::LongSlash,
+                        _o = OutputFlag::Short,
+                        So = OutputFlag::ShortSlash,
                     );
                 },
                 ErrorKind::MissingOutputDirectoryPath(option) => {
@@ -1528,16 +1456,6 @@ impl<S: AsRef<str>> Display for Errors<'_, '_, S> {
                     _ = write!(
                         error_cause_message,
                         "can only be used after a '{compile}' or '{run}' command",
-                        compile = CommandFlag::Compile,
-                        run = CommandFlag::Run,
-                    );
-                },
-                ErrorKind::StrayLanguageFlag(option) => {
-                    _ = write!(error_message, "stray '{option}' option");
-                    _ = write!(
-                        error_cause_message,
-                        "can only be used after a '{check}', '{compile}' or '{run}' command",
-                        check = CommandFlag::Check,
                         compile = CommandFlag::Compile,
                         run = CommandFlag::Run,
                     );

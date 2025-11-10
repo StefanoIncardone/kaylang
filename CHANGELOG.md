@@ -69,6 +69,10 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 <!--  -->
 - String and raw string literals now contain a null terminator by default
 
+#### Removed
+
+- Removed language selection flags `--kay`, `--asm`, `--obj`, only kept `*-asm` and `*-obj` commands
+
 #### Fixed
 
 - Actually removed do-statements
