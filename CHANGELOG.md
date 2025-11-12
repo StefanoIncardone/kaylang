@@ -54,6 +54,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 - Implemented basic syntax errors fault tolerance
 - Implemented position independent cli arguments
+- Implemented cli flags colorization
 
 #### Changed
 

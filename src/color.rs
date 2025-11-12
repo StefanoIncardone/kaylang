@@ -83,7 +83,7 @@ pub enum AnsiCode {
 // IDEA(stefano): make more "pure" by selecting the printing mode each time
 #[expect(non_upper_case_globals, reason = "alias to a function")]
 pub(super) static mut print: fn(
-    &str,
+    &dyn Display,
     Fg,
     Bg,
     ansi_flag,
@@ -91,7 +91,7 @@ pub(super) static mut print: fn(
 ) -> core::fmt::Result = print_color;
 
 pub(super) fn print_no_color(
-    text: &str,
+    text: &dyn Display,
     _: Fg,
     _: Bg,
     _: ansi_flag,
@@ -101,7 +101,7 @@ pub(super) fn print_no_color(
 }
 
 pub(super) fn print_color(
-    text: &str,
+    text: &dyn Display,
     fg: Fg,
     bg: Bg,
     flags: ansi_flag,
@@ -195,16 +195,16 @@ pub(super) fn print_color(
     return f.write_str("\x1b[0m");
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Colored<Text: AsRef<str>> {
-    pub text: Text,
+#[derive(Clone)]
+pub struct Colored<'text, Text: Display + ?Sized> {
+    pub text: &'text Text,
     pub fg: Fg,
     pub bg: Bg,
     pub flags: ansi_flag,
 }
 
-impl<Text: AsRef<str>> Display for Colored<Text> {
+impl<Text: Display + ?Sized> Display for Colored<'_, Text> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        return unsafe { print(self.text.as_ref(), self.fg, self.bg, self.flags, f) };
+        return unsafe { print(&self.text, self.fg, self.bg, self.flags, f) };
     }
 }

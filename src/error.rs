@@ -95,14 +95,14 @@ pub struct MsgWithCauseUnderText<'kind, 'message, 'cause, 'src> {
 impl Display for MsgWithCauseUnderText<'_, '_, '_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let error_message = Colored {
-            text: self.message.to_string(),
+            text: self.message,
             fg: Fg::White,
             bg: Bg::Default,
             flags: AnsiFlag::Bold as ansi_flag,
         };
 
         let pointers_and_cause = Colored {
-            text: format!(
+            text: &format!(
                 "{spaces:^>pointers_count$} {cause}",
                 spaces = "",
                 pointers_count = self.pointers_count as usize,
@@ -145,23 +145,24 @@ pub struct MsgWithCauseUnderTextWithLocation<'kind, 'message, 'cause, 'src> {
 impl Display for MsgWithCauseUnderTextWithLocation<'_, '_, '_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let error_message = Colored {
-            text: self.message.to_string(),
+            text: &self.message,
             fg: Fg::White,
             bg: Bg::Default,
             flags: AnsiFlag::Bold as ansi_flag,
         };
 
+        let line_number_text = self.line.to_string();
         let line_number = Colored {
-            text: self.line.to_string(),
+            text: &line_number_text,
             fg: Fg::LightBlue,
             bg: Bg::Default,
             flags: AnsiFlag::Bold as ansi_flag,
         };
 
-        let line_number_padding = line_number.text.len() + 1 + BAR.text.len();
+        let line_number_padding = line_number_text.len() + 1 + BAR.text.len();
 
         let pointers_and_cause = Colored {
-            text: format!(
+            text: &format!(
                 "{spaces:^>pointers_count$} {cause}",
                 spaces = "",
                 pointers_count = self.pointers_count as usize,

@@ -44,7 +44,7 @@ macro_rules! messages {
     };
 
     ($($visibility:vis $step_name:ident = $text:literal, $fg:ident, $bg:ident, $flags:ident $(,)?;)+) => {
-        $($visibility static $step_name: Colored<&str> = Colored { text: $text, fg: $fg, bg: $bg, flags: $flags };)+
+        $($visibility static $step_name: Colored<'_, str> = Colored { text: $text, fg: $fg, bg: $bg, flags: $flags };)+
     };
 }
 
@@ -147,9 +147,10 @@ impl Logger {
     #[inline]
     pub fn done(self, text: &dyn Display, output: Option<&Path>, padding: usize) {
         let elapsed_time = Colored {
-            text: format!("{:.06}s", self.start.elapsed().as_secs_f32()),
+            text: &format!("{:.06}s", self.start.elapsed().as_secs_f32()),
             fg: Fg::White,
-            ..Default::default()
+            bg: Bg::Default,
+            flags: AnsiFlag::Default as u8,
         };
 
         if let Some(out) = output {
@@ -490,10 +491,12 @@ impl Display for Version {
         const fg: Fg = Fg::White;
         const bg: Bg = Bg::Default;
         const flags: ansi_flag = AnsiFlag::Bold as ansi_flag;
-        static VERSION: Colored<&str> = Colored { text: env!("CARGO_PKG_VERSION"), fg, bg, flags };
 
         self.color.set(&std::io::stdout());
-        return write!(f, "Kaylang compiler, version {VERSION}");
+        return write!(f,
+            "Kaylang compiler, version {VERSION}",
+            VERSION = Colored { text: env!("CARGO_PKG_VERSION"), fg, bg, flags },
+        );
     }
 }
 
@@ -527,19 +530,13 @@ impl Display for Help {
     #[expect(non_upper_case_globals)]
     #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        const fg: Fg = Fg::White;
-        const bg: Bg = Bg::Default;
-        const flags: ansi_flag = AnsiFlag::Bold as ansi_flag;
-        static USAGE:           Colored<&str> = Colored { text: "Usage",           fg, bg, flags };
-        static OPTIONS:         Colored<&str> = Colored { text: "Options",         fg, bg, flags };
-        static COMMAND:         Colored<&str> = Colored { text: "Command",         fg, bg, flags };
-        static COLOR:           Colored<&str> = Colored { text: "color",           fg, bg, flags };
-        static FILE:            Colored<&str> = Colored { text: "file",            fg, bg, flags };
-        static PATH:            Colored<&str> = Colored { text: "path",            fg, bg, flags };
-        static CHECK_OPTIONS:   Colored<&str> = Colored { text: "Check Options",   fg, bg, flags };
-        static COMPILE_OPTIONS: Colored<&str> = Colored { text: "Compile Options", fg, bg, flags };
-        static RUN_OPTIONS:     Colored<&str> = Colored { text: "Run Options",     fg, bg, flags };
-        static OUTPUT:          Colored<&str> = Colored { text: "Output",          fg, bg, flags };
+        const fg_value:  Fg = Fg::White;
+        const fg_option: Fg = Fg::Green;
+        const fg_flag:   Fg = Fg::Blue;
+        const bg:        Bg = Bg::Default;
+        const flags_value:  ansi_flag = AnsiFlag::Bold as ansi_flag;
+        const flags_option: ansi_flag = AnsiFlag::Bold as ansi_flag;
+        const flags_flag:   ansi_flag = AnsiFlag::Bold as ansi_flag;
 
         // IDEA(stefano): add "--file"/"/file"/"-f"/"/f" option to specify a file with a name that
         // may collide with a flag, i.e.: what if i want to compile a file named "--output"
@@ -547,17 +544,17 @@ impl Display for Help {
             f,
             r"{Version}
 
-{USAGE}: {executable_name} [{OPTIONS}] [{COMMAND}]
+{Usage}: {executable_name} [{Options}] [{Command}]
 
-[{OPTIONS}]:
-    {__color}, {Scolor}, {_c}, {Sc} <{COLOR}>
+[{Options}]:
+    {__color}, {Scolor}, {_c}, {Sc} <{color}>
 
-    <{COLOR}> (supports '*-{COLOR}' and '*={COLOR}' variations: '-c=auto'):
+    <{color}> (supports '{s}-{color}' and '{s}={color}' variations: '{_c}={auto}'):
         {auto} (default)    only print colored output if supported
         {always}            always print colored output, even if not supported
         {never}             never print colored output
 
-[{COMMAND}]s:
+[{Command}]s:
     {help},    {__help},    {Shelp},    {_h}, {Sh}, {hq}, {__hq}, {_hq}, {Shq}
         Display this message, and ignore any other command
         (also selected if no other arguments are provided)
@@ -565,75 +562,88 @@ impl Display for Help {
     {version}, {__version}, {Sversion}, {_v}, {Sv}
         Display the compiler version
 
-    {check}                             <{FILE}> [{CHECK_OPTIONS}]
-        Check kay <{FILE}> for correctness
+    {check}                             <{file}> [{Check_Options}]
+        Check kay <{file}> for correctness
 
-    {compile}, {compile}-{asm}, {compile}-{obj} <{FILE}> <{OUTPUT}> [{COMPILE_OPTIONS}]
-        Compile kay/assembly/object <{FILE}> down to an executable
+    {compile}, {compile}-{asm}, {compile}-{obj} <{file}> <{Output}> [{Compile_Options}]
+        Compile kay/assembly/object <{file}> down to an executable
 
-    {run},     {run}-{asm},     {run}-{obj}     <{FILE}> <{OUTPUT}> [{RUN_OPTIONS}]
-        Compile kay/assembly/object <{FILE}> and run the generated executable
+    {run},     {run}-{asm},     {run}-{obj}     <{file}> <{Output}> [{Run_Options}]
+        Compile kay/assembly/object <{file}> and run the generated executable
 
-    [{CHECK_OPTIONS}], [{COMPILE_OPTIONS}], [{RUN_OPTIONS}]:
+    [{Check_Options}], [{Compile_Options}], [{Run_Options}]:
         {__quiet},   {Squiet},   {_q}, {Sq}
             Don't display any compilation information
 
         {__Verbose}, {SVerbose}, {_V}, {SV}
             Display extra compilation information
 
-    <{OUTPUT}>:
-        {__output}, {Soutput}, {_o}, {So} <{PATH}>
+    <{Output}>:
+        {__output}, {Soutput}, {_o}, {So} <{path}>
 
-        <{PATH}> (supports '*={PATH}' variations: '-o=out'):
+        <{path}> (supports '{s}={path}' variations: '{_o}={out}'):
             Folder to populate with compilation artifacts",
 
-            Version = Version { color: self.color },
+            Version         = Version { color: self.color },
             executable_name = self.executable_name.display(),
+            Usage           = Colored { text: "Usage",           fg: fg_value,  bg, flags: flags_value },
+            Options         = Colored { text: "Options",         fg: fg_option, bg, flags: flags_option },
+            Command         = Colored { text: "Command",         fg: fg_option, bg, flags: flags_option },
+            color           = Colored { text: "color",           fg: fg_value,  bg, flags: flags_value },
+            file            = Colored { text: "file",            fg: fg_value,  bg, flags: flags_value },
+            path            = Colored { text: "path",            fg: fg_value,  bg, flags: flags_value },
+            Check_Options   = Colored { text: "Check Options",   fg: fg_option, bg, flags: flags_option },
+            Compile_Options = Colored { text: "Compile Options", fg: fg_option, bg, flags: flags_option },
+            Run_Options     = Colored { text: "Run Options",     fg: fg_option, bg, flags: flags_option },
+            Output          = Colored { text: "Output",          fg: fg_option, bg, flags: flags_option },
 
-            __color = ColorFlag::Long,
-            Scolor = ColorFlag::LongSlash,
-            _c = ColorFlag::Short,
-            Sc = ColorFlag::ShortSlash,
-            auto = Color::Auto,
-            always = Color::Always,
-            never = Color::Never,
+            s   = Colored { text: "*", fg: fg_flag, bg, flags: flags_flag },
+            out = Colored { text: "out", fg: fg_value, bg, flags: flags_value },
 
-            help = CommandFlag::Help,
-            __help = CommandFlag::HelpLong,
-            Shelp = CommandFlag::HelpLongSlash,
-            _h = CommandFlag::HelpShort,
-            Sh = CommandFlag::HelpShortSlash,
-            hq = CommandFlag::HelpQuestion,
-            __hq = CommandFlag::HelpQuestionLong,
-            _hq = CommandFlag::HelpQuestionShort,
-            Shq = CommandFlag::HelpQuestionShortSlash,
+            __color = Colored { text: &ColorFlag::Long,       fg: fg_flag, bg, flags: flags_flag },
+            Scolor  = Colored { text: &ColorFlag::LongSlash,  fg: fg_flag, bg, flags: flags_flag },
+            _c      = Colored { text: &ColorFlag::Short,      fg: fg_flag, bg, flags: flags_flag },
+            Sc      = Colored { text: &ColorFlag::ShortSlash, fg: fg_flag, bg, flags: flags_flag },
+            auto    = Colored { text: &Color::Auto,           fg: fg_flag, bg, flags: flags_flag },
+            always  = Colored { text: &Color::Always,         fg: fg_flag, bg, flags: flags_flag },
+            never   = Colored { text: &Color::Never,          fg: fg_flag, bg, flags: flags_flag },
 
-            version = CommandFlag::Version,
-            __version = CommandFlag::VersionLong,
-            Sversion = CommandFlag::VersionLongSlash,
-            _v = CommandFlag::VersionShort,
-            Sv = CommandFlag::VersionShortSlash,
+            help   = Colored { text: &CommandFlag::Help,                   fg: fg_flag, bg, flags: flags_flag },
+            __help = Colored { text: &CommandFlag::HelpLong,               fg: fg_flag, bg, flags: flags_flag },
+            Shelp  = Colored { text: &CommandFlag::HelpLongSlash,          fg: fg_flag, bg, flags: flags_flag },
+            _h     = Colored { text: &CommandFlag::HelpShort,              fg: fg_flag, bg, flags: flags_flag },
+            Sh     = Colored { text: &CommandFlag::HelpShortSlash,         fg: fg_flag, bg, flags: flags_flag },
+            hq     = Colored { text: &CommandFlag::HelpQuestion,           fg: fg_flag, bg, flags: flags_flag },
+            __hq   = Colored { text: &CommandFlag::HelpQuestionLong,       fg: fg_flag, bg, flags: flags_flag },
+            _hq    = Colored { text: &CommandFlag::HelpQuestionShort,      fg: fg_flag, bg, flags: flags_flag },
+            Shq    = Colored { text: &CommandFlag::HelpQuestionShortSlash, fg: fg_flag, bg, flags: flags_flag },
 
-            check = CommandFlag::Check,
-            compile = CommandFlag::Compile,
-            run = CommandFlag::Run,
+            version   = Colored { text: &CommandFlag::Version,           fg: fg_flag, bg, flags: flags_flag },
+            __version = Colored { text: &CommandFlag::VersionLong,       fg: fg_flag, bg, flags: flags_flag },
+            Sversion  = Colored { text: &CommandFlag::VersionLongSlash,  fg: fg_flag, bg, flags: flags_flag },
+            _v        = Colored { text: &CommandFlag::VersionShort,      fg: fg_flag, bg, flags: flags_flag },
+            Sv        = Colored { text: &CommandFlag::VersionShortSlash, fg: fg_flag, bg, flags: flags_flag },
 
-            asm = Language::Asm,
-            obj = Language::Obj,
+            check   = Colored { text: &CommandFlag::Check,   fg: fg_flag, bg, flags: flags_flag },
+            compile = Colored { text: &CommandFlag::Compile, fg: fg_flag, bg, flags: flags_flag },
+            run     = Colored { text: &CommandFlag::Run,     fg: fg_flag, bg, flags: flags_flag },
 
-            __output = OutputFlag::Long,
-            Soutput = OutputFlag::LongSlash,
-            _o = OutputFlag::Short,
-            So = OutputFlag::ShortSlash,
+            asm = Colored { text: &Language::Asm, fg: fg_flag, bg, flags: flags_flag },
+            obj = Colored { text: &Language::Obj, fg: fg_flag, bg, flags: flags_flag },
 
-            __quiet = VerbosityFlag::QuietLong,
-            Squiet = VerbosityFlag::QuietLongSlash,
-            _q = VerbosityFlag::QuietShort,
-            Sq = VerbosityFlag::QuietShortSlash,
-            __Verbose = VerbosityFlag::VerboseLong,
-            SVerbose = VerbosityFlag::VerboseLongSlash,
-            _V = VerbosityFlag::VerboseShort,
-            SV = VerbosityFlag::VerboseShortSlash,
+            __output = Colored { text: &OutputFlag::Long,       fg: fg_flag, bg, flags: flags_flag },
+            Soutput  = Colored { text: &OutputFlag::LongSlash,  fg: fg_flag, bg, flags: flags_flag },
+            _o       = Colored { text: &OutputFlag::Short,      fg: fg_flag, bg, flags: flags_flag },
+            So       = Colored { text: &OutputFlag::ShortSlash, fg: fg_flag, bg, flags: flags_flag },
+
+            __quiet   = Colored { text: &VerbosityFlag::QuietLong,         fg: fg_flag, bg, flags: flags_flag },
+            Squiet    = Colored { text: &VerbosityFlag::QuietLongSlash,    fg: fg_flag, bg, flags: flags_flag },
+            _q        = Colored { text: &VerbosityFlag::QuietShort,        fg: fg_flag, bg, flags: flags_flag },
+            Sq        = Colored { text: &VerbosityFlag::QuietShortSlash,   fg: fg_flag, bg, flags: flags_flag },
+            __Verbose = Colored { text: &VerbosityFlag::VerboseLong,       fg: fg_flag, bg, flags: flags_flag },
+            SVerbose  = Colored { text: &VerbosityFlag::VerboseLongSlash,  fg: fg_flag, bg, flags: flags_flag },
+            _V        = Colored { text: &VerbosityFlag::VerboseShort,      fg: fg_flag, bg, flags: flags_flag },
+            SV        = Colored { text: &VerbosityFlag::VerboseShortSlash, fg: fg_flag, bg, flags: flags_flag },
         );
     }
 }
@@ -1368,7 +1378,7 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
             });
         }
 
-        for SrcPath { path, arg_index, .. } in src_paths {
+        for SrcPath { path, arg_index } in src_paths {
             if !path.is_file() {
                 self.errors.push(Error {
                     kind: ErrorKind::MustBeAFilePath,
