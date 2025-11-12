@@ -76,6 +76,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 #### Removed
 
 - Removed language selection flags `--kay`, `--asm`, `--obj`, only kept `*-asm` and `*-obj` commands
+- `Args` no longer implements `Default`
 
 #### Fixed
 

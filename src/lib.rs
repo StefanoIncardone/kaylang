@@ -664,13 +664,6 @@ pub struct Args<'args> {
     pub color: Color,
 }
 
-// REMOVE(stefano): let the user call ::default on command and color separetly
-impl Default for Args<'_> {
-    fn default() -> Self {
-        return Self { color: Color::Auto, command: Ok(Command::Help) };
-    }
-}
-
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 struct SrcPath<'args> {
     path: &'args Path,
