@@ -6,10 +6,10 @@ println "Kay let's go!";
 
 ## Comments
 
-line comments start with `#` and ignore everything until the end of the line:
+line comments start with `##` and ignore everything until the end of the line:
 
 ```kay
-## lines starting with the `#` symbol will be ignored by the compiler
+## lines starting with the `##` symbol will be ignored by the compiler
 ```
 
 block comments start with `#*` and ignore everthing until the next matched `*#`:

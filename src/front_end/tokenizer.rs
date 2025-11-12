@@ -1127,7 +1127,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
             let kind = match token_kind_result {
                 Ok(kind) => kind,
                 Err(()) => {
-                    // TODO: check if the error is terminal or not
+                    // TODO(stefano): check if the error is terminal or not
                     let unexpected_text = tokenizer.token_text();
                     let unexpected_index = tokenizer.new_token_text(unexpected_text);
                     TokenKind::Unexpected(unexpected_index)
