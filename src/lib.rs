@@ -548,8 +548,9 @@ impl Display for Help {
 
 [{Options}]:
     {__color}, {Scolor}, {_c}, {Sc} <{color}>
+        (supports '{s}-{color}', '{s}={color}' or '{s}:{color}' variations: '{_c}={auto}')
 
-    <{color}> (supports '{s}-{color}' and '{s}={color}' variations: '{_c}={auto}'):
+    <{color}>:
         {auto} (default)    only print colored output if supported
         {always}            always print colored output, even if not supported
         {never}             never print colored output
@@ -580,8 +581,9 @@ impl Display for Help {
 
     <{Output}>:
         {__output}, {Soutput}, {_o}, {So} <{path}>
+            (supports '{s}={path}' or `{s}:{path}' variations: '{_o}={out}')
 
-        <{path}> (supports '{s}={path}' variations: '{_o}={out}'):
+        <{path}>:
             Folder to populate with compilation artifacts",
 
             Version         = Version { color: self.color },
@@ -897,8 +899,7 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
             };
 
             let start_of_color_index = match separator {
-                // IDEA(stefano): support ":"
-                b'-' | b'=' => separator_index + 1,
+                b'-' | b'=' | b':' => separator_index + 1,
                 _ => return ArgResult::Unrecognized,
             };
             #[expect(clippy::cast_possible_truncation)]
@@ -1152,8 +1153,7 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
             };
 
             let start_of_path_index = match separator {
-                // IDEA(stefano): support ":"
-                b'=' => separator_index + 1,
+                b'=' | b':' => separator_index + 1,
                 _ => return ArgResult::Unrecognized,
             };
             #[expect(clippy::cast_possible_truncation)]
