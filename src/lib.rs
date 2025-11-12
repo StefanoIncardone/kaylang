@@ -14,11 +14,7 @@ use back_to_front::offset32;
 use color::{ansi_flag, AnsiFlag, Bg, Colored, Fg};
 use core::fmt::{Display, Write as _};
 use error::MsgWithCauseUnderText;
-use std::{
-    io::IsTerminal,
-    path::{Path, PathBuf},
-    time::Instant,
-};
+use std::{io::IsTerminal, path::Path, time::Instant};
 
 const fn max_text_len(texts: &[&str]) -> usize {
     let mut max_len = 0;
@@ -501,13 +497,12 @@ impl Display for Version {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct Help {
+pub struct Help<'exe> {
     pub color: Color,
-    // IDEA(stefano): make this a Cow<'args, Path>
-    pub executable_name: PathBuf,
+    pub executable_name: &'exe Path,
 }
 
-impl Help {
+impl Help<'_> {
     #[must_use]
     #[inline(always)]
     pub fn default_executable_name() -> &'static Path {
@@ -515,18 +510,18 @@ impl Help {
     }
 }
 
-impl Default for Help {
+impl Default for Help<'_> {
     #[must_use]
     #[inline]
     fn default() -> Self {
         return Self {
             color: Color::Auto,
-            executable_name: Self::default_executable_name().to_owned(),
+            executable_name: Self::default_executable_name(),
         };
     }
 }
 
-impl Display for Help {
+impl Display for Help<'_> {
     #[expect(non_upper_case_globals)]
     #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {

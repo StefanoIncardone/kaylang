@@ -17,16 +17,14 @@ use kaylang::{
     LINKING_ERROR, LOADING_SOURCE, PARSING_AST, PARSING_SYNTAX_TREE, RUNNING, SUBSTEP_DONE,
     TOKENIZATION, TYPE_CHECKING,
 };
-use std::{
-    path::{Path, PathBuf},
-    process::ExitCode,
-};
+use std::{path::Path, process::ExitCode};
 
 fn main() -> ExitCode {
     let mut env_args = std::env::args();
-    let executable_name = match env_args.next() {
-        Some(executable_name) => PathBuf::from(executable_name),
-        None => Help::default_executable_name().to_owned(),
+    let executable_name_option = env_args.next();
+    let executable_name = match &executable_name_option {
+        Some(executable_name) => Path::new(executable_name),
+        None => Help::default_executable_name(),
     };
 
     let args = env_args.collect::<Vec<String>>();
@@ -38,7 +36,7 @@ fn main() -> ExitCode {
             Ok(parsed_command) => (color, parsed_command),
             Err(errors) => {
                 let errors_display = kaylang::Errors {
-                    executable_name: Some(executable_name.as_path()),
+                    executable_name: Some(executable_name),
                     args: &args,
                     errors,
                 };

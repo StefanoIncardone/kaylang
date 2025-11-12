@@ -68,6 +68,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
     - `Command::Check`, `Command::Compile` and `Command::Run` now contain `&Path`
 - `error::Msg` is now `error::MsgSimple`
 - `back_end::artifacts` module inlined into `back_end`
+- `Help` now takes `&Path`
 <!--  -->
 - [Syntax specification](SYNTAX.ebnf) only considers syntax and not typing
 <!--  -->
@@ -75,8 +76,9 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 #### Removed
 
-- Removed language selection flags `--kay`, `--asm`, `--obj`, only kept `*-asm` and `*-obj` commands
 - `Args` no longer implements `Default`
+<!--  -->
+- Removed language selection flags `--kay`, `--asm`, `--obj`, only kept `*-asm` and `*-obj` commands
 
 #### Fixed
 
