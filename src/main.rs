@@ -65,8 +65,8 @@ fn main() -> ExitCode {
 
     let execution_step = Logger::new();
     if let Command::Check { src_path, verbosity: verbosity_ref }
-        | Command::Compile { src_path, verbosity: verbosity_ref, .. }
-        | Command::Run { src_path, verbosity: verbosity_ref, .. } = &command
+        | Command::Compile { src_path, verbosity: verbosity_ref, language: Language::Kay, .. }
+        | Command::Run { src_path, verbosity: verbosity_ref, language: Language::Kay, .. } = &command
     {
         language = Language::Kay;
         verbosity = *verbosity_ref;
@@ -181,29 +181,20 @@ fn main() -> ExitCode {
             }
         };
     } else {
-        let (src_path, out_path) = match &command {
-            Command::CompileAsm { src_path, verbosity: verbosity_ref, out_path } => {
-                language = Language::Asm;
-                verbosity = *verbosity_ref;
-                (*src_path, *out_path)
-            },
-            Command::CompileObj { src_path, verbosity: verbosity_ref, out_path } => {
-                language = Language::Obj;
-                verbosity = *verbosity_ref;
-                (*src_path, *out_path)
-            },
-            Command::RunAsm { src_path, verbosity: verbosity_ref, out_path } => {
-                language = Language::Asm;
-                verbosity = *verbosity_ref;
-                (*src_path, *out_path)
-            },
-            Command::RunObj { src_path, verbosity: verbosity_ref, out_path } => {
-                language = Language::Obj;
-                verbosity = *verbosity_ref;
-                (*src_path, *out_path)
-            },
-            _ => unreachable!(),
+        let (Command::Compile {
+            language: language_ref,
+            src_path,
+            out_path,
+            verbosity: verbosity_ref,
+        }
+        | Command::Run { language: language_ref, src_path, out_path, verbosity: verbosity_ref }) =
+            &command
+        else {
+            unreachable!()
         };
+
+        language = *language_ref;
+        verbosity = *verbosity_ref;
 
         Logger::info_with_verbosity(&COMPILING, src_path, verbosity);
         compilation_sub_step = Logger::new();
@@ -282,7 +273,7 @@ fn main() -> ExitCode {
     compilation_sub_step.sub_step_with_verbosity(&SUBSTEP_DONE, None, verbosity);
     execution_step.step_with_verbosity(&DONE, None, verbosity);
 
-    let (Command::Run { .. } | Command::RunAsm { .. } | Command::RunObj { .. }) = command else {
+    let Command::Run { .. } = command else {
         return ExitCode::SUCCESS;
     };
 

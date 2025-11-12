@@ -10,8 +10,7 @@ use back_to_front::{
     digit::{self, AsciiDigit},
     offset32,
 };
-use core::{fmt::Display, ops::RangeInclusive};
-use std::fmt::Write;
+use core::{fmt::{Write, Display}, ops::RangeInclusive};
 use unicode_segmentation::UnicodeSegmentation as _;
 
 // TODO(stefano): move to primitives.rs

@@ -53,6 +53,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 #### Added
 
 - Implemented basic syntax errors fault tolerance
+- Implemented position independent cli arguments
 
 #### Changed
 
@@ -76,7 +77,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 #### Fixed
 
 - Actually removed do-statements
-- Corrected cli error messages
+- Corrected and improved cli error messages
 - Corrected crashes in compilation of unary operators on non-`i64` types
 - Corrected crashes in compilation of comparison expressions in variable assignments
 - Corrected parsing of character literals

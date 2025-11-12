@@ -27,6 +27,10 @@ pub struct Artifacts {
 }
 
 impl Artifacts {
+    // BUG(stefano): running `run-asm tests/test.kay -o=out` works accidentally because
+    // `out/test.asm` exists, `run-asm` should directly use `tests/test.kay`
+        // IDEA(stefano): extract Command::Check/Compile/Run args to structs and have them calculate
+        // the relevant paths
     #[expect(clippy::missing_errors_doc)]
     pub fn new(src_path: &Path, out_path: &Path) -> Result<Self, Error> {
         if src_path.is_dir() {
@@ -42,29 +46,29 @@ impl Artifacts {
             return Err(Error::MustBeADirectoryPath(out_path.to_owned()));
         }
 
-        let artifacts = if out_path == Path::new("") || out_path == Path::new(".") {
-            Self {
+        if out_path == Path::new("") || out_path == Path::new(".") {
+            let artifacts = Self {
                 asm_path: src_path_stem.with_extension(ASM_EXTENSION),
                 obj_path: src_path_stem.with_extension(OBJ_EXTENSION),
                 exe_path: src_path_stem.with_extension(EXE_EXTENSION),
-            }
-        } else {
-            if let Err(err) = std::fs::create_dir_all(out_path) {
-                if err.kind() != std::io::ErrorKind::AlreadyExists {
-                    return Err(Error::CouldNotCreateOutputDirectory {
-                        path: out_path.to_owned(),
-                        err,
-                    });
-                }
-            }
+            };
+            return Ok(artifacts);
+        }
 
-            Self {
-                asm_path: out_path.join(src_path_stem.with_extension(ASM_EXTENSION)),
-                obj_path: out_path.join(src_path_stem.with_extension(OBJ_EXTENSION)),
-                exe_path: out_path.join(src_path_stem.with_extension(EXE_EXTENSION)),
+        if let Err(err) = std::fs::create_dir_all(out_path) {
+            if err.kind() != std::io::ErrorKind::AlreadyExists {
+                return Err(Error::CouldNotCreateOutputDirectory {
+                    path: out_path.to_owned(),
+                    err,
+                });
             }
+        }
+
+        let artifacts = Self {
+            asm_path: out_path.join(src_path_stem.with_extension(ASM_EXTENSION)),
+            obj_path: out_path.join(src_path_stem.with_extension(OBJ_EXTENSION)),
+            exe_path: out_path.join(src_path_stem.with_extension(EXE_EXTENSION)),
         };
-
         return Ok(artifacts);
     }
 
