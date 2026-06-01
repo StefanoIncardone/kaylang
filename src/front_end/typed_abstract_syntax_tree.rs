@@ -1961,8 +1961,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 open_square_bracket_column,
                 ..
             } => {
-                // TODO(stefano): take into consideration the array base type instead of the
-                // whole type
                 if *items_len == 0 {
                     return Err(Msg {
                         severity: MsgSeverity::Error,
@@ -1978,6 +1976,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 let first_item = &self.syntax_tree.array_items[item_index];
                 item_index.0 += 1;
 
+                // TODO(stefano): take into consideration the array base type instead of the
+                // whole type
                 let parsed_first_item = self.expression(first_item.expression, None)?;
                 let mut expected_array_items_type = parsed_first_item.typ(&self.tast);
                 if let Type::Array { .. } = expected_array_items_type {

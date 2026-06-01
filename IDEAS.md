@@ -17,7 +17,30 @@
 
     ```kay
     ### documentation line comment
+    let foo = 12;
     ##* documentation block comment *##
+    let foo = 21;
+    ```
+
+    or just don't have doc comments as a language feature and treat all comments as possible doc
+    comments when put directly before a valid entity:
+
+    ```kay
+    ## "documentation" line comment
+    let foo = 12;
+
+    #* "documentation" block comment *#
+    let foo = 12;
+    ```
+
+    or have a speciale directive that states "the next comment is a doc comment":
+
+    ```kay
+    #doc ## documentation line comment
+    let foo = 12;
+
+    #doc #* documentation block comment *#
+    let foo = 12;
     ```
 
 ## ?.?.? - Disallowing optional trailing semicolon, make it mandatory
@@ -2098,6 +2121,7 @@ op SomeOtherStruct = cast(self: SomeStruct; other: SomeOtherStruct) { ...; retur
 fn ... <- Foo.foo(self @.; a: i64; b: i64) { ... }
 fn ... <- Foo.foo(self: @.; a: i64; b: i64) { ... }
 fn ... <- Foo.foo(.self: Self; a: i64; b: i64) { ... }
+fn ... <- Foo.foo(.self; a: i64; b: i64) { ... }
 fn ... <- Foo.foo(self: .Self; a: i64; b: i64) { ... }
 fn ... <- Foo.foo(self.: Self; a: i64; b: i64) { ... }
 fn ... <- self.foo(.: Self; a: i64; b: i64) { ... }
@@ -3092,9 +3116,7 @@ use a rust-like solution for quotes in raw strings:
 
 ```kay
 r"" -> r#"""# -> r##""""## -> r###"""""###
-##         ^          ^^            ^^^      these are the valid characters
-r"" -> rr"""r -> rrr""""rr -> rrrr"""""rrr
-##         ^          ^^            ^^^      these are the valid characters
+##        ^          ^^            ^^^      these are the valid characters
 ```
 
 identifier strings could use the same syntax with the `i` prefix:
@@ -3102,23 +3124,24 @@ identifier strings could use the same syntax with the `i` prefix:
 ```kay
 `current ` identifier string` ## does not allow for backticks inside
 i"current ` identifier string" ## does allow for anything inside
+#`current ` identifier string`# ## does allow for anything inside
 
 i"" -> i#"""# -> i##""""## -> i###"""""###
 ##         ^          ^^            ^^^      these are the valid characters
-i"" -> ii"""i -> iii""""ii -> iiii"""""iii
-##         ^          ^^            ^^^      these are the valid characters
+i"" -> i"""i -> ii""""ii -> iii"""""iii
+##       ^         ^^           ^^^      these are the valid characters
 ```
 
 could be extended to character literals:
 
 ```kay
 '\'' -> r#'''#
-##          ^    this is the valid character, but its longer than the escaped version,
-##               so what's the point?
+##         ^    this is the valid character, but its longer than the escaped version,
+##              so what's the point?
 '\'' -> r'''
-##         ^ this is the valid character
+##        ^ this is the valid character
 '\\' -> r'\'
-##         ^ this is the valid character
+##        ^ this is the valid character
 ```
 
 ## ?.?.? - explicit out parameters

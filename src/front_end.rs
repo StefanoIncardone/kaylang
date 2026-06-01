@@ -3,6 +3,7 @@ pub mod src_file;
 pub mod syntax_tree;
 pub mod tokenizer;
 pub mod typed_abstract_syntax_tree;
+// pub mod ir;
 
 use self::src_file::{DisplayPosition, SrcCode};
 use crate::{error::MsgWithCauseUnderTextWithLocation, ERROR};

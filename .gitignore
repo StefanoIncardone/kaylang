@@ -2,6 +2,7 @@
 
 # any file used to test language functionality
 test*.kay
+test*.kbe
 
 # vscode settings, tasks and launch configurations
 .vscode
@@ -12,4 +13,7 @@ target
 # output directory of artifacts generated from debugging with vscode
 out
 
-src/saved_for_later
+saved_for_later
+
+# kbe examples/tests
+examples/project_euler/*.kbe

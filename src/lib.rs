@@ -526,7 +526,7 @@ impl Display for Help<'_> {
     #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         const fg_value:  Fg = Fg::White;
-        const fg_option: Fg = Fg::Green;
+        const fg_option: Fg = Fg::LightGreen;
         const fg_flag:   Fg = Fg::Blue;
         const bg:        Bg = Bg::Default;
         const flags_value:  ansi_flag = AnsiFlag::Bold as ansi_flag;
@@ -558,7 +558,7 @@ impl Display for Help<'_> {
     {version}, {__version}, {Sversion}, {_v}, {Sv}
         Display the compiler version
 
-    {check}                             <{file}> [{Check_Options}]
+    {check}                             <{file}>          [{Check_Options}]
         Check kay <{file}> for correctness
 
     {compile}, {compile}-{asm}, {compile}-{obj} <{file}> <{Output}> [{Compile_Options}]
@@ -576,7 +576,7 @@ impl Display for Help<'_> {
 
     <{Output}>:
         {__output}, {Soutput}, {_o}, {So} <{path}>
-            (supports '{s}={path}' or `{s}:{path}' variations: '{_o}={out}')
+            (supports '{s}={path}' or '{s}:{path}' variations: '{_o}={out}')
 
         <{path}>:
             Folder to populate with compilation artifacts",
