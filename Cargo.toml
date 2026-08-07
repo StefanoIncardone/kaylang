@@ -1,8 +1,8 @@
 [package]
 name = "kaylang"
-rust-version = "1.81.0"
+rust-version = "1.89.0"
 version = "0.6.4-dev"
-edition = "2021"
+edition = "2024"
 authors = ["Stefano Incardone"]
 categories = ["compilers", "command-line-utilities"]
 keywords = ["language", "compiler"]
@@ -17,9 +17,13 @@ unicode-width = "0.2.1"
 unicode-segmentation = "1.12.0"
 
 [dependencies.back-to-front]
-version = "0.1.0"
-git = "https://github.com/StefanoIncardone/back-to-front"
-rev = "bbb1678526a0b4708eeaeafdeb6f1779956d9f9c"
+# For publishing
+# tag = "v0.1.2"
+# rev = "dfdb84a03fd354a0e235c5100c8ce2fdb4162784"
+# git = "https://github.com/StefanoIncardone/back-to-front"
+
+# For rapid development
+path = "../../back-to-front"
 
 [profile.dev]
 debug = "full"
@@ -155,3 +159,5 @@ manual_swap = "allow"
 ptr_as_ptr = "allow"
 get_last_with_len = "allow"
 get_first = "allow"
+
+disallowed_names = "allow" # why is this even a lint?

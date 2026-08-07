@@ -111,13 +111,13 @@ pub(super) fn print_color(
     const CODES_START_INDEX: usize = CODES_LEN - 2; // skipping the last m
     type Codes = [u8; CODES_LEN];
 
-    fn u8_1_digits_to_str(value: u8, codes: &mut Codes, digit_index: &mut usize) {
+    const fn u8_1_digits_to_str(value: u8, codes: &mut Codes, digit_index: &mut usize) {
         let digit = value % 10;
         codes[*digit_index] = digit.wrapping_add(b'0');
         *digit_index = digit_index.wrapping_sub(1 + 1); // skipping the semicolon
     }
 
-    fn u8_2_digits_to_str(mut value: u8, codes: &mut Codes, digit_index: &mut usize) {
+    const fn u8_2_digits_to_str(mut value: u8, codes: &mut Codes, digit_index: &mut usize) {
         let mut digit = value % 10;
         value /= 10;
         codes[*digit_index] = digit.wrapping_add(b'0');
@@ -129,7 +129,7 @@ pub(super) fn print_color(
     }
 
     #[expect(clippy::single_call_fn)]
-    fn u8_3_digits_to_str(mut value: u8, codes: &mut Codes, digit_index: &mut usize) {
+    const fn u8_3_digits_to_str(mut value: u8, codes: &mut Codes, digit_index: &mut usize) {
         let mut digit = value % 10;
         value /= 10;
         codes[*digit_index] = digit.wrapping_add(b'0');

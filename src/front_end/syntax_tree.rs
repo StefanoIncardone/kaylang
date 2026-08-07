@@ -7,7 +7,7 @@ use crate::front_end::{tokenizer::ascii, Index32, MsgSeverity};
 use core::{fmt::Display, marker::PhantomData, num::NonZero};
 extern crate alloc;
 use alloc::borrow::Cow;
-use back_to_front::offset32;
+use back_to_front::uoffset32;
 
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -50,7 +50,7 @@ impl Display for PrefixOp {
 impl PrefixOp {
     #[expect(dead_code)]
     #[inline(always)]
-    pub(super) fn display_len(self) -> offset32 {
+    pub(super) fn display_len(self) -> uoffset32 {
         let op: Op = self.into();
         return op.display_len();
     }
@@ -136,7 +136,7 @@ impl Display for BinaryOp {
 
 impl BinaryOp {
     #[inline(always)]
-    pub(super) fn display_len(self) -> offset32 {
+    pub(super) fn display_len(self) -> uoffset32 {
         let op: Op = self.into();
         return op.display_len();
     }
@@ -211,7 +211,7 @@ impl Display for BinaryAssignmentOp {
 
 impl BinaryAssignmentOp {
     #[inline(always)]
-    pub(super) fn display_len(self) -> offset32 {
+    pub(super) fn display_len(self) -> uoffset32 {
         let op: Op = self.into();
         return op.display_len();
     }
@@ -257,7 +257,7 @@ impl Display for PrefixAssignmentOp {
 
 impl PrefixAssignmentOp {
     #[inline(always)]
-    pub(super) fn display_len(self) -> offset32 {
+    pub(super) fn display_len(self) -> uoffset32 {
         let op: Op = self.into();
         return op.display_len();
     }
@@ -268,96 +268,96 @@ pub(crate) type ExpressionIndex<'code> = Index32<Expression<'code>>;
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Expression<'code> {
     False {
-        column: offset32,
+        column: uoffset32,
     },
     True {
-        column: offset32,
+        column: uoffset32,
     },
     DecimalInteger {
         literal: TextIndex<'code>,
-        column: offset32,
+        column: uoffset32,
     },
     DecimalIntegerPrefix {
         literal: TextIndex<'code>,
-        column: offset32,
+        column: uoffset32,
     },
     BinaryInteger {
         literal: TextIndex<'code>,
-        column: offset32,
+        column: uoffset32,
     },
     OctalInteger {
         literal: TextIndex<'code>,
-        column: offset32,
+        column: uoffset32,
     },
     HexadecimalInteger {
         literal: TextIndex<'code>,
-        column: offset32,
+        column: uoffset32,
     },
     Ascii {
         literal: TextIndex<'code>,
         value: ascii,
-        column: offset32,
+        column: uoffset32,
     },
     Str {
         literal: TextIndex<'code>,
-        column: offset32,
+        column: uoffset32,
     },
     RawStr {
         literal: TextIndex<'code>,
-        column: offset32,
+        column: uoffset32,
     },
     Identifier {
         identifier: TextIndex<'code>,
-        column: offset32,
+        column: uoffset32,
     },
     IdentifierStr {
         identifier: TextIndex<'code>,
-        column: offset32,
+        column: uoffset32,
     },
     Array {
-        open_square_bracket_column: offset32,
+        open_square_bracket_column: uoffset32,
         items_start: ArrayItemsIndex<'code>,
-        items_len: offset32,
-        close_square_bracket_column: offset32,
+        items_len: uoffset32,
+        close_square_bracket_column: uoffset32,
     },
     ArrayTrailingItem {
-        open_square_bracket_column: offset32,
+        open_square_bracket_column: uoffset32,
         items_start: ArrayItemsIndex<'code>,
         /// always greater than 0
-        items_len: offset32,
-        close_square_bracket_column: offset32,
+        items_len: uoffset32,
+        close_square_bracket_column: uoffset32,
     },
 
     Prefix {
         operator: PrefixOp,
-        operator_column: offset32,
+        operator_column: uoffset32,
         right_operand: ExpressionIndex<'code>,
     },
     Binary {
         left_operand: ExpressionIndex<'code>,
         operator: BinaryOp,
-        operator_column: offset32,
+        operator_column: uoffset32,
         right_operand: ExpressionIndex<'code>,
     },
 
     Parenthesis {
-        open_round_bracket_column: offset32,
+        open_round_bracket_column: uoffset32,
         inner_expression: ExpressionIndex<'code>,
-        close_round_bracket_column: offset32,
+        close_round_bracket_column: uoffset32,
     },
 
     Index {
         indexed_expression: ExpressionIndex<'code>,
-        open_square_bracket_column: offset32,
+        open_square_bracket_column: uoffset32,
         index_expression: ExpressionIndex<'code>,
-        close_square_bracket_column: offset32,
+        close_square_bracket_column: uoffset32,
     },
 }
 
 #[derive(Clone, Copy, Eq)]
 #[repr(C)]
 pub(crate) union ArrayItemSeparator {
-    pub(crate) some: offset32,
+    pub(crate) some: uoffset32,
     pub(crate) none: (),
 }
 
@@ -374,10 +374,9 @@ impl core::fmt::Debug for ArrayItemSeparator {
 #[expect(clippy::missing_trait_methods)]
 impl core::hash::Hash for ArrayItemSeparator {
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-        #[expect(clippy::ref_as_ptr)]
-        let separator_bytes_ptr = unsafe { &self.some as *const _ as *const u8 };
+        let separator_bytes_ptr = unsafe { &raw const self.some as *const u8 };
         let separator_bytes =
-            unsafe { core::slice::from_raw_parts(separator_bytes_ptr, size_of::<offset32>()) };
+            unsafe { core::slice::from_raw_parts(separator_bytes_ptr, size_of::<uoffset32>()) };
         state.write(separator_bytes);
     }
 }
@@ -402,23 +401,23 @@ pub(crate) type ArrayDimensionIndex<'code> = Index32<ArrayDimension<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct ArrayDimension<'code> {
-    pub(crate) open_square_bracket_column: offset32,
+    pub(crate) open_square_bracket_column: uoffset32,
     pub(crate) dimension_expression: ExpressionIndex<'code>,
-    pub(crate) close_square_bracket_column: offset32,
+    pub(crate) close_square_bracket_column: uoffset32,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct TypeAnnotation<'code> {
-    pub(crate) colon_column: NonZero<offset32>,
+    pub(crate) colon_column: NonZero<uoffset32>,
     pub(crate) type_name: TextIndex<'code>,
-    pub(crate) type_name_column: offset32,
+    pub(crate) type_name_column: uoffset32,
     pub(crate) array_dimensions_start: ArrayDimensionIndex<'code>,
-    pub(crate) array_dimensions_len: offset32,
+    pub(crate) array_dimensions_len: uoffset32,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct InitialValue<'code> {
-    pub(crate) equals_column: NonZero<offset32>,
+    pub(crate) equals_column: NonZero<uoffset32>,
     pub(crate) expression: ExpressionIndex<'code>,
 }
 
@@ -427,7 +426,7 @@ pub(crate) type VariableDefinitionIndex<'code> = Index32<VariableDefinition<'cod
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct VariableDefinition<'code> {
     pub(crate) name: TextIndex<'code>,
-    pub(crate) name_column: offset32,
+    pub(crate) name_column: uoffset32,
     pub(crate) type_annotation: Option<TypeAnnotation<'code>>,
     pub(crate) initial_value: Option<InitialValue<'code>>,
 }
@@ -437,103 +436,103 @@ pub(crate) type NodeIndex<'code> = Index32<Node<'code>>;
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Node<'code> {
     Semicolon {
-        column: offset32,
+        column: uoffset32,
     },
 
     Expression {
         expression: ExpressionIndex<'code>,
-        semicolon_column: offset32,
+        semicolon_column: uoffset32,
     },
 
     Print {
-        print_column: offset32,
+        print_column: uoffset32,
         argument: ExpressionIndex<'code>,
-        semicolon_column: offset32,
+        semicolon_column: uoffset32,
     },
     Println {
-        println_column: offset32,
+        println_column: uoffset32,
         argument: ExpressionIndex<'code>,
-        semicolon_column: offset32,
+        semicolon_column: uoffset32,
     },
     PrintlnNoArg {
-        println_column: offset32,
-        semicolon_column: offset32,
+        println_column: uoffset32,
+        semicolon_column: uoffset32,
     },
     Eprint {
-        eprint_column: offset32,
+        eprint_column: uoffset32,
         argument: ExpressionIndex<'code>,
-        semicolon_column: offset32,
+        semicolon_column: uoffset32,
     },
     Eprintln {
-        eprintln_column: offset32,
+        eprintln_column: uoffset32,
         argument: ExpressionIndex<'code>,
-        semicolon_column: offset32,
+        semicolon_column: uoffset32,
     },
     EprintlnNoArg {
-        eprintln_column: offset32,
-        semicolon_column: offset32,
+        eprintln_column: uoffset32,
+        semicolon_column: uoffset32,
     },
 
     LetVariableDefinition {
-        let_column: offset32,
+        let_column: uoffset32,
         variable_definition: VariableDefinitionIndex<'code>,
-        semicolon_column: offset32,
+        semicolon_column: uoffset32,
     },
     VarVariableDefinition {
-        var_column: offset32,
+        var_column: uoffset32,
         variable_definition: VariableDefinitionIndex<'code>,
-        semicolon_column: offset32,
+        semicolon_column: uoffset32,
     },
 
     BinaryAssignment {
         target: ExpressionIndex<'code>,
         operator: BinaryAssignmentOp,
-        operator_column: offset32,
+        operator_column: uoffset32,
         new_value: ExpressionIndex<'code>,
-        semicolon_column: offset32,
+        semicolon_column: uoffset32,
     },
     PrefixAssignment {
         operator: PrefixAssignmentOp,
-        operator_column: offset32,
+        operator_column: uoffset32,
         target: ExpressionIndex<'code>,
-        semicolon_column: offset32,
+        semicolon_column: uoffset32,
     },
 
     Scope {
-        open_curly_bracket_column: offset32,
-        raw_nodes_in_scope_count: offset32,
-        close_curly_bracket_column: offset32,
+        open_curly_bracket_column: uoffset32,
+        raw_nodes_in_scope_count: uoffset32,
+        close_curly_bracket_column: uoffset32,
     },
 
     If {
-        if_column: offset32,
+        if_column: uoffset32,
         condition: ExpressionIndex<'code>,
     },
     ElseIf {
-        else_column: offset32,
-        if_column: offset32,
+        else_column: uoffset32,
+        if_column: uoffset32,
         condition: ExpressionIndex<'code>,
     },
     Else {
-        else_column: offset32,
+        else_column: uoffset32,
     },
 
     Loop {
-        loop_column: offset32,
+        loop_column: uoffset32,
         condition: ExpressionIndex<'code>,
     },
     DoLoop {
-        do_column: offset32,
-        loop_column: offset32,
+        do_column: uoffset32,
+        loop_column: uoffset32,
         condition: ExpressionIndex<'code>,
     },
     Break {
-        break_column: offset32,
-        semicolon_column: offset32,
+        break_column: uoffset32,
+        semicolon_column: uoffset32,
     },
     Continue {
-        continue_column: offset32,
-        semicolon_column: offset32,
+        continue_column: uoffset32,
+        semicolon_column: uoffset32,
     },
 }
 
@@ -586,7 +585,7 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
     fn info_semicolon(
         f: &mut core::fmt::Formatter<'_>,
         indent: usize,
-        column: offset32,
+        column: uoffset32,
     ) -> core::fmt::Result {
         return writeln!(f, "{:>indent$}Semicolon: {column} = ;", "");
     }
@@ -596,7 +595,7 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
         f: &mut core::fmt::Formatter<'_>,
         node_index: &mut NodeIndex<'_>,
         indent: usize,
-        if_column: offset32,
+        if_column: uoffset32,
         condition: ExpressionIndex<'_>,
     ) -> core::fmt::Result {
         writeln!(f, "{:>indent$}If: {if_column} = if", "")?;
@@ -1314,8 +1313,8 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
 
                     match self.any(peeked.token)? {
                         ParsedNode::Node(node) => self.syntax_tree.nodes.push(node),
-                        ParsedNode::ScopeEnd => continue,
-                    };
+                        ParsedNode::ScopeEnd => {},
+                    }
                 }
 
                 Ok(ParsedNode::ScopeEnd)
@@ -1429,7 +1428,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
         };
     }
 
-    fn semicolon(&mut self) -> Result<offset32, ()> {
+    fn semicolon(&mut self) -> Result<uoffset32, ()> {
         let peeked = self.peek_next_expected_token(Expected::Semicolon)?;
         let TokenKind::SemiColon = peeked.token.kind else {
             let previous_token = self.peek_previous_token();
@@ -1511,7 +1510,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     fn peek_next_token(&self) -> Option<Peeked<'code>> {
         let token_index_end = TokenIndex::new(self.tokens.tokens.len());
         for next_token_index in self.token_index.0..token_index_end.0 {
-            let next_token_index_index = TokenIndex::new_offset32(next_token_index);
+            let next_token_index_index = TokenIndex::new_uoffset32(next_token_index);
             let next_token = self.tokens.tokens[next_token_index_index];
             match next_token.kind {
                 TokenKind::OpenRoundBracket
@@ -1549,7 +1548,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 | TokenKind::Break
                 | TokenKind::Continue => {
                     let peeked_token_index_index =
-                        TokenIndex::new_offset32(next_token_index_index.0 + 1);
+                        TokenIndex::new_uoffset32(next_token_index_index.0 + 1);
                     return Some(Peeked { token: next_token, index: peeked_token_index_index });
                 },
                 TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {},
@@ -1584,7 +1583,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     /// Warning: should always be called with at least a previus token
     fn peek_previous_token(&self) -> Token<'code> {
         for previous_token_index in (0..self.token_index.0).rev() {
-            let previous_token_index_index = TokenIndex::new_offset32(previous_token_index);
+            let previous_token_index_index = TokenIndex::new_uoffset32(previous_token_index);
             let previous_token = self.tokens.tokens[previous_token_index_index];
             match previous_token.kind {
                 TokenKind::OpenRoundBracket
@@ -1828,7 +1827,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
                     let array_items = &self.temp_array_items[temp_array_items_start..];
                     #[expect(clippy::cast_possible_truncation)]
-                    let items_len = array_items.len() as offset32;
+                    let items_len = array_items.len() as uoffset32;
                     self.syntax_tree.array_items.extend_from_slice(array_items);
 
                     Expression::ArrayTrailingItem {
@@ -1840,7 +1839,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 } else {
                     let array_items = &self.temp_array_items[temp_array_items_start..];
                     #[expect(clippy::cast_possible_truncation)]
-                    let items_len = array_items.len() as offset32;
+                    let items_len = array_items.len() as uoffset32;
                     self.syntax_tree.array_items.extend_from_slice(array_items);
 
                     Expression::Array {
@@ -2184,7 +2183,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     fn variable_definition(
         &mut self,
         mutability_token: Token<'code>,
-    ) -> Result<(VariableDefinition<'code>, offset32), ()> {
+    ) -> Result<(VariableDefinition<'code>, uoffset32), ()> {
         let variable_name_token = self.next_expected_token(Expected::VariableName)?;
         let variable_name = match variable_name_token.kind {
             TokenKind::Identifier(name) | TokenKind::IdentifierStr(name) => name,
@@ -2353,7 +2352,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 type_name_column: type_name_token.col,
                 array_dimensions_start,
                 #[expect(clippy::cast_possible_truncation)]
-                array_dimensions_len: self.syntax_tree.array_dimensions.len() as offset32
+                array_dimensions_len: self.syntax_tree.array_dimensions.len() as uoffset32
                     - array_dimensions_start.0,
             })
         };
@@ -2450,7 +2449,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
 // control flow statements
 impl<'code> Parser<'_, '_, 'code, '_> {
-    fn if_statement(&mut self, if_column: offset32) -> Result<ParsedNode<'code>, ()> {
+    fn if_statement(&mut self, if_column: uoffset32) -> Result<ParsedNode<'code>, ()> {
         let start_of_condition_token = self.next_expected_token(Expected::Expression)?;
         let condition = self.expression(start_of_condition_token)?;
         let end_of_condition_token = self.peek_previous_token();
@@ -2569,8 +2568,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
     fn do_loop_statement(
         &mut self,
-        do_column: offset32,
-        loop_column: offset32,
+        do_column: uoffset32,
+        loop_column: uoffset32,
     ) -> Result<ParsedNode<'code>, ()> {
         let start_of_condition_token = self.next_expected_token(Expected::Expression)?;
         let condition = self.expression(start_of_condition_token)?;
@@ -2595,7 +2594,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         return Ok(ParsedNode::ScopeEnd);
     }
 
-    fn loop_statement(&mut self, loop_column: offset32) -> Result<ParsedNode<'code>, ()> {
+    fn loop_statement(&mut self, loop_column: uoffset32) -> Result<ParsedNode<'code>, ()> {
         let start_of_condition_token = self.next_expected_token(Expected::Expression)?;
         let condition = self.expression(start_of_condition_token)?;
         let end_of_condition_token = self.peek_previous_token();

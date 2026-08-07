@@ -3,6 +3,26 @@
 >[!WARNING]
 > no feature is final, modifications can happen at any moment
 
+## 0.7.0 - more consistent language modes flags
+
+current:
+
+```shell
+kay run foo.kay
+# no 'run-kay' command
+kay run-asm foo.asm
+kay run-obj foo.obj
+```
+
+desired:
+
+```shell
+kay run foo.kay
+kay run --kay foo.kay # for consistency
+kay run --asm foo.asm
+kay run --obj foo.obj
+```
+
 ## ?.?.? - Compiler directives and Documentation comments
 
 - i like the `#` for compiler directives instead of say `@`:
@@ -210,7 +230,7 @@ kay tags -n TODO -n IDEA -n NOTE # would recognize TODO, IDEA and NOTE
 kay tags # Error: no specified tags to look for
 ```
 
-## 0.6.4 - Sub-menu help commands
+## 0.7.0 - Sub-menu help commands
 
 printing the help message could lead to some useful information being offscreen, since the more
 relevant options are usually listed first, could only print some information and provide some sort
@@ -225,7 +245,7 @@ kay help
 Note: use `kay help *specific command*` for further explanation
 ```
 
-## 0.6.4 - More output file names flags
+## 0.7.0 - More output file names flags
 
 currently only the output path (`-o`, `--output`) can be specified and the names of the generated
 artifacts is generated from the source file name, i.e:
@@ -286,7 +306,7 @@ kay run main.kay -n-obj foo -o-asm bar/ -n-asm bar -n-exe baz # foo.obj in ./, b
 kay run main.kay -n-obj foo -o-asm bar/ -n-asm bar -n-exe baz # foo.obj in ./, bar.asm in bar/, baz.exe or baz in ./
 ```
 
-## ?.?.? - Configuration files
+## 0.7.0 - Configuration files
 
 ability to take in configurations from a file, akin to a project file like `Cargo.toml`:
 
@@ -2367,6 +2387,114 @@ let byte = type u8;                                  ## find: `let byte`
 let word = alias u16;                                ## find: `let word`
 ```
 
+### Consistent function syntax
+
+in most languages i can declare a function type alias:
+
+```rust
+type MinFn = fn(a: i64, b: i64) -> i64;
+```
+
+but how do i state that a function must be of that type?
+
+```rust
+// how do i specify that this function is of type MinFn?
+fn min(a: i64, b: i64) -> i64;
+
+// i now have to convert to a completely different syntax
+static min: MinFn = |a, b| -> a;
+```
+
+a unified approach may be nicer:
+
+```kay
+## this type syntax is ugly
+type MinFn = fn i64 <- (a: i64; b: i64);
+## the more traditional syntax would look better
+type MinFn = fn(a: i64; b: i64) -> i64;
+
+## with the MATLAB inspired syntax: confusing
+fn i64 <- min: MinFn(a: i64; b: i64);
+fn result: i64 <- min: MinFn(a: i64; b: i64);
+fn: MinFn result: i64 <- min(a: i64; b: i64);
+fn: MinFn result <- min(a; b); ## allows to omit the types
+
+## with the more traditional syntax
+fn min: MinFn(a: i64; b: i64) -> i64;
+fn min: MinFn(a: i64; b: i64) -> result: i64;
+fn min: MinFn(a; b) -> result; ## allows to omit the types
+fn min: MinFn(a; b) -> result; ## allows to omit the types
+fn min: MinFn(a; b) -> result { ... } ## allows to omit the types
+
+## new syntax with =, similar to a variable definition
+fn min = (a: i64; b: i64) -> i64 { ... }
+fn min: MinFn = (a; b) { ... } ## no need to specify the arguments types nor the return type
+fn min: fn(a: i64; b: i64) -> i64 = (a; b) { ... } ## with an explicit type
+fn min: fn(i64; i64) -> i64 = (a; b) { ... } ## with an explicit type
+## lambdas
+let foo = vector.find_by(fn: MinFn(a: i64, b: i64) -> i64 { ... }) ## explicit types
+let foo = vector.find_by(fn(a, b) { ... }) ## inferred types
+
+## even more consistent syntax, where everyting is a `unnamed` function:
+    ## - 'static' creates a unnamed function and assigns it to a `static` variable
+    ## - 'let'/'var' creates a nameless function and assigns it to a variable
+static min: fn(i64; i64) -> i64 = fn(a; b) { ... } ## with an explicit type
+static min = fn(a: i64; b: i64) -> i64 { ... } ## with an implicit type
+let min = fn(a: i64; b: i64) -> i64 { ... }
+var min = fn(a: i64; b: i64) -> i64 { ... }
+
+## or (i like this syntax more: `keyword name: type = value`)
+
+## 'static'/'let'/'var' create function variables, 'fn' creates regular functions
+static let min = fn(a: i64; b: i64) -> i64 { ... } ## immutable static variable
+static var min = fn(a: i64; b: i64) -> i64 { ... } ## mutable static variable
+let min: MinFn = fn(a; b) { ... }                  ## immutable local variable
+var min: MinFn = fn(a; b) { ... }                  ## mutable local variable
+fn min = (a: i64; b: i64) -> i64 { ... }           ## regular function
+fn min: MinFn = (a; b) { ... }                     ## regular function with type
+struct Foo: struct(a: i64; b: i64) = (a; b);
+struct Foo: struct(i64; i64) = (a; b)
+type FooStruct = struct(i64; i64); ## should semicolons at the end of struct types be mandatory?
+struct Foo: FooStruct = (a; b)
+struct Foo: FooStruct = (a; b); ## should semicolons at the end of structs be mandatory?
+
+## or `static` with no mutability modifier declares a compile time entity
+## everything is searchable with 'static name'
+static min: MinFn = fn(a; b) { ... }               ## regular function with type
+static min = fn(a: i64; b: i64) -> i64 { ... }               ## regular function with type
+static Foo: FooStruct = struct(a: i64; b: i64)
+static byte = u8; ## type alias
+static byte = u8; ## type alias
+static byte = type u8; ## distinct type
+static byte = u8; ## distinct type
+static byte = alias u8; ## type alias
+static byte == u8; ## type alias (maybe a bit confusing)
+static byte: type = u8;
+static byte: alias = u8;
+static byte = type u8;
+static byte = alias u8;
+
+## would still allow for a somewhat MATLAB inspired function syntax
+static min = fn i64 = (a: i64; b: i64) { ... }
+static min = fn result: i64 = (a: i64; b: i64) { ... }
+## going from definition to usage
+static min = fn result: i64 = (a: i64; b: i64) { ... }
+static min = fn result: i64 = (a: i64; b: i64);
+static min = fn result: i64 = (a; b);
+let result: i64 = min(a; b);
+let result = min(a; b);
+
+static min = fn(a: i64; b: i64) -> result: i64 { ... }
+fn result: i64 = min(a: i64; b: i64) { ... }
+let result: i64 = min(a; b);
+let result = min(a; b);
+
+## or
+static result: i64 = fn min(a: i64; b: i64) { ... }
+fn result: i64 = fn min(a: i64; b: i64) { ... }
+static struct Foo(a: i64; b: i64)
+```
+
 ### Inline functions
 
 Ability to inline a function at the call site for finer granularity, while still retaining a hint to
@@ -2404,7 +2532,7 @@ let foo = foo!(...); ## inline
 let foo = foo(...); ## let the compiler decide wether to inline
 ```
 
-## ?.?.? - Function overloading
+### Function overloading
 
 function overloading should follow the function's philosofy of resembling the shape of the usage of
 the function:
@@ -3196,7 +3324,7 @@ let success: bool = new_foo(..., foo&, bar&, ..., baz&, foobar&);
 
 ```
 
-## ?.?.? - Mandatory type annotations
+## 0.7.0 - Mandatory type annotations
 
 ```kay
 let i = 12; ## could raise an error
@@ -3207,4 +3335,38 @@ let i = 42; ## but what integer is this? i64? i32? u8? u16?
 let i = "hello";
 let i: struct Foo = struct Foo(...); ## obvious case, so type inference would help
 let i = struct Foo(...);
+let i: struct Foo = (...); ## obvious case, so type inference would help
+
+## could allow for C-like fine grained mutability (following the east const philosofy, to better
+## align with kay types definitions), basically making the values immutable/mutable, rather than the
+## variables being immutable/mutable
+let i: i64 = 21; ## immutable i64
+let i: i64 var = 21; ## mutable i64
+## change 'var' to 'mut' for better consistency (you wouldn't say a variable variable)
+let i: i64 mut = 21;
+
+let i: i64 = 21; ## immutable i64
+let i: i64 mut = 21; ## mutable i64
+let i: i64* = 21.*; ## immutable pointer to immutable i64
+let i: i64 mut* = 21.*; ## immutable pointer to mutable i64
+let i: i64 mut* mut = 21.*; ## mutable pointer to mutable i64
+static let i: i64 = 21;
+static let i: i64 mut = 21;
+
+## compile time variables can only be variables (not fn, struct, ...) so let is implicit
+const i: i64 = 21;
+const i: i64 mut = 21; ## Error: compile time variables cannot be mutable
+## reusing the let syntax for compile time variables, to avoid adding the const keyword, using ':'
+let i: i64 : 21;
+
+## or going the jai/oding route, removing the need for the `let` keyword as well (i don't like this)
+i: i64 = 21;
+i: i64 : 21;
+static i: i64 : 21;
+min :: fn(a: i64; b: i64) -> i64 { ... }
+min: MinFn : fn(a: i64; b: i64) -> i64 { ... } ## regular function
+min: MinFn = fn(a: i64; b: i64) -> i64 { ... } ## nameless function assigned to variable 'min'
+Foo :: struct(a: i64; b: i64);
+byte :: u8;
+byte :: alias u8;
 ```

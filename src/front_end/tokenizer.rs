@@ -8,9 +8,9 @@ use crate::{
 };
 use back_to_front::{
     digit::{self, AsciiDigit},
-    offset32,
+    uoffset32,
 };
-use core::{fmt::{Write, Display}, ops::RangeInclusive};
+use core::{fmt::{Write as _, Display}, ops::RangeInclusive};
 use unicode_segmentation::UnicodeSegmentation as _;
 
 // TODO(stefano): move to primitives.rs
@@ -203,7 +203,7 @@ impl Display for Op {
 }
 
 impl Op {
-    pub(crate) const fn display_len(self) -> offset32 {
+    pub(crate) const fn display_len(self) -> uoffset32 {
         return match self {
             Self::Len => 3,
             Self::Equals => 1,
@@ -351,7 +351,7 @@ pub(crate) enum TokenKind<'code> {
 }
 
 impl<'code> TokenKind<'code> {
-    pub(crate) fn display_len(self, tokens: &Tokens<'code>) -> offset32 {
+    pub(crate) fn display_len(self, tokens: &Tokens<'code>) -> uoffset32 {
         #[expect(clippy::cast_possible_truncation)]
         return match self {
             Self::LineComment(comment) => {
@@ -384,41 +384,41 @@ impl<'code> TokenKind<'code> {
 
             Self::DecimalInteger(integer) | Self::DecimalIntegerPrefix(integer) => {
                 let text = tokens.text[integer];
-                text.len() as offset32
+                text.len() as uoffset32
             },
             Self::BinaryInteger(integer) => {
                 let text = tokens.text[integer];
-                text.len() as offset32
+                text.len() as uoffset32
             },
             Self::OctalInteger(integer) => {
                 let text = tokens.text[integer];
-                text.len() as offset32
+                text.len() as uoffset32
             },
             Self::HexadecimalInteger(integer) => {
                 let text = tokens.text[integer];
-                text.len() as offset32
+                text.len() as uoffset32
             },
 
             Self::Ascii(ascii_char, _) => {
                 let text = tokens.text[ascii_char];
-                text.len() as offset32
+                text.len() as uoffset32
             },
             Self::Str(string) => {
                 let text = tokens.text[string];
-                text.len() as offset32
+                text.len() as uoffset32
             },
             Self::RawStr(string) => {
                 let text = tokens.text[string];
-                text.len() as offset32
+                text.len() as uoffset32
             },
             Self::IdentifierStr(identifier) => {
                 let text = tokens.text[identifier];
-                text.len() as offset32
+                text.len() as uoffset32
             },
 
             Self::Identifier(identifier) => {
                 let text = tokens.text[identifier];
-                text.len() as offset32
+                text.len() as uoffset32
             },
 
             Self::Print => 5,
@@ -441,14 +441,14 @@ impl<'code> TokenKind<'code> {
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct Token<'code> {
     pub(crate) kind: TokenKind<'code>,
-    pub(crate) col: offset32,
+    pub(crate) col: uoffset32,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Tokens<'code> {
     pub(crate) tokens: Vec<Token<'code>>,
 
-    // IDEA(stefano): store a Range<offset32> instead
+    // IDEA(stefano): store a Range<uoffset32> instead
     pub(crate) text: Vec<&'code str>,
 }
 
@@ -463,10 +463,10 @@ pub struct TokenizedCode<'code, 'path: 'code> {
 pub struct Tokenizer<'code> {
     code: &'code str,
     lines: Vec<Line>,
-    line_start: offset32,
+    line_start: uoffset32,
 
-    col: offset32,
-    token_start_col: offset32,
+    col: uoffset32,
+    token_start_col: uoffset32,
     tokens: Tokens<'code>,
 
     errors: Vec<Msg<ErrorKind<'code>>>,
@@ -477,7 +477,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
         #[repr(C)]
         union BackPatch<'code> {
             token: TokenIndex<'code>,
-            column: offset32,
+            column: uoffset32,
         }
 
         let tokens = Tokens { tokens: Vec::new(), text: Vec::new() };
@@ -542,7 +542,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                     #[expect(clippy::cast_possible_truncation)]
                     Err(grapheme) => {
                         tokenizer.push_utf8_error(grapheme);
-                        tokenizer.col += grapheme.len() as offset32;
+                        tokenizer.col += grapheme.len() as uoffset32;
                         break 'next_token Err(());
                     },
                 };
@@ -624,7 +624,6 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                                     BackPatch { column: tokenizer.token_start_col };
                                                 back_patches.push(back_patch);
                                                 tokenizer.token_start_col = comment_start_col;
-                                                continue 'next_character;
                                             },
                                             Some(_) => {},
                                             None => break 'next_character,
@@ -1187,7 +1186,7 @@ impl<'code> Tokenizer<'code> {
     #[inline]
     fn new_line(&mut self, line_end: LineEnd) {
         let line = Line { start: self.line_start, end: self.col };
-        self.col += line_end as offset32;
+        self.col += line_end as uoffset32;
         self.line_start = self.col;
         self.lines.push(line);
     }
@@ -1209,7 +1208,7 @@ impl<'code> Tokenizer<'code> {
     #[must_use]
     #[inline]
     const fn current_byte_multiline(&self) -> Option<u8> {
-        if self.col as usize >= self.code.as_bytes().len() {
+        if self.col as usize >= self.code.len() {
             return None;
         }
         return Some(self.code.as_bytes()[self.col as usize]);
@@ -1268,9 +1267,8 @@ impl<'code> Tokenizer<'code> {
         return grapheme;
     }
 
-    #[expect(clippy::question_mark)]
     #[must_use]
-    fn get_next_byte_singleline(&mut self) -> Option<u8> {
+    const fn get_next_byte_singleline(&mut self) -> Option<u8> {
         let Some(next) = self.current_byte_multiline() else {
             return None;
         };
@@ -1319,7 +1317,7 @@ impl<'code> Tokenizer<'code> {
                 #[expect(clippy::cast_possible_truncation)]
                 _utf8_ch => {
                     let grapheme = self.current_grapheme();
-                    self.col += grapheme.len() as offset32;
+                    self.col += grapheme.len() as uoffset32;
                     self.push_utf8_error(grapheme);
                 },
             }
@@ -1432,12 +1430,12 @@ impl Display for EscapedAscii {
 
 // tokenization of strings and character literals
 impl<'code> Tokenizer<'code> {
-    fn escape_sequence(&mut self, start_of_character: offset32) -> EscapeSequence {
+    fn escape_sequence(&mut self, start_of_character: uoffset32) -> EscapeSequence {
         let current_character = match self.current_ascii_singleline() {
             Some(Ok(current_character)) => current_character,
             #[expect(clippy::cast_possible_truncation)]
             Some(Err(grapheme)) => {
-                self.col += grapheme.len() as offset32;
+                self.col += grapheme.len() as uoffset32;
                 self.push_utf8_error(grapheme);
                 return EscapeSequence::ErrContinue;
             },
@@ -1468,7 +1466,7 @@ impl<'code> Tokenizer<'code> {
                     #[expect(clippy::cast_possible_truncation)]
                     Some(Err(grapheme)) => {
                         self.push_utf8_error(grapheme);
-                        self.col += grapheme.len() as offset32;
+                        self.col += grapheme.len() as uoffset32;
                         return EscapeSequence::ErrContinue;
                     },
                     None => {
@@ -1532,7 +1530,7 @@ impl<'code> Tokenizer<'code> {
                 #[expect(clippy::cast_possible_truncation)]
                 Some(Err(grapheme)) => {
                     self.push_utf8_error(grapheme);
-                    self.col += grapheme.len() as offset32;
+                    self.col += grapheme.len() as uoffset32;
                     continue;
                 },
                 None => {
@@ -1612,7 +1610,7 @@ impl<'code> Tokenizer<'code> {
                 #[expect(clippy::cast_possible_truncation)]
                 Some(Err(grapheme)) => {
                     self.push_utf8_error(grapheme);
-                    self.col += grapheme.len() as offset32;
+                    self.col += grapheme.len() as uoffset32;
                     continue;
                 },
                 None => {
@@ -1651,7 +1649,7 @@ impl<'code> Tokenizer<'code> {
 
         if previous_errors_len != self.errors.len() {
             return Err(());
-        };
+        }
         let literal_text = self.token_text();
         return Ok(literal_text);
     }
@@ -1671,7 +1669,7 @@ impl<'code> Tokenizer<'code> {
                 #[expect(clippy::cast_possible_truncation)]
                 Some(Err(grapheme)) => {
                     self.push_utf8_error(grapheme);
-                    self.col += grapheme.len() as offset32;
+                    self.col += grapheme.len() as uoffset32;
                     continue;
                 },
                 None => {
@@ -1694,7 +1692,7 @@ impl<'code> Tokenizer<'code> {
                         #[expect(clippy::cast_possible_truncation)]
                         Some(Err(grapheme)) => {
                             self.push_utf8_error(grapheme);
-                            self.col += grapheme.len() as offset32;
+                            self.col += grapheme.len() as uoffset32;
                             continue;
                         },
                         None => {
@@ -1740,7 +1738,7 @@ impl<'code> Tokenizer<'code> {
 
 // tokenization of identifiers
 impl<'code> Tokenizer<'code> {
-    const MAX_IDENTIFIER_LEN: offset32 = 63;
+    const MAX_IDENTIFIER_LEN: uoffset32 = 63;
 
     fn identifier_str_characters(&mut self) -> Result<&'code str, ()> {
         let previous_errors_len = self.errors.len();
@@ -1751,7 +1749,7 @@ impl<'code> Tokenizer<'code> {
                 #[expect(clippy::cast_possible_truncation)]
                 Some(Err(grapheme)) => {
                     self.push_utf8_error(grapheme);
-                    self.col += grapheme.len() as offset32;
+                    self.col += grapheme.len() as uoffset32;
                     continue;
                 },
                 None => {
@@ -1787,7 +1785,7 @@ impl<'code> Tokenizer<'code> {
 
         let identifier = self.token_text();
         #[expect(clippy::cast_possible_truncation)]
-        let identifier_len = identifier.len() as offset32 - 2; // - 2 for the quotes
+        let identifier_len = identifier.len() as uoffset32 - 2; // - 2 for the quotes
         if identifier_len > Self::MAX_IDENTIFIER_LEN {
             self.errors.push(Msg {
                 severity: MsgSeverity::NonTerminalError,
@@ -1841,7 +1839,7 @@ impl<'code> Tokenizer<'code> {
             "len" => TokenKind::Op(Op::Len),
             identifier => {
                 #[expect(clippy::cast_possible_truncation)]
-                let identifier_len = identifier.len() as offset32;
+                let identifier_len = identifier.len() as uoffset32;
                 if identifier_len > Self::MAX_IDENTIFIER_LEN {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
@@ -1972,7 +1970,7 @@ pub enum ErrorKind<'code> {
     EmptyCharacterLiteral,
     MultipleCharactersInCharacterLiteral,
 
-    IdentifierTooLong { max: offset32 },
+    IdentifierTooLong { max: uoffset32 },
 
     ControlCharacter(ascii),
     Utf8Character { grapheme: &'code str },

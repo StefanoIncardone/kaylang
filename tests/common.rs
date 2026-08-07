@@ -224,8 +224,8 @@ pub(crate) fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
     };
     running_step.step(&DONE, None);
 
-    let stdout = String::from_utf8_lossy(&run_result.stdout);
-    let stderr = String::from_utf8_lossy(&run_result.stderr);
+    let stdout = unsafe { String::from_utf8_unchecked(run_result.stdout) };
+    let stderr = unsafe { String::from_utf8_unchecked(run_result.stderr) };
 
     eprintln!("{stderr}");
     eprintln!("{stdout}");

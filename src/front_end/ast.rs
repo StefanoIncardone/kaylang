@@ -4,7 +4,7 @@
 
 use back_to_front::{
     digit::{self, Digit},
-    offset32,
+    uoffset32,
 };
 
 use crate::front_end::{tokenizer::{self, EscapedAscii}, MsgSeverity};
@@ -507,12 +507,12 @@ impl Display for PrefixAssignmentOp {
     }
 }
 
-type StringLabel = offset32;
-type VariableIndex = offset32;
-type IfIndex = offset32;
-type LoopIndex = offset32;
-type ExpressionIndex = offset32;
-pub(crate) type ScopeIndex = offset32;
+type StringLabel = uoffset32;
+type VariableIndex = uoffset32;
+type IfIndex = uoffset32;
+type LoopIndex = uoffset32;
+type ExpressionIndex = uoffset32;
+pub(crate) type ScopeIndex = uoffset32;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Expression {
@@ -536,7 +536,7 @@ pub(crate) enum Expression {
 
     Unary {
         op: UnaryOp,
-        op_col: offset32,
+        op_col: uoffset32,
         operand_index: ExpressionIndex,
     },
     BooleanUnary {
@@ -546,7 +546,7 @@ pub(crate) enum Expression {
     Binary {
         lhs_index: ExpressionIndex,
         op: BinaryOp,
-        op_col: offset32,
+        op_col: uoffset32,
         rhs_index: ExpressionIndex,
     },
     BooleanBinary {
@@ -562,7 +562,7 @@ pub(crate) enum Expression {
     ArrayIndex {
         base_type: BaseType,
         indexable_index: ExpressionIndex,
-        bracket_col: offset32,
+        bracket_col: uoffset32,
         index_expression_index: ExpressionIndex,
     },
 
@@ -744,8 +744,8 @@ pub(crate) enum Node {
     Continue,
 
     Definition { var_index: VariableIndex },
-    Reassignment { target: Expression, op: AssignmentOp, op_col: offset32, new_value: Expression },
-    PrefixReassignment { target: Expression, op: PrefixAssignmentOp, op_col: offset32 },
+    Reassignment { target: Expression, op: AssignmentOp, op_col: uoffset32, new_value: Expression },
+    PrefixReassignment { target: Expression, op: PrefixAssignmentOp, op_col: uoffset32 },
 
     Scope { index: ScopeIndex },
 
@@ -888,7 +888,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         while let Some(token) = self.token.get(&self.tokens.tokens) {
             match self.any(*token) {
                 // skip to the next token after a semicolon
-                Ok(Node::Semicolon) => continue,
+                Ok(Node::Semicolon) => {},
                 Ok(Node::ScopeEnd) => break,
                 Ok(node) => self.ast.nodes[self.scope as usize].push(node),
                 Err(err) => {
@@ -1290,7 +1290,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     fn next_token(&mut self) -> Option<Token<'code>> {
         loop {
             #[expect(clippy::cast_possible_truncation)]
-            let tokens_len = self.tokens.tokens.len() as offset32;
+            let tokens_len = self.tokens.tokens.len() as uoffset32;
             if self.token.0 >= tokens_len - 1 {
                 self.token.0 = tokens_len;
                 return None;
@@ -1307,7 +1307,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     fn next_token_bounded(&mut self, expected: Expected) -> Result<Token<'code>, Msg<ErrorKind>> {
         loop {
             #[expect(clippy::cast_possible_truncation)]
-            let tokens_len = self.tokens.tokens.len() as offset32;
+            let tokens_len = self.tokens.tokens.len() as uoffset32;
             if self.token.0 >= tokens_len - 1 {
                 let previous = self.tokens.tokens[self.token];
                 self.token.0 = tokens_len;
@@ -1331,7 +1331,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         let mut current_token = self.token;
         loop {
             #[expect(clippy::cast_possible_truncation)]
-            if current_token.0 >= self.tokens.tokens.len() as offset32 - 1 {
+            if current_token.0 >= self.tokens.tokens.len() as uoffset32 - 1 {
                 return None;
             }
 
@@ -1481,14 +1481,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
             };
 
-            integer = match integer.checked_mul(base as i64) {
-                Some(integer_) => integer_,
-                None => return None,
-            };
-            integer = match integer.checked_add(digit as i64) {
-                Some(integer_) => integer_,
-                None => return None,
-            };
+            integer = integer.checked_mul(base as i64)?;
+            integer = integer.checked_add(digit as i64)?;
         }
         return Some(integer);
     }
@@ -1522,14 +1516,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
             };
 
-            integer = match integer.checked_mul(base as i64) {
-                Some(integer_) => integer_,
-                None => return None,
-            };
-            integer = match integer.checked_sub(digit as i64) {
-                Some(integer_) => integer_,
-                None => return None,
-            };
+            integer = integer.checked_mul(base as i64)?;
+            integer = integer.checked_sub(digit as i64)?;
         }
         return Some(integer);
     }
@@ -1841,7 +1829,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             col: current_token.col,
                             pointers_count: current_token.kind.display_len(self.tokens),
                         });
-                    };
+                    }
 
                     items.push(item);
 
@@ -3241,7 +3229,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 }
 
 // print statements
-impl<'code> Parser<'_, '_, 'code, '_> {
+impl Parser<'_, '_, '_, '_> {
     fn print_arg(&mut self) -> Result<Expression, Msg<ErrorKind>> {
         let _start_of_expression_token = self.next_token_bounded(Expected::Expression)?;
         let argument = self.expression()?;
@@ -3251,14 +3239,14 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             let argument_type = argument.typ();
             self.ast.temporaries.push(argument);
             return Ok(Expression::Temporary { typ: argument_type, temporary_value_index });
-        };
+        }
 
         return Ok(argument);
     }
 }
 
 // if statements
-impl<'code> Parser<'_, '_, 'code, '_> {
+impl Parser<'_, '_, '_, '_> {
     fn iff(&mut self) -> Result<Node, Msg<ErrorKind>> {
         let mut ifs = Vec::new();
         let mut els = None;
@@ -3330,6 +3318,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
             ifs.push(if_statement);
 
+            #[allow(clippy::never_loop)]
             while let Some(else_token) = self.token.get(&self.tokens.tokens) {
                 let after_else_token = match else_token.kind {
                     TokenKind::Else => self.next_token_bounded(Expected::BlockOrIfStatement)?,
@@ -3433,7 +3422,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 }
 
 // loop statements
-impl<'code> Parser<'_, '_, 'code, '_> {
+impl Parser<'_, '_, '_, '_> {
     fn loop_statement(&mut self) -> Result<Node, Msg<ErrorKind>> {
         let do_token = self.tokens.tokens[self.token];
         let loop_token = match do_token.kind {

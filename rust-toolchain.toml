@@ -1,5 +1,5 @@
 [toolchain]
-channel = "1.81.0" # TODO(stefano, 0.7.0): update to version 1.87/1.88
+channel = "1.89.0"
 profile = "default"
 targets = [
     "x86_64-unknown-linux-gnu",

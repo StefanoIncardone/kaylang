@@ -57,6 +57,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - Implemented position independent cli arguments
 - Implemented cli flags colorization
 - Implemented `:` cli arguments separator: `--color:auto`, `-o:out`
+- Implemented `--file` flag to avoid collision between files that may have the same name as flags
 
 #### Changed
 
@@ -69,16 +70,11 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - `error::Msg` is now `error::MsgSimple`
 - `back_end::artifacts` module inlined into `back_end`
 - `Help` now takes `&Path`
+- Allowed repeated output path options
 <!--  -->
 - [Syntax specification](SYNTAX.ebnf) only considers syntax and not typing
 <!--  -->
 - String and raw string literals now contain a null terminator by default
-
-#### Removed
-
-- `Args` no longer implements `Default`
-<!--  -->
-- Removed language selection flags `--kay`, `--asm`, `--obj`, only kept `*-asm` and `*-obj` commands
 
 #### Fixed
 

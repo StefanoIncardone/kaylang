@@ -5,7 +5,7 @@ use crate::front_end::{
 };
 use back_to_front::{
     digit::{self, Digit},
-    offset32,
+    uoffset32,
 };
 
 use super::{
@@ -174,7 +174,7 @@ impl Display for PrefixOp {
 impl PrefixOp {
     #[expect(dead_code)]
     #[inline(always)]
-    pub(super) fn display_len(self) -> offset32 {
+    pub(super) fn display_len(self) -> uoffset32 {
         let op: Op = self.into();
         return op.display_len();
     }
@@ -232,7 +232,7 @@ impl Display for BooleanPrefixOp {
 impl BooleanPrefixOp {
     #[expect(dead_code)]
     #[inline(always)]
-    pub(super) fn display_len(self) -> offset32 {
+    pub(super) fn display_len(self) -> uoffset32 {
         let op: Op = self.into();
         return op.display_len();
     }
@@ -323,7 +323,7 @@ impl Display for BinaryOp {
 impl BinaryOp {
     #[expect(dead_code)]
     #[inline(always)]
-    pub(super) fn display_len(self) -> offset32 {
+    pub(super) fn display_len(self) -> uoffset32 {
         let op: Op = self.into();
         return op.display_len();
     }
@@ -382,7 +382,7 @@ impl Display for BooleanBinaryOp {
 impl BooleanBinaryOp {
     #[expect(dead_code)]
     #[inline(always)]
-    pub(super) fn display_len(self) -> offset32 {
+    pub(super) fn display_len(self) -> uoffset32 {
         let op: Op = self.into();
         return op.display_len();
     }
@@ -440,7 +440,7 @@ impl Display for ComparisonOp {
 impl ComparisonOp {
     #[expect(dead_code)]
     #[inline(always)]
-    pub(super) fn display_len(self) -> offset32 {
+    pub(super) fn display_len(self) -> uoffset32 {
         let op: Op = self.into();
         return op.display_len();
     }
@@ -505,7 +505,7 @@ impl Display for BooleanComparisonOp {
 impl BooleanComparisonOp {
     #[expect(dead_code)]
     #[inline(always)]
-    pub(super) fn display_len(self) -> offset32 {
+    pub(super) fn display_len(self) -> uoffset32 {
         let op: Op = self.into();
         return op.display_len();
     }
@@ -557,7 +557,7 @@ impl Display for AssignmentOp {
 impl AssignmentOp {
     #[expect(dead_code)]
     #[inline(always)]
-    pub(super) fn display_len(self) -> offset32 {
+    pub(super) fn display_len(self) -> uoffset32 {
         let op: Op = self.into();
         return op.display_len();
     }
@@ -618,7 +618,7 @@ impl Display for PrefixAssignmentOp {
 impl PrefixAssignmentOp {
     #[expect(dead_code)]
     #[inline(always)]
-    pub(super) fn display_len(self) -> offset32 {
+    pub(super) fn display_len(self) -> uoffset32 {
         let op: Op = self.into();
         return op.display_len();
     }
@@ -671,7 +671,7 @@ impl Display for BooleanPrefixAssignmentOp {
 impl BooleanPrefixAssignmentOp {
     #[expect(dead_code)]
     #[inline(always)]
-    pub(super) fn display_len(self) -> offset32 {
+    pub(super) fn display_len(self) -> uoffset32 {
         let op: Op = self.into();
         return op.display_len();
     }
@@ -757,7 +757,7 @@ impl Display for BinaryAssignmentOp {
 impl BinaryAssignmentOp {
     #[expect(dead_code)]
     #[inline(always)]
-    pub(super) fn display_len(self) -> offset32 {
+    pub(super) fn display_len(self) -> uoffset32 {
         let op: Op = self.into();
         return op.display_len();
     }
@@ -811,7 +811,7 @@ impl Display for BooleanBinaryAssignmentOp {
 impl BooleanBinaryAssignmentOp {
     #[expect(dead_code)]
     #[inline(always)]
-    pub(super) fn display_len(self) -> offset32 {
+    pub(super) fn display_len(self) -> uoffset32 {
         let op: Op = self.into();
         return op.display_len();
     }
@@ -823,26 +823,26 @@ pub(crate) type ArrayItemsIndex<'code> = Index32<Expression<'code>>;
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Expression<'code> {
     False {
-        column: offset32,
+        column: uoffset32,
     },
     True {
-        column: offset32,
+        column: uoffset32,
     },
     I64 {
         value: i64,
-        column: offset32,
+        column: uoffset32,
     },
     Ascii {
         character: ascii,
-        column: offset32,
+        column: uoffset32,
     },
     Str {
         literal: TextIndex<'code>,
-        column: offset32,
+        column: uoffset32,
     },
     Variable {
         variable: VariableDefinitionIndex<'code>,
-        column: offset32,
+        column: uoffset32,
     },
     Array {
         base_type: BaseType,
@@ -853,42 +853,42 @@ pub(crate) enum Expression<'code> {
 
     Prefix {
         operator: PrefixOp,
-        operator_column: offset32,
+        operator_column: uoffset32,
         right_operand: ExpressionIndex<'code>,
     },
     BooleanPrefix {
         operator: BooleanPrefixOp,
-        operator_column: offset32,
+        operator_column: uoffset32,
         right_operand: ExpressionIndex<'code>,
     },
     Binary {
         left_operand: ExpressionIndex<'code>,
         operator: BinaryOp,
-        operator_column: offset32,
+        operator_column: uoffset32,
         right_operand: ExpressionIndex<'code>,
     },
     BooleanBinary {
         left_operand: ExpressionIndex<'code>,
         operator: BooleanBinaryOp,
-        operator_column: offset32,
+        operator_column: uoffset32,
         right_operand: ExpressionIndex<'code>,
     },
     Comparison {
         left_operand: ExpressionIndex<'code>,
         operator: ComparisonOp,
-        operator_column: offset32,
+        operator_column: uoffset32,
         right_operand: ExpressionIndex<'code>,
     },
     BooleanComparison {
         left_operand: ExpressionIndex<'code>,
         operator: BooleanComparisonOp,
-        operator_column: offset32,
+        operator_column: uoffset32,
         right_operand: ExpressionIndex<'code>,
     },
 
     Index {
         indexed_expression: ExpressionIndex<'code>,
-        open_square_bracket_column: offset32,
+        open_square_bracket_column: uoffset32,
         index_expression: ExpressionIndex<'code>,
     },
 }
@@ -982,24 +982,24 @@ pub(crate) enum Node<'code> {
     BinaryAssignment {
         target: ExpressionIndex<'code>,
         operator: BinaryAssignmentOp,
-        operator_column: offset32,
+        operator_column: uoffset32,
         new_value: ExpressionIndex<'code>,
     },
     BooleanAssignmentExpression {
         target: ExpressionIndex<'code>,
         operator: BooleanBinaryAssignmentOp,
-        operator_column: offset32,
+        operator_column: uoffset32,
         new_value: ExpressionIndex<'code>,
     },
     PrefixAssignmentExpression {
         target: ExpressionIndex<'code>,
         operator: PrefixAssignmentOp,
-        operator_column: offset32,
+        operator_column: uoffset32,
     },
     BooleanPrefixAssignment {
         target: ExpressionIndex<'code>,
         operator: BooleanPrefixAssignmentOp,
-        operator_column: offset32,
+        operator_column: uoffset32,
     },
 
     Scope {
@@ -1384,7 +1384,7 @@ impl<'st, 'tokens: 'st, 'src: 'tokens, 'code: 'src, 'path: 'code>
             parser.node_index = peeked.index;
             match parser.any(peeked.node) {
                 Ok(ParsedNode::Node(node)) => parser.tast.nodes.push(node),
-                Ok(ParsedNode::ScopeEnd) => continue,
+                Ok(ParsedNode::ScopeEnd) => {},
                 Err(err) => {
                     parser.errors.push(err);
 
@@ -1392,7 +1392,7 @@ impl<'st, 'tokens: 'st, 'src: 'tokens, 'code: 'src, 'path: 'code>
                     parser.node_index = st::NodeIndex::new(parser.syntax_tree.nodes.len());
                     break;
                 },
-            };
+            }
         }
 
         return if parser.errors.len() == 0 { Ok(parser.tast) } else { Err(parser.errors) };
@@ -1467,8 +1467,8 @@ impl<'st, 'tokens: 'st, 'src: 'tokens, 'code: 'src, 'path: 'code>
                     self.node_index = peeked.index;
                     match self.any(peeked.node)? {
                         ParsedNode::Node(inner_node) => self.tast.nodes.push(inner_node),
-                        ParsedNode::ScopeEnd => continue,
-                    };
+                        ParsedNode::ScopeEnd => {},
+                    }
                 }
 
                 let last_scope_node_index = NodeIndex::new(self.tast.nodes.len() - 1);
@@ -1535,8 +1535,8 @@ impl<'st, 'tokens: 'st, 'src: 'tokens, 'code: 'src, 'path: 'code>
     #[track_caller]
     fn invalid_node(
         &self,
-        absolute_column: offset32,
-        pointers_count: offset32,
+        absolute_column: uoffset32,
+        pointers_count: uoffset32,
         error_message: Cow<'static, str>,
         error_cause_message: Cow<'static, str>,
     ) -> ! {
@@ -1561,7 +1561,7 @@ impl<'st, 'tokens: 'st, 'src: 'tokens, 'code: 'src, 'path: 'code>
     }
 
     #[track_caller]
-    fn stray_semicolon(&self, semicolon_colon: offset32) -> ! {
+    fn stray_semicolon(&self, semicolon_colon: uoffset32) -> ! {
         self.invalid_node(
             semicolon_colon,
             1,
@@ -1571,7 +1571,7 @@ impl<'st, 'tokens: 'st, 'src: 'tokens, 'code: 'src, 'path: 'code>
     }
 
     #[track_caller]
-    fn invalid_scope_index(&self, open_curly_bracket_column: offset32) -> ! {
+    fn invalid_scope_index(&self, open_curly_bracket_column: uoffset32) -> ! {
         self.invalid_node(
             open_curly_bracket_column,
             1,
@@ -1591,11 +1591,11 @@ impl<'st, 'code: 'st> Parser<'st, '_, '_, 'code, '_> {
     fn peek_next_node(&self) -> Option<Peeked<'st, 'code>> {
         let node_index_end = st::NodeIndex::new(self.syntax_tree.nodes.len());
         for next_node_index in self.node_index.0..node_index_end.0 {
-            let next_node_index_index = st::NodeIndex::new_offset32(next_node_index);
+            let next_node_index_index = st::NodeIndex::new_uoffset32(next_node_index);
             let next_node = &self.syntax_tree.nodes[next_node_index_index];
             let st::Node::Semicolon { .. } = next_node else {
                 let peeked_node_index_index =
-                    st::NodeIndex::new_offset32(next_node_index_index.0 + 1);
+                    st::NodeIndex::new_uoffset32(next_node_index_index.0 + 1);
                 return Some(Peeked { node: next_node, index: peeked_node_index_index });
             };
         }
@@ -1698,7 +1698,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
 
     // NOTE(stefano): only considering the first token in the expression until proper
     // multiline error messages are developed
-    fn first_token_display_len(&self, expression: st::ExpressionIndex<'code>) -> offset32 {
+    fn first_token_display_len(&self, expression: st::ExpressionIndex<'code>) -> uoffset32 {
         let st_expression = &self.syntax_tree.expressions[expression];
         let token_kind = match st_expression {
             st::Expression::False { .. } => TokenKind::False,
@@ -1740,7 +1740,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
 
     // NOTE(stefano): only considering the first token in the expression until proper
     // multiline error messages are developed
-    fn first_token_column(&self, expression: st::ExpressionIndex<'code>) -> offset32 {
+    fn first_token_column(&self, expression: st::ExpressionIndex<'code>) -> uoffset32 {
         let st_expression = &self.syntax_tree.expressions[expression];
         let column = match st_expression {
             st::Expression::False { column }
@@ -1858,7 +1858,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         kind: ErrorKind::DecimalIntegerOverflow,
                         col: *column,
                         #[expect(clippy::cast_possible_truncation)]
-                        pointers_count: literal_text.len() as offset32,
+                        pointers_count: literal_text.len() as uoffset32,
                     });
                 };
                 Expression::I64 { value, column: *column }
@@ -1872,7 +1872,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         kind: ErrorKind::DecimalIntegerOverflow,
                         col: *column,
                         #[expect(clippy::cast_possible_truncation)]
-                        pointers_count: literal_text.len() as offset32,
+                        pointers_count: literal_text.len() as uoffset32,
                     });
                 };
                 Expression::I64 { value, column: *column }
@@ -1886,7 +1886,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         kind: ErrorKind::BinaryIntegerOverflow,
                         col: *column,
                         #[expect(clippy::cast_possible_truncation)]
-                        pointers_count: literal_text.len() as offset32,
+                        pointers_count: literal_text.len() as uoffset32,
                     });
                 };
                 Expression::I64 { value, column: *column }
@@ -1900,7 +1900,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         kind: ErrorKind::OctalIntegerOverflow,
                         col: *column,
                         #[expect(clippy::cast_possible_truncation)]
-                        pointers_count: literal_text.len() as offset32,
+                        pointers_count: literal_text.len() as uoffset32,
                     });
                 };
                 Expression::I64 { value, column: *column }
@@ -1915,7 +1915,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         kind: ErrorKind::HexadecimalIntegerOverflow,
                         col: *column,
                         #[expect(clippy::cast_possible_truncation)]
-                        pointers_count: literal_text.len() as offset32,
+                        pointers_count: literal_text.len() as uoffset32,
                     });
                 };
                 Expression::I64 { value, column: *column }
@@ -1936,7 +1936,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         kind: ErrorKind::TypeInExpression,
                         col: *column,
                         #[expect(clippy::cast_possible_truncation)]
-                        pointers_count: identifier_text.len() as offset32,
+                        pointers_count: identifier_text.len() as uoffset32,
                     });
                 }
                 let Some(variable) = self.resolve_variable(identifier_text) else {
@@ -1945,7 +1945,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         kind: ErrorKind::VariableNotPreviouslyDefined,
                         col: *column,
                         #[expect(clippy::cast_possible_truncation)]
-                        pointers_count: identifier_text.len() as offset32,
+                        pointers_count: identifier_text.len() as uoffset32,
                     });
                 };
 
@@ -2027,7 +2027,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
 
                 let array_expression = Expression::Array {
                     base_type: expected_array_items_type.base_typ(),
-                    items_start: ExpressionIndex::new_offset32(items_start.0),
+                    items_start: ExpressionIndex::new_uoffset32(items_start.0),
                     items_len: *items_len as u64,
                 };
 
@@ -2119,7 +2119,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                         kind: ErrorKind::MinusZeroInteger,
                                         col: *column,
                                         #[expect(clippy::cast_possible_truncation)]
-                                        pointers_count: literal_text.len() as offset32,
+                                        pointers_count: literal_text.len() as uoffset32,
                                     })
                                 },
                                 Ok(integer) => Expression::I64 { value: integer, column: *column },
@@ -2129,7 +2129,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                         kind: ErrorKind::BinaryIntegerUnderflow,
                                         col: *column,
                                         #[expect(clippy::cast_possible_truncation)]
-                                        pointers_count: literal_text.len() as offset32,
+                                        pointers_count: literal_text.len() as uoffset32,
                                     })
                                 },
                             };
@@ -2153,7 +2153,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                         kind: ErrorKind::MinusZeroInteger,
                                         col: *column,
                                         #[expect(clippy::cast_possible_truncation)]
-                                        pointers_count: literal_text.len() as offset32,
+                                        pointers_count: literal_text.len() as uoffset32,
                                     })
                                 },
                                 Ok(integer) => Expression::I64 { value: integer, column: *column },
@@ -2163,7 +2163,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                         kind: ErrorKind::OctalIntegerUnderflow,
                                         col: *column,
                                         #[expect(clippy::cast_possible_truncation)]
-                                        pointers_count: literal_text.len() as offset32,
+                                        pointers_count: literal_text.len() as uoffset32,
                                     })
                                 },
                             };
@@ -2187,7 +2187,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                         kind: ErrorKind::MinusZeroInteger,
                                         col: *column,
                                         #[expect(clippy::cast_possible_truncation)]
-                                        pointers_count: literal_text.len() as offset32,
+                                        pointers_count: literal_text.len() as uoffset32,
                                     })
                                 },
                                 Ok(integer) => Expression::I64 { value: integer, column: *column },
@@ -2197,7 +2197,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                         kind: ErrorKind::DecimalIntegerUnderflow,
                                         col: *column,
                                         #[expect(clippy::cast_possible_truncation)]
-                                        pointers_count: literal_text.len() as offset32,
+                                        pointers_count: literal_text.len() as uoffset32,
                                     })
                                 },
                             };
@@ -2221,7 +2221,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                         kind: ErrorKind::MinusZeroInteger,
                                         col: *column,
                                         #[expect(clippy::cast_possible_truncation)]
-                                        pointers_count: literal_text.len() as offset32,
+                                        pointers_count: literal_text.len() as uoffset32,
                                     })
                                 },
                                 Ok(integer) => Expression::I64 { value: integer, column: *column },
@@ -2231,7 +2231,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                         kind: ErrorKind::DecimalIntegerUnderflow,
                                         col: *column,
                                         #[expect(clippy::cast_possible_truncation)]
-                                        pointers_count: literal_text.len() as offset32,
+                                        pointers_count: literal_text.len() as uoffset32,
                                     })
                                 },
                             };
@@ -2255,7 +2255,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                         kind: ErrorKind::MinusZeroInteger,
                                         col: *column,
                                         #[expect(clippy::cast_possible_truncation)]
-                                        pointers_count: literal_text.len() as offset32,
+                                        pointers_count: literal_text.len() as uoffset32,
                                     })
                                 },
                                 Ok(integer) => Expression::I64 { value: integer, column: *column },
@@ -2265,7 +2265,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                         kind: ErrorKind::HexadecimalIntegerUnderflow,
                                         col: *column,
                                         #[expect(clippy::cast_possible_truncation)]
-                                        pointers_count: literal_text.len() as offset32,
+                                        pointers_count: literal_text.len() as uoffset32,
                                     })
                                 },
                             };
@@ -2628,7 +2628,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 kind: ErrorKind::VariableInTypeAnnotation,
                 col: *type_name_column,
                 #[expect(clippy::cast_possible_truncation)]
-                pointers_count: type_name_text.len() as offset32,
+                pointers_count: type_name_text.len() as uoffset32,
             });
         }
         let Some(base_type) = self.resolve_type(type_name_text) else {
@@ -2637,7 +2637,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 kind: ErrorKind::TypeNotPreviouslyDefined,
                 col: *type_name_column,
                 #[expect(clippy::cast_possible_truncation)]
-                pointers_count: type_name_text.len() as offset32,
+                pointers_count: type_name_text.len() as uoffset32,
             });
         };
 
@@ -2719,7 +2719,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 kind: ErrorKind::NestedArrayNotSupportedYet,
                 col: *type_name_column,
                 #[expect(clippy::cast_possible_truncation)]
-                pointers_count: type_name_text.len() as offset32,
+                pointers_count: type_name_text.len() as uoffset32,
             });
         }
 
@@ -2744,7 +2744,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 kind: ErrorKind::VariableAlreadyDefined,
                 col: *name_column,
                 #[expect(clippy::cast_possible_truncation)]
-                pointers_count: name_text.len() as offset32,
+                pointers_count: name_text.len() as uoffset32,
             });
         }
         if let Some(_) = self.resolve_type(name_text) {
@@ -2753,7 +2753,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 kind: ErrorKind::TypeInVariableName,
                 col: *name_column,
                 #[expect(clippy::cast_possible_truncation)]
-                pointers_count: name_text.len() as offset32,
+                pointers_count: name_text.len() as uoffset32,
             });
         }
 
@@ -2764,7 +2764,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                     kind: ErrorKind::CannotInferTypeOfVariable,
                     col: *name_column,
                     #[expect(clippy::cast_possible_truncation)]
-                    pointers_count: name_text.len() as offset32,
+                    pointers_count: name_text.len() as uoffset32,
                 });
             };
             return Err(Msg {
@@ -2772,7 +2772,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 kind: ErrorKind::VariablesMustBeInitialized,
                 col: *name_column,
                 #[expect(clippy::cast_possible_truncation)]
-                pointers_count: name_text.len() as offset32,
+                pointers_count: name_text.len() as uoffset32,
             });
         };
 
@@ -2801,7 +2801,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         &mut self,
         target: st::ExpressionIndex<'code>,
         operator: st::BinaryAssignmentOp,
-        operator_column: offset32,
+        operator_column: uoffset32,
         new_value: st::ExpressionIndex<'code>,
     ) -> Result<Node<'code>, Msg<ErrorKind>> {
         let parsed_target = self.expression(target, None)?;
@@ -2818,7 +2818,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         kind: ErrorKind::CannotMutateVariable,
                         col: *column,
                         #[expect(clippy::cast_possible_truncation)]
-                        pointers_count: variable_name_text.len() as offset32,
+                        pointers_count: variable_name_text.len() as uoffset32,
                     });
                 }
                 variable_definition.typ.clone()
@@ -2849,7 +2849,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         kind: ErrorKind::CannotMutateVariable,
                         col: *column,
                         #[expect(clippy::cast_possible_truncation)]
-                        pointers_count: variable_name_text.len() as offset32,
+                        pointers_count: variable_name_text.len() as uoffset32,
                     });
                 }
 
@@ -2860,7 +2860,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             kind: ErrorKind::CannotMutateStringCharacters,
                             col: *column,
                             #[expect(clippy::cast_possible_truncation)]
-                            pointers_count: variable_name_text.len() as offset32,
+                            pointers_count: variable_name_text.len() as uoffset32,
                         });
                     }
                     Type::Base(BaseType::Str)
@@ -3047,7 +3047,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         &mut self,
         target: st::ExpressionIndex<'code>,
         operator: st::PrefixAssignmentOp,
-        operator_column: offset32,
+        operator_column: uoffset32,
     ) -> Result<Node<'code>, Msg<ErrorKind>> {
         let parsed_target = self.expression(target, None)?;
 
@@ -3061,7 +3061,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         kind: ErrorKind::CannotMutateVariable,
                         col: *column,
                         #[expect(clippy::cast_possible_truncation)]
-                        pointers_count: variable_name_text.len() as offset32,
+                        pointers_count: variable_name_text.len() as uoffset32,
                     });
                 }
                 variable_definition.typ.clone()
@@ -3092,7 +3092,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         kind: ErrorKind::CannotMutateVariable,
                         col: *column,
                         #[expect(clippy::cast_possible_truncation)]
-                        pointers_count: variable_name_text.len() as offset32,
+                        pointers_count: variable_name_text.len() as uoffset32,
                     });
                 }
 
@@ -3194,7 +3194,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
 impl<'code> Parser<'_, '_, '_, 'code, '_> {
     fn if_condition(
         &mut self,
-        if_column: offset32,
+        if_column: uoffset32,
         condition: st::ExpressionIndex<'code>,
     ) -> Result<Expression<'code>, Msg<ErrorKind>> {
         let condition_expression = self.expression(condition, None)?;
@@ -3215,7 +3215,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
 
     fn loop_condition(
         &mut self,
-        loop_column: offset32,
+        loop_column: uoffset32,
         condition: st::ExpressionIndex<'code>,
     ) -> Result<Expression<'code>, Msg<ErrorKind>> {
         let condition_expression = self.expression(condition, None)?;

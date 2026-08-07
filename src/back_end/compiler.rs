@@ -6,7 +6,7 @@ use crate::front_end::{
     },
     src_file::{Position, SrcCode},
 };
-use back_to_front::offset32;
+use back_to_front::uoffset32;
 #[expect(clippy::useless_attribute, reason = "false positive")]
 #[expect(clippy::pub_use)]
 pub use back_to_front::x86_64::Reg64;
@@ -760,7 +760,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, 'code, '_> {
         &mut self,
         base_type: BaseType,
         value: &'ast Expression,
-        bracket_col: offset32,
+        bracket_col: uoffset32,
         index: &'ast Expression,
     ) {
         let Position { line, column } = self.src.position(bracket_col);
@@ -2362,7 +2362,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
         &mut self,
         target: &'ast Expression,
         op: AssignmentOp,
-        op_col: offset32,
+        op_col: uoffset32,
         new_value: &'ast Expression,
     ) {
         match target {
@@ -2975,7 +2975,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
         &mut self,
         target: &'ast Expression,
         op: PrefixAssignmentOp,
-        op_col: offset32,
+        op_col: uoffset32,
     ) {
         match target {
             Expression::ArrayIndex {

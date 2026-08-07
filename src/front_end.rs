@@ -10,13 +10,13 @@ use crate::{error::MsgWithCauseUnderTextWithLocation, ERROR};
 use core::fmt::{Debug, Display};
 extern crate alloc;
 use alloc::borrow::Cow;
-use back_to_front::offset32;
+use back_to_front::uoffset32;
 use std::path::Path;
 
 // IDEA(stefano): move to back-to-front
 #[derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
-pub(crate) struct Index32<T>(pub(crate) offset32, core::marker::PhantomData<T>);
+pub(crate) struct Index32<T>(pub(crate) uoffset32, core::marker::PhantomData<T>);
 
 #[expect(clippy::missing_trait_methods)]
 impl<T> Clone for Index32<T> {
@@ -31,7 +31,7 @@ impl<T> Copy for Index32<T> {}
 impl<T> Index32<T> {
     #[must_use]
     #[inline(always)]
-    pub(crate) const fn new_offset32(index: offset32) -> Self {
+    pub(crate) const fn new_uoffset32(index: uoffset32) -> Self {
         return Self(index, core::marker::PhantomData);
     }
 
@@ -39,7 +39,7 @@ impl<T> Index32<T> {
     #[inline(always)]
     pub(crate) const fn new(index: usize) -> Self {
         #[expect(clippy::cast_possible_truncation)]
-        return Self(index as offset32, core::marker::PhantomData);
+        return Self(index as uoffset32, core::marker::PhantomData);
     }
 
     #[track_caller]
@@ -62,7 +62,6 @@ impl<T> core::ops::Index<Index32<T>> for [T] {
     type Output = T;
 
     #[track_caller]
-    #[must_use]
     #[inline(always)]
     fn index(&self, index: Index32<T>) -> &Self::Output {
         return &self[index.0 as usize];
@@ -71,7 +70,6 @@ impl<T> core::ops::Index<Index32<T>> for [T] {
 
 impl<T> core::ops::IndexMut<Index32<T>> for [T] {
     #[track_caller]
-    #[must_use]
     #[inline(always)]
     fn index_mut(&mut self, index: Index32<T>) -> &mut Self::Output {
         return &mut self[index.0 as usize];
@@ -82,7 +80,6 @@ impl<T> core::ops::Index<Index32<T>> for Vec<T> {
     type Output = T;
 
     #[track_caller]
-    #[must_use]
     #[inline(always)]
     fn index(&self, index: Index32<T>) -> &Self::Output {
         return self.as_slice().index(index);
@@ -91,7 +88,6 @@ impl<T> core::ops::Index<Index32<T>> for Vec<T> {
 
 impl<T> core::ops::IndexMut<Index32<T>> for Vec<T> {
     #[track_caller]
-    #[must_use]
     #[inline(always)]
     fn index_mut(&mut self, index: Index32<T>) -> &mut Self::Output {
         return self.as_mut_slice().index_mut(index);
@@ -120,8 +116,8 @@ pub struct Msg<K: IntoMsgInfo> {
     pub severity: MsgSeverity,
     pub kind: K,
     /// absolute source code byte position
-    pub col: offset32,
-    pub pointers_count: offset32,
+    pub col: uoffset32,
+    pub pointers_count: uoffset32,
 }
 
 impl<K: IntoMsgInfo> Msg<K> {
@@ -154,12 +150,12 @@ pub struct MsgDisplay<'code, 'path: 'code> {
     pub severity: MsgSeverity,
     pub error_message: Cow<'static, str>,
     pub file: &'path Path,
-    pub line: offset32,
-    pub column: offset32,
-    pub absolute_column: offset32,
+    pub line: uoffset32,
+    pub column: uoffset32,
+    pub absolute_column: uoffset32,
     pub line_text: &'code str,
-    pub pointers_count: offset32,
-    pub pointers_offset: offset32,
+    pub pointers_count: uoffset32,
+    pub pointers_offset: uoffset32,
     pub error_cause_message: Cow<'static, str>,
 }
 
