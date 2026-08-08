@@ -3,26 +3,6 @@
 >[!WARNING]
 > no feature is final, modifications can happen at any moment
 
-## 0.7.0 - more consistent language modes flags
-
-current:
-
-```shell
-kay run foo.kay
-# no 'run-kay' command
-kay run-asm foo.asm
-kay run-obj foo.obj
-```
-
-desired:
-
-```shell
-kay run foo.kay
-kay run --kay foo.kay # for consistency
-kay run --asm foo.asm
-kay run --obj foo.obj
-```
-
 ## ?.?.? - Compiler directives and Documentation comments
 
 - i like the `#` for compiler directives instead of say `@`:
@@ -104,12 +84,6 @@ struct Point(
 
 ## should we do it for generics?
 let p = Point<i64;>(x = 12; y = 21;);
-```
-
-might just be a compiler or linter flag
-
-```shell
-kay run ... ... --mandatory-trailing-semicolons
 ```
 
 ## ?.?.? - explicit loop continue/break block
@@ -3369,4 +3343,66 @@ min: MinFn = fn(a: i64; b: i64) -> i64 { ... } ## nameless function assigned to 
 Foo :: struct(a: i64; b: i64);
 byte :: u8;
 byte :: alias u8;
+```
+
+## ?.?.? - More intelligent error messages
+
+```kay
+println 0b123451789;
+```
+
+the above numbers produce the following error messages
+
+```txt
+Error: invalid integer literal
+ at: examples/project_euler/0001.kay:22:12:522
+   |
+22 | println 0b123451789;
+   |            ^ digit '2' is out of the valid range for a base 2 number (0..1)
+
+Error: invalid integer literal
+ at: examples/project_euler/0001.kay:22:13:523
+   |
+22 | println 0b123451789;
+   |             ^ digit '3' is out of the valid range for a base 2 number (0..1)
+
+Error: invalid integer literal
+ at: examples/project_euler/0001.kay:22:14:524
+   |
+22 | println 0b123451789;
+   |              ^ digit '4' is out of the valid range for a base 2 number (0..1)
+
+Error: invalid integer literal
+ at: examples/project_euler/0001.kay:22:15:525
+   |
+22 | println 0b123451789;
+   |               ^ digit '5' is out of the valid range for a base 2 number (0..1)
+
+Error: invalid integer literal
+ at: examples/project_euler/0001.kay:22:17:527
+   |
+22 | println 0b123451789;
+   |                 ^ digit '7' is out of the valid range for a base 2 number (0..1)
+
+Error: invalid integer literal
+ at: examples/project_euler/0001.kay:22:18:528
+   |
+22 | println 0b123451789;
+   |                  ^ digit '8' is out of the valid range for a base 2 number (0..1)
+
+Error: invalid integer literal
+ at: examples/project_euler/0001.kay:22:19:529
+   |
+22 | println 0b123451789;
+   |                   ^ digit '9' is out of the valid range for a base 2 number (0..1)
+```
+
+this could be compressed into or something similar
+
+```txt
+Error: invalid integer literal
+ at: examples/project_euler/0001.kay:22:12:522 // note: how to display individual columns and offsets
+   |
+22 | println 0b123451789;
+   |            ^^^^ ^^^ digit '2', '3', '4', '5', '7', '8' and '9' are out of the valid range for a base 2 number (0..1)
 ```

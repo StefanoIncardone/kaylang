@@ -18,9 +18,9 @@ unicode-segmentation = "1.12.0"
 
 [dependencies.back-to-front]
 # For publishing
-# tag = "v0.1.2"
-# rev = "dfdb84a03fd354a0e235c5100c8ce2fdb4162784"
 # git = "https://github.com/StefanoIncardone/back-to-front"
+# tag = "v0.1.2"
+# rev = "4a9dc014d69a9fce6ffcbbd35225e658f16915d6"
 
 # For rapid development
 path = "../../back-to-front"

@@ -2,10 +2,7 @@
 // IDEA(stefano): fuse tokenization and parsing, making the tokenizer a generator of tokens
 // TODO(stefano): multidimensional arrays
 
-use back_to_front::{
-    digit::{self, Digit},
-    uoffset32,
-};
+use back_to_front::{digit, uoffset32};
 
 use crate::front_end::{tokenizer::{self, EscapedAscii}, MsgSeverity};
 
@@ -1465,21 +1462,21 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         };
 
         let parse_fn = match base {
-            digit::Base::Binary => digit::parse_binary,
-            digit::Base::Octal => digit::parse_octal,
-            digit::Base::Decimal => digit::parse_decimal,
-            digit::Base::Hexadecimal => digit::parse_hexadecimal,
+            digit::Base::Binary => digit::parse_binary_offset,
+            digit::Base::Octal => digit::parse_octal_offset,
+            digit::Base::Decimal => digit::parse_decimal_offset,
+            digit::Base::Hexadecimal => digit::parse_hexadecimal_offset,
         };
 
         let literal = literal_str.as_bytes();
         while digit_index < literal.len() {
             let ascii_digit = literal[digit_index];
             digit_index += 1;
-            let digit = match parse_fn(ascii_digit) {
-                Digit::Ok(digit) => digit,
-                Digit::Underscore => continue,
-                Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
-            };
+            if ascii_digit == b'_' {
+                continue;
+            }
+            let digit = parse_fn(ascii_digit);
+            debug_assert!(digit < base as u8, "invalid integer digit");
 
             integer = integer.checked_mul(base as i64)?;
             integer = integer.checked_add(digit as i64)?;
@@ -1500,21 +1497,21 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         };
 
         let parse_fn = match base {
-            digit::Base::Binary => digit::parse_binary,
-            digit::Base::Octal => digit::parse_octal,
-            digit::Base::Decimal => digit::parse_decimal,
-            digit::Base::Hexadecimal => digit::parse_hexadecimal,
+            digit::Base::Binary => digit::parse_binary_offset,
+            digit::Base::Octal => digit::parse_octal_offset,
+            digit::Base::Decimal => digit::parse_decimal_offset,
+            digit::Base::Hexadecimal => digit::parse_hexadecimal_offset,
         };
 
         let literal = literal_str.as_bytes();
         while digit_index < literal.len() {
             let ascii_digit = literal[digit_index];
             digit_index += 1;
-            let digit = match parse_fn(ascii_digit) {
-                Digit::Ok(digit) => digit,
-                Digit::Underscore => continue,
-                Digit::Dot | Digit::Other | Digit::OutOfRange => unreachable!(),
-            };
+            if ascii_digit == b'_' {
+                continue;
+            }
+            let digit = parse_fn(ascii_digit);
+            debug_assert!(digit < base as u8, "invalid integer digit");
 
             integer = integer.checked_mul(base as i64)?;
             integer = integer.checked_sub(digit as i64)?;

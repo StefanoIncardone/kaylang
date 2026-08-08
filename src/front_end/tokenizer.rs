@@ -6,10 +6,7 @@ use crate::{
     error::DisplayLen as _,
     front_end::{Index32, MsgSeverity},
 };
-use back_to_front::{
-    digit::{self, AsciiDigit},
-    uoffset32,
-};
+use back_to_front::{digit, uoffset32};
 use core::{fmt::{Write as _, Display}, ops::RangeInclusive};
 use unicode_segmentation::UnicodeSegmentation as _;
 
@@ -1340,22 +1337,22 @@ impl<'code> Tokenizer<'code> {
         let previous_errors_len = self.errors.len();
 
         let check_fn = match base {
-            digit::Base::Binary => digit::check_binary,
-            digit::Base::Octal => digit::check_octal,
-            digit::Base::Decimal => digit::check_decimal,
-            digit::Base::Hexadecimal => digit::check_hexadecimal,
+            digit::Base::Binary => digit::check_binary_offset,
+            digit::Base::Octal => digit::check_octal_offset,
+            digit::Base::Decimal => digit::check_decimal_offset,
+            digit::Base::Hexadecimal => digit::check_hexadecimal_offset,
         };
 
         while let Some(digit) = self.current_or_until_next_ascii_singleline() {
             match check_fn(digit) {
-                AsciiDigit::Ok | AsciiDigit::Underscore => {},
-                AsciiDigit::Other | AsciiDigit::Dot => break,
-                AsciiDigit::OutOfRange => self.errors.push(Msg {
+                digit::NOT_A_DIGIT => break,
+                digit::OUT_OF_RANGE => self.errors.push(Msg {
                     severity: MsgSeverity::NonTerminalError,
                     kind: ErrorKind::DigitOutOfRange(digit, Base(base)),
                     col: self.col,
                     pointers_count: 1,
                 }),
+                _ => {}
             }
             self.col += 1;
         }
@@ -2042,16 +2039,32 @@ impl IntoMsgInfo for ErrorKind<'_> {
                 "']' closes the wrong bracket, expected a '}' instead".into()
             ),
 
-            Self::DigitOutOfRange(digit, base) => (
-                "invalid integer literal".into(),
-                format!(
-                    "digit '{escaped}' ({raw}) is out of the valid range for a base {} number {:?}",
-                    base.0 as u8,
-                    base.0.range(),
-                    escaped = *digit as utf32,
-                    raw = digit,
-                ).into(),
-            ),
+            Self::DigitOutOfRange(digit, base) => {
+                let mut bases_ranges = String::new();
+                bases_ranges += "(";
+
+                let mut ranges = base.0.range().iter();
+                let Some(first_range) = ranges.next() else {
+                    unreachable!();
+                };
+
+                let mut _ignored = write!(bases_ranges, "{first_range}");
+
+                for range in ranges {
+                    _ignored = write!(bases_ranges, ", {range}");
+                }
+                bases_ranges += ")";
+
+                (
+                    "invalid integer literal".into(),
+                    format!(
+                        "digit '{escaped}' is out of the valid range for a base {} number {}",
+                        base.0 as u8,
+                        bases_ranges,
+                        escaped = *digit as utf32,
+                    ).into()
+                )
+            },
 
             Self::UnrecognizedEscapeCharacter(unrecognized) => (
                 "invalid escape character".into(),
