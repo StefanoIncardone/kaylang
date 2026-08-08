@@ -55,13 +55,11 @@ impl Artifacts {
             return Ok(artifacts);
         }
 
-        if let Err(err) = std::fs::create_dir_all(out_path) {
-            if err.kind() != std::io::ErrorKind::AlreadyExists {
-                return Err(Error::CouldNotCreateOutputDirectory {
-                    path: out_path.to_owned(),
-                    err,
-                });
-            }
+        if let Err(err) = std::fs::create_dir_all(out_path) && err.kind() != std::io::ErrorKind::AlreadyExists {
+            return Err(Error::CouldNotCreateOutputDirectory {
+                path: out_path.to_owned(),
+                err,
+            });
         }
 
         let artifacts = Self {

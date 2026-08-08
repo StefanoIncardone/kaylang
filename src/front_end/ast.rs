@@ -2871,18 +2871,16 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         };
 
         let expression_typ = expression.typ();
-        if let Some((token, annotation_typ)) = annotation {
-            if annotation_typ != expression_typ {
-                return Err(Msg {
-                    severity: MsgSeverity::Error,
-                    kind: ErrorKind::VariableDefinitionTypeMismatch {
-                        expected: annotation_typ,
-                        actual: expression_typ,
-                    },
-                    col: token.col,
-                    pointers_count: token.kind.display_len(self.tokens),
-                });
-            }
+        if let Some((token, annotation_typ)) = annotation && annotation_typ != expression_typ {
+            return Err(Msg {
+                severity: MsgSeverity::Error,
+                kind: ErrorKind::VariableDefinitionTypeMismatch {
+                    expected: annotation_typ,
+                    actual: expression_typ,
+                },
+                col: token.col,
+                pointers_count: token.kind.display_len(self.tokens),
+            });
         }
         self.semicolon()?;
         return Ok(Variable { name, value: expression });
@@ -2928,15 +2926,13 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         });
                     }
 
-                    if let BaseType::Str = typ.base_typ() {
-                        if let BaseType::Ascii = base_type {
-                            return Err(Msg {
-                                severity: MsgSeverity::Error,
-                                kind: ErrorKind::CannotMutateStringCharacters,
-                                col: target_token.col,
-                                pointers_count: target_token.kind.display_len(self.tokens),
-                            });
-                        }
+                    if let BaseType::Str = typ.base_typ() && let BaseType::Ascii = base_type {
+                        return Err(Msg {
+                            severity: MsgSeverity::Error,
+                            kind: ErrorKind::CannotMutateStringCharacters,
+                            col: target_token.col,
+                            pointers_count: target_token.kind.display_len(self.tokens),
+                        });
                     }
 
                     target_token
@@ -3123,15 +3119,13 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         });
                     }
 
-                    if let BaseType::Str = typ.base_typ() {
-                        if let BaseType::Ascii = base_type {
-                            return Err(Msg {
-                                severity: MsgSeverity::Error,
-                                kind: ErrorKind::CannotMutateStringCharacters,
-                                col: target_token.col,
-                                pointers_count: target_token.kind.display_len(self.tokens),
-                            });
-                        }
+                    if let BaseType::Str = typ.base_typ() && let BaseType::Ascii = base_type {
+                        return Err(Msg {
+                            severity: MsgSeverity::Error,
+                            kind: ErrorKind::CannotMutateStringCharacters,
+                            col: target_token.col,
+                            pointers_count: target_token.kind.display_len(self.tokens),
+                        });
                     }
 
                     target_token
