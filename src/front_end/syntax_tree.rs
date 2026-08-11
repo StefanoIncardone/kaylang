@@ -1004,7 +1004,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                                 parser.token_index = TokenIndex::new(parser.tokens.tokens.len());
                                 break 'parsing;
                             },
-                            MsgSeverity::NonTerminalError => {},
+                            MsgSeverity::NonTerminalError | MsgSeverity::Warning => {},
                         }
                     }
                 },

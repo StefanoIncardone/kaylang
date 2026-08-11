@@ -1,0 +1,86 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "debug check kay",
+      "cargo": {
+        "args": ["build", "--offline"],
+        "filter": {
+
+          "kind": "bin"
+        },
+      },
+      "args": ["check", "-V", "${relativeFile}"],
+      "cwd": "${workspaceFolder}",
+      "console": "externalTerminal",
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "debug compile kay",
+      "cargo": {
+        "args": ["build", "--offline" ],
+        "filter": {
+          "kind": "bin"
+        },
+      },
+      "args": ["compile", "-V", "${relativeFile}", "-o=out"],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "debug run kay",
+      "cargo": {
+        "args": ["build", "--offline"],
+        "filter": {
+          "kind": "bin"
+        },
+      },
+      "args": ["run", "-V", "${relativeFile}", "-o=out"],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "debug cli app kay",
+      "cargo": {
+        "args": ["build", "--offline"],
+        "filter": {
+          "kind": "bin"
+        },
+      },
+      "args": ["check", "-V", "${relativeFile}", "-o=out", "--color", "never"],
+      "cwd": "${workspaceFolder}",
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "debug run kay executable",
+      "program": "out/${fileBasenameNoExtension}",
+      "stopOnEntry": true,
+      "preLaunchTask": "compile kay",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "debug nasm",
+      "program": "out/${fileBasenameNoExtension}",
+      "stopOnEntry": true,
+      "preLaunchTask": "link nasm",
+      "cwd": "${workspaceFolder}",
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "run nasm",
+      "program": "out/${fileBasenameNoExtension}",
+      "stopOnEntry": false,
+      "preLaunchTask": "link nasm",
+      "cwd": "${workspaceFolder}"
+    },
+  ]
+}

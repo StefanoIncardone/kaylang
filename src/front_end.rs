@@ -108,6 +108,7 @@ pub struct MsgInfo {
 pub enum MsgSeverity {
     Error,
     NonTerminalError,
+    Warning,
 }
 
 // IDEA(stefano): allow pointers to start past the end of the line
@@ -162,6 +163,7 @@ pub struct MsgDisplay<'code, 'path: 'code> {
 impl Display for MsgDisplay<'_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let error = MsgWithCauseUnderTextWithLocation {
+            severity: MsgSeverity::Error,
             kind: &ERROR,
             message: &self.error_message,
             cause: &self.error_cause_message,

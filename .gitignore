@@ -4,9 +4,6 @@
 test*.kay
 test*.kbe
 
-# vscode settings, tasks and launch configurations
-.vscode
-
 # rust build artifacts
 target
 

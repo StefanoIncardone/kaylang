@@ -89,10 +89,11 @@ const BAR_FG: Fg = Fg::LightBlue;
 const BAR_BG: Bg = Bg::Default;
 const BAR_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
 
+pub(crate) const ERROR: &str = "Error";
+pub(crate) const AT: &str = "at";
+
 messages!(
-    pub(crate) ERROR = "Error", ERR_FG, ERR_BG, ERR_FLAGS;
     pub(crate) CAUSE = "Cause", ERR_FG, ERR_BG, ERR_FLAGS;
-    pub(crate) AT    = "at",    ERR_FG, ERR_BG, ERR_FLAGS;
     pub(crate) BAR   = "|",     BAR_FG, BAR_BG, BAR_FLAGS;
 );
 messages!(

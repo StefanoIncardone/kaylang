@@ -70,16 +70,6 @@ fn run_project_euler() -> Result<(), ExitCode> {
 }
 
 #[test]
-fn check_escape_characters() -> Result<(), ExitCode> {
-    let color = Color::Auto;
-    color.set(&std::io::stderr());
-    color.set(&std::io::stdout());
-
-    let src_path = Path::new("tests/escape_characters.kay");
-    return check(src_path);
-}
-
-#[test]
 fn run_escape_characters() -> Result<(), ExitCode> {
     let color = Color::Auto;
     color.set(&std::io::stderr());

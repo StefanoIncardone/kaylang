@@ -1,0 +1,10 @@
+{
+  "lldb.dereferencePointers": true,
+  "lldb.consoleMode": "commands",
+  "markdownlint.config": {
+    "MD024": false,
+    "MD028": false,
+  },
+  "lldb.displayFormat": "decimal",
+  "lldb.showDisassembly": "auto",
+}

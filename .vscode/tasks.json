@@ -1,0 +1,169 @@
+{
+"version": "2.0.0",
+"tasks": [
+  {
+    "label": "cargo fmt",
+    "type": "shell",
+    "command": "cargo",
+    "args": ["--offline", "fmt", "--all"],
+    "problemMatcher": {
+      "pattern": {
+        "regexp": "error"
+      }
+    },
+    "presentation": {
+      "clear": false,
+      "close": true,
+      "echo": false,
+      "focus": false,
+      "panel": "shared",
+      "reveal": "never",
+      "revealProblems": "never",
+      "showReuseMessage": false
+    }
+  },
+  {
+    "label": "check kay",
+    "type": "shell",
+    "command": "cargo",
+    "args": ["--offline", "run", "--", "check", "-V", "${relativeFile}"],
+    "problemMatcher": {
+      "pattern": {
+        "regexp": "error"
+      }
+    },
+    "presentation": {
+      "clear": false,
+      "close": false,
+      "echo": true,
+      "focus": true,
+      "panel": "shared",
+      "reveal": "always",
+      "revealProblems": "never",
+      "showReuseMessage": true
+    }
+  },
+  {
+    "label": "compile kay",
+    "type": "shell",
+    "command": "cargo",
+    "args": ["--offline", "run", "--", "compile", "-V", "${relativeFile}", "-o=out"],
+    "problemMatcher": {
+      "pattern": {
+        "regexp": "error"
+      }
+    },
+    "presentation": {
+      "clear": false,
+      "close": false,
+      "echo": true,
+      "focus": true,
+      "panel": "shared",
+      "reveal": "always",
+      "revealProblems": "never",
+      "showReuseMessage": true
+    }
+  },
+  {
+    "label": "run kay",
+    "type": "shell",
+    "command": "cargo",
+    "args": ["--offline", "run", "--", "run", "-V", "${relativeFile}", "-o=out"],
+    "problemMatcher": {
+      "pattern": {
+        "regexp": "error"
+      }
+    },
+    "presentation": {
+      "clear": false,
+      "close": false,
+      "echo": true,
+      "focus": true,
+      "panel": "shared",
+      "reveal": "always",
+      "revealProblems": "never",
+      "showReuseMessage": true
+    }
+  },
+  {
+    "label": "run cli app kay",
+    "type": "shell",
+    "command": "cargo",
+    "args": ["--offline", "run", "--", "check", "-V", "tests/test.kay"],
+    "problemMatcher": {
+      "pattern": {
+        "regexp": "error"
+      }
+    },
+    "presentation": {
+      "focus": true,
+      "panel": "dedicated",
+      "reveal": "always",
+      "clear": true
+    }
+  },
+  {
+    "label": "compile nasm",
+    "type": "shell",
+    "command": "nasm",
+    "args": ["-felf64", "-gdwarf", "${relativeFile}", "-o", "out/${fileBasenameNoExtension}.o"],
+    "problemMatcher": {
+      "pattern": {
+        "regexp": "error"
+      }
+    },
+  },
+  {
+    "label": "compile listing nasm",
+    "type": "shell",
+    "command": "nasm",
+    "args": ["-felf64", "-gdwarf", "${relativeFile}", "-l", "out/${fileBasenameNoExtension}.lst"],
+    "problemMatcher": {
+      "pattern": {
+        "regexp": "error"
+      }
+    },
+    "presentation": {
+      "focus": true,
+      "panel": "dedicated",
+      "reveal": "silent",
+      "clear": true
+    }
+  },
+  {
+    "label": "link nasm",
+    "type": "shell",
+    "command": "ld",
+    "args": ["out/${fileBasenameNoExtension}.o", "-o", "out/${fileBasenameNoExtension}"],
+    "problemMatcher": {
+      "pattern": {
+        "regexp": "error"
+      }
+    },
+    "presentation": {
+      "focus": true,
+      "panel": "dedicated",
+      "reveal": "silent",
+      "clear": true
+    },
+    "dependsOn": "compile nasm"
+  },
+  {
+    "label": "run nasm",
+    "type": "shell",
+    "command": "out/${fileBasenameNoExtension}",
+    "problemMatcher": {
+      "pattern": {
+        "regexp": "error"
+      }
+    },
+    "presentation": {
+      "focus": true,
+      "panel": "dedicated",
+      "reveal": "silent",
+      "clear": true
+    },
+    "dependsOn": "link nasm"
+  },
+]
+}
