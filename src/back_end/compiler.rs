@@ -36,12 +36,21 @@ enum Base {
     Temp,
 }
 
-impl Display for Base {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl Base {
+    #[must_use]
+    #[inline]
+    const fn to_str(self) -> &'static str {
         return match self {
-            Self::Rbp => write!(f, "rbp"),
-            Self::Temp => write!(f, "temp"),
+            Self::Rbp => "rbp",
+            Self::Temp => "temp",
         };
+    }
+}
+
+impl Display for Base {
+    #[inline(always)]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        return f.write_str(self.to_str());
     }
 }
 

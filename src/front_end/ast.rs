@@ -34,14 +34,23 @@ pub enum BaseType {
     Str,
 }
 
-impl Display for BaseType {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl BaseType {
+    #[must_use]
+    #[inline]
+    pub const fn to_str(self) -> &'static str {
         return match self {
-            Self::I64 => write!(f, "i64"),
-            Self::Ascii => write!(f, "ascii"),
-            Self::Bool => write!(f, "bool"),
-            Self::Str => write!(f, "str"),
+            Self::I64 => "i64",
+            Self::Ascii => "ascii",
+            Self::Bool => "bool",
+            Self::Str => "str",
         };
+    }
+}
+
+impl Display for BaseType {
+    #[inline(always)]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        return f.write_str(self.to_str());
     }
 }
 

@@ -110,95 +110,6 @@ pub enum Op {
     LessOrEquals,
 }
 
-impl Display for Op {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        #[rustfmt::skip]
-        return match self {
-            Self::Equals                    => write!(f, "="),
-
-            Self::Len                       => write!(f, "len"),
-            Self::Not                       => write!(f, "!"),
-            Self::NotEquals                 => write!(f, "!="),
-
-            Self::Pow                       => write!(f,  "**"),
-            Self::WrappingPow               => write!(f, r"**\"),
-            Self::SaturatingPow             => write!(f,  "**|"),
-            Self::PowEquals                 => write!(f,  "**="),
-            Self::WrappingPowEquals         => write!(f, r"**\="),
-            Self::SaturatingPowEquals       => write!(f,  "**|="),
-
-            Self::Times                     => write!(f,  "*"),
-            Self::WrappingTimes             => write!(f, r"*\"),
-            Self::SaturatingTimes           => write!(f,  "*|"),
-            Self::TimesEquals               => write!(f,  "*="),
-            Self::WrappingTimesEquals       => write!(f, r"*\="),
-            Self::SaturatingTimesEquals     => write!(f,  "*|="),
-
-            Self::Divide                    => write!(f,  "/"),
-            Self::WrappingDivide            => write!(f, r"/\"),
-            Self::SaturatingDivide          => write!(f,  "/|"),
-            Self::DivideEquals              => write!(f,  "/="),
-            Self::WrappingDivideEquals      => write!(f, r"/\="),
-            Self::SaturatingDivideEquals    => write!(f,  "/|="),
-
-            Self::Remainder                 => write!(f, "%"),
-            Self::RemainderEquals           => write!(f, "%="),
-
-            Self::Plus                      => write!(f,  "+"),
-            Self::WrappingPlus              => write!(f, r"+\"),
-            Self::SaturatingPlus            => write!(f,  "+|"),
-            Self::PlusEquals                => write!(f,  "+="),
-            Self::WrappingPlusEquals        => write!(f, r"+\="),
-            Self::SaturatingPlusEquals      => write!(f,  "+|="),
-
-            Self::Minus                     => write!(f,  "-"),
-            Self::WrappingMinus             => write!(f, r"-\"),
-            Self::SaturatingMinus           => write!(f,  "-|"),
-            Self::MinusEquals               => write!(f,  "-="),
-            Self::WrappingMinusEquals       => write!(f, r"-\="),
-            Self::SaturatingMinusEquals     => write!(f,  "-|="),
-
-            Self::LeftShift                 => write!(f,  "<<"),
-            Self::WrappingLeftShift         => write!(f, r"<<\"),
-            Self::SaturatingLeftShift       => write!(f,  "<<|"),
-            Self::LeftShiftEquals           => write!(f,  "<<="),
-            Self::WrappingLeftShiftEquals   => write!(f, r"<<\="),
-            Self::SaturatingLeftShiftEquals => write!(f,  "<<|="),
-
-            Self::RightShift                => write!(f,  ">>"),
-            Self::RightShiftEquals          => write!(f,  ">>="),
-
-            Self::LeftRotate                => write!(f, "<<<"),
-            Self::LeftRotateEquals          => write!(f, "<<<="),
-            Self::RightRotate               => write!(f, ">>>"),
-            Self::RightRotateEquals         => write!(f, ">>>="),
-
-            Self::BitAnd                    => write!(f, "&"),
-            Self::BitAndEquals              => write!(f, "&="),
-
-            Self::BitOr                     => write!(f, "|"),
-            Self::BitOrEquals               => write!(f, "|="),
-
-            Self::BitXor                    => write!(f, "^"),
-            Self::BitXorEquals              => write!(f, "^="),
-
-            Self::And                       => write!(f, "&&"),
-            Self::AndEquals                 => write!(f, "&&="),
-
-            Self::Or                        => write!(f, "||"),
-            Self::OrEquals                  => write!(f, "||="),
-
-            Self::Compare                   => write!(f, "<=>"),
-            Self::EqualsEquals              => write!(f, "=="),
-            Self::NotEqualsEquals           => write!(f, "!=="),
-            Self::Greater                   => write!(f, ">"),
-            Self::GreaterOrEquals           => write!(f, ">="),
-            Self::Less                      => write!(f, "<"),
-            Self::LessOrEquals              => write!(f, "<="),
-        };
-    }
-}
-
 impl Op {
     pub(crate) const fn display_len(self) -> uoffset32 {
         return match self {
@@ -283,6 +194,99 @@ impl Op {
             Self::LessOrEquals => 2,
             Self::Compare => 3,
         };
+    }
+
+    pub(crate) const fn to_str(self) -> &'static str {
+        #[rustfmt::skip]
+        return match self {
+            Self::Equals                    => "=",
+
+            Self::Len                       => "len",
+            Self::Not                       => "!",
+            Self::NotEquals                 => "!=",
+
+            Self::Pow                       =>  "**",
+            Self::WrappingPow               => r"**\",
+            Self::SaturatingPow             =>  "**|",
+            Self::PowEquals                 =>  "**=",
+            Self::WrappingPowEquals         => r"**\=",
+            Self::SaturatingPowEquals       =>  "**|=",
+
+            Self::Times                     =>  "*",
+            Self::WrappingTimes             => r"*\",
+            Self::SaturatingTimes           =>  "*|",
+            Self::TimesEquals               =>  "*=",
+            Self::WrappingTimesEquals       => r"*\=",
+            Self::SaturatingTimesEquals     =>  "*|=",
+
+            Self::Divide                    =>  "/",
+            Self::WrappingDivide            => r"/\",
+            Self::SaturatingDivide          =>  "/|",
+            Self::DivideEquals              =>  "/=",
+            Self::WrappingDivideEquals      => r"/\=",
+            Self::SaturatingDivideEquals    =>  "/|=",
+
+            Self::Remainder                 => "%",
+            Self::RemainderEquals           => "%=",
+
+            Self::Plus                      =>  "+",
+            Self::WrappingPlus              => r"+\",
+            Self::SaturatingPlus            =>  "+|",
+            Self::PlusEquals                =>  "+=",
+            Self::WrappingPlusEquals        => r"+\=",
+            Self::SaturatingPlusEquals      =>  "+|=",
+
+            Self::Minus                     =>  "-",
+            Self::WrappingMinus             => r"-\",
+            Self::SaturatingMinus           =>  "-|",
+            Self::MinusEquals               =>  "-=",
+            Self::WrappingMinusEquals       => r"-\=",
+            Self::SaturatingMinusEquals     =>  "-|=",
+
+            Self::LeftShift                 =>  "<<",
+            Self::WrappingLeftShift         => r"<<\",
+            Self::SaturatingLeftShift       =>  "<<|",
+            Self::LeftShiftEquals           =>  "<<=",
+            Self::WrappingLeftShiftEquals   => r"<<\=",
+            Self::SaturatingLeftShiftEquals =>  "<<|=",
+
+            Self::RightShift                =>  ">>",
+            Self::RightShiftEquals          =>  ">>=",
+
+            Self::LeftRotate                => "<<<",
+            Self::LeftRotateEquals          => "<<<=",
+            Self::RightRotate               => ">>>",
+            Self::RightRotateEquals         => ">>>=",
+
+            Self::BitAnd                    => "&",
+            Self::BitAndEquals              => "&=",
+
+            Self::BitOr                     => "|",
+            Self::BitOrEquals               => "|=",
+
+            Self::BitXor                    => "^",
+            Self::BitXorEquals              => "^=",
+
+            Self::And                       => "&&",
+            Self::AndEquals                 => "&&=",
+
+            Self::Or                        => "||",
+            Self::OrEquals                  => "||=",
+
+            Self::Compare                   => "<=>",
+            Self::EqualsEquals              => "==",
+            Self::NotEqualsEquals           => "!==",
+            Self::Greater                   => ">",
+            Self::GreaterOrEquals           => ">=",
+            Self::Less                      => "<",
+            Self::LessOrEquals              => "<=",
+        };
+    }
+}
+
+impl Display for Op {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        return f.write_str(self.to_str());
     }
 }
 
