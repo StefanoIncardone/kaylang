@@ -353,7 +353,6 @@ pub(crate) enum TokenKind<'code> {
 
 impl<'code> TokenKind<'code> {
     pub(crate) fn display_len(self, tokens: &Tokens<'code>) -> uoffset32 {
-        #[expect(clippy::cast_possible_truncation)]
         return match self {
             Self::LineComment(comment) => {
                 let text = tokens.text[comment];
@@ -540,7 +539,6 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             other
                         },
                     },
-                    #[expect(clippy::cast_possible_truncation)]
                     Err(grapheme) => {
                         tokenizer.push_utf8_error(grapheme);
                         tokenizer.col += grapheme.len() as uoffset32;
@@ -1174,7 +1172,6 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 enum LineEnd {
     LF = 1,
-    #[expect(clippy::upper_case_acronyms)]
     CRLF = 2,
 }
 
@@ -1226,7 +1223,6 @@ impl<'code> Tokenizer<'code> {
         };
     }
 
-    #[expect(clippy::question_mark)]
     #[must_use]
     fn get_next_byte_multiline(&mut self) -> Option<u8> {
         let Some(next) = self.current_byte_multiline() else {
@@ -1282,7 +1278,6 @@ impl<'code> Tokenizer<'code> {
         };
     }
 
-    #[expect(clippy::question_mark)]
     #[must_use]
     fn current_ascii_multiline(&self) -> Option<Result<ascii, &'code str>> {
         let Some(next) = self.current_byte_multiline() else {
@@ -1294,7 +1289,6 @@ impl<'code> Tokenizer<'code> {
         };
     }
 
-    #[expect(clippy::question_mark)]
     #[must_use]
     fn current_ascii_singleline(&self) -> Option<Result<ascii, &'code str>> {
         let Some(next) = self.current_byte_singleline() else {
@@ -1306,7 +1300,6 @@ impl<'code> Tokenizer<'code> {
         };
     }
 
-    #[expect(clippy::question_mark)]
     #[must_use]
     fn current_or_until_next_ascii_singleline(&mut self) -> Option<ascii> {
         loop {
@@ -1315,7 +1308,6 @@ impl<'code> Tokenizer<'code> {
             };
             match next {
                 ascii_ch @ 0..=b'\x7F' => return Some(ascii_ch),
-                #[expect(clippy::cast_possible_truncation)]
                 _utf8_ch => {
                     let grapheme = self.current_grapheme();
                     self.col += grapheme.len() as uoffset32;
@@ -1434,7 +1426,6 @@ impl<'code> Tokenizer<'code> {
     fn escape_sequence(&mut self, start_of_character: uoffset32) -> EscapeSequence {
         let current_character = match self.current_ascii_singleline() {
             Some(Ok(current_character)) => current_character,
-            #[expect(clippy::cast_possible_truncation)]
             Some(Err(grapheme)) => {
                 self.col += grapheme.len() as uoffset32;
                 self.push_utf8_error(grapheme);
@@ -1464,7 +1455,6 @@ impl<'code> Tokenizer<'code> {
             b'^' => {
                 let caret_character = match self.current_ascii_singleline() {
                     Some(Ok(escape_character)) => escape_character,
-                    #[expect(clippy::cast_possible_truncation)]
                     Some(Err(grapheme)) => {
                         self.push_utf8_error(grapheme);
                         self.col += grapheme.len() as uoffset32;
@@ -1528,7 +1518,6 @@ impl<'code> Tokenizer<'code> {
         loop {
             let next_character = match self.current_ascii_singleline() {
                 Some(Ok(next_character)) => next_character,
-                #[expect(clippy::cast_possible_truncation)]
                 Some(Err(grapheme)) => {
                     self.push_utf8_error(grapheme);
                     self.col += grapheme.len() as uoffset32;
@@ -1608,7 +1597,6 @@ impl<'code> Tokenizer<'code> {
         loop {
             let next_character = match self.current_ascii_singleline() {
                 Some(Ok(next_character)) => next_character,
-                #[expect(clippy::cast_possible_truncation)]
                 Some(Err(grapheme)) => {
                     self.push_utf8_error(grapheme);
                     self.col += grapheme.len() as uoffset32;
@@ -1667,7 +1655,6 @@ impl<'code> Tokenizer<'code> {
         loop {
             let next_character = match self.current_ascii_singleline() {
                 Some(Ok(next_character)) => next_character,
-                #[expect(clippy::cast_possible_truncation)]
                 Some(Err(grapheme)) => {
                     self.push_utf8_error(grapheme);
                     self.col += grapheme.len() as uoffset32;
@@ -1690,7 +1677,6 @@ impl<'code> Tokenizer<'code> {
                 b'\\' => {
                     let escape_character = match self.current_ascii_singleline() {
                         Some(Ok(escape_character)) => escape_character,
-                        #[expect(clippy::cast_possible_truncation)]
                         Some(Err(grapheme)) => {
                             self.push_utf8_error(grapheme);
                             self.col += grapheme.len() as uoffset32;
@@ -1747,7 +1733,6 @@ impl<'code> Tokenizer<'code> {
         loop {
             let next_character = match self.current_ascii_singleline() {
                 Some(Ok(next_character)) => next_character,
-                #[expect(clippy::cast_possible_truncation)]
                 Some(Err(grapheme)) => {
                     self.push_utf8_error(grapheme);
                     self.col += grapheme.len() as uoffset32;
@@ -1785,7 +1770,6 @@ impl<'code> Tokenizer<'code> {
         }
 
         let identifier = self.token_text();
-        #[expect(clippy::cast_possible_truncation)]
         let identifier_len = identifier.len() as uoffset32 - 2; // - 2 for the quotes
         if identifier_len > Self::MAX_IDENTIFIER_LEN {
             self.errors.push(Msg {
@@ -1839,7 +1823,6 @@ impl<'code> Tokenizer<'code> {
             "continue" => TokenKind::Continue,
             "len" => TokenKind::Op(Op::Len),
             identifier => {
-                #[expect(clippy::cast_possible_truncation)]
                 let identifier_len = identifier.len() as uoffset32;
                 if identifier_len > Self::MAX_IDENTIFIER_LEN {
                     self.errors.push(Msg {

@@ -38,7 +38,6 @@ impl<T> Index32<T> {
     #[must_use]
     #[inline(always)]
     pub(crate) const fn new(index: usize) -> Self {
-        #[expect(clippy::cast_possible_truncation)]
         return Self(index as uoffset32, core::marker::PhantomData);
     }
 

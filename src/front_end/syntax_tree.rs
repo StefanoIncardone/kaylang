@@ -1826,7 +1826,6 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     });
 
                     let array_items = &self.temp_array_items[temp_array_items_start..];
-                    #[expect(clippy::cast_possible_truncation)]
                     let items_len = array_items.len() as uoffset32;
                     self.syntax_tree.array_items.extend_from_slice(array_items);
 
@@ -1838,7 +1837,6 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     }
                 } else {
                     let array_items = &self.temp_array_items[temp_array_items_start..];
-                    #[expect(clippy::cast_possible_truncation)]
                     let items_len = array_items.len() as uoffset32;
                     self.syntax_tree.array_items.extend_from_slice(array_items);
 
@@ -2351,7 +2349,6 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 type_name,
                 type_name_column: type_name_token.col,
                 array_dimensions_start,
-                #[expect(clippy::cast_possible_truncation)]
                 array_dimensions_len: self.syntax_tree.array_dimensions.len() as uoffset32
                     - array_dimensions_start.0,
             })

@@ -24,7 +24,6 @@ impl DisplayLen for str {
         if len == 0 {
             len = 1;
         }
-        #[expect(clippy::cast_possible_truncation)]
         return len as uoffset32;
     }
 }
@@ -36,7 +35,6 @@ impl DisplayLen for utf32 {
         if len == 0 {
             len = 1;
         }
-        #[expect(clippy::cast_possible_truncation)]
         return len as uoffset32;
     }
 }

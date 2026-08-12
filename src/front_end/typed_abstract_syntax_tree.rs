@@ -95,7 +95,6 @@ impl Type {
     pub const fn size(&self) -> usize {
         return match self {
             Self::Base(typ) => typ.size(),
-            #[expect(clippy::cast_possible_truncation)]
             Self::Array { base_type, len } => base_type.size() * *len as usize,
         };
     }
@@ -1236,7 +1235,6 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
                 writeln!(f, "{:>indent$}Array", "")?;
 
                 let items_indent = expression_indent + Self::INDENT_INCREMENT;
-                #[expect(clippy::cast_possible_truncation)]
                 let items_end = items_start.0 as usize + *items_len as usize;
                 let items = &self.typed_syntax_tree.array_items[items_start.0 as usize..items_end];
                 for item_expression in items {
@@ -1854,7 +1852,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::DecimalIntegerOverflow,
                         col: *column,
-                        #[expect(clippy::cast_possible_truncation)]
                         pointers_count: literal_text.len() as uoffset32,
                     });
                 };
@@ -1868,7 +1865,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::DecimalIntegerOverflow,
                         col: *column,
-                        #[expect(clippy::cast_possible_truncation)]
                         pointers_count: literal_text.len() as uoffset32,
                     });
                 };
@@ -1882,7 +1878,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::BinaryIntegerOverflow,
                         col: *column,
-                        #[expect(clippy::cast_possible_truncation)]
                         pointers_count: literal_text.len() as uoffset32,
                     });
                 };
@@ -1896,7 +1891,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::OctalIntegerOverflow,
                         col: *column,
-                        #[expect(clippy::cast_possible_truncation)]
                         pointers_count: literal_text.len() as uoffset32,
                     });
                 };
@@ -1911,7 +1905,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::HexadecimalIntegerOverflow,
                         col: *column,
-                        #[expect(clippy::cast_possible_truncation)]
                         pointers_count: literal_text.len() as uoffset32,
                     });
                 };
@@ -1932,7 +1925,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::TypeInExpression,
                         col: *column,
-                        #[expect(clippy::cast_possible_truncation)]
                         pointers_count: identifier_text.len() as uoffset32,
                     });
                 }
@@ -1941,7 +1933,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::VariableNotPreviouslyDefined,
                         col: *column,
-                        #[expect(clippy::cast_possible_truncation)]
                         pointers_count: identifier_text.len() as uoffset32,
                     });
                 };
@@ -2115,7 +2106,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                         severity: MsgSeverity::Error,
                                         kind: ErrorKind::MinusZeroInteger,
                                         col: *column,
-                                        #[expect(clippy::cast_possible_truncation)]
                                         pointers_count: literal_text.len() as uoffset32,
                                     })
                                 },
@@ -2125,7 +2115,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                         severity: MsgSeverity::Error,
                                         kind: ErrorKind::BinaryIntegerUnderflow,
                                         col: *column,
-                                        #[expect(clippy::cast_possible_truncation)]
                                         pointers_count: literal_text.len() as uoffset32,
                                     })
                                 },
@@ -2149,7 +2138,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                         severity: MsgSeverity::Error,
                                         kind: ErrorKind::MinusZeroInteger,
                                         col: *column,
-                                        #[expect(clippy::cast_possible_truncation)]
                                         pointers_count: literal_text.len() as uoffset32,
                                     })
                                 },
@@ -2159,7 +2147,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                         severity: MsgSeverity::Error,
                                         kind: ErrorKind::OctalIntegerUnderflow,
                                         col: *column,
-                                        #[expect(clippy::cast_possible_truncation)]
                                         pointers_count: literal_text.len() as uoffset32,
                                     })
                                 },
@@ -2183,7 +2170,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                         severity: MsgSeverity::Error,
                                         kind: ErrorKind::MinusZeroInteger,
                                         col: *column,
-                                        #[expect(clippy::cast_possible_truncation)]
                                         pointers_count: literal_text.len() as uoffset32,
                                     })
                                 },
@@ -2193,7 +2179,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                         severity: MsgSeverity::Error,
                                         kind: ErrorKind::DecimalIntegerUnderflow,
                                         col: *column,
-                                        #[expect(clippy::cast_possible_truncation)]
                                         pointers_count: literal_text.len() as uoffset32,
                                     })
                                 },
@@ -2217,7 +2202,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                         severity: MsgSeverity::Error,
                                         kind: ErrorKind::MinusZeroInteger,
                                         col: *column,
-                                        #[expect(clippy::cast_possible_truncation)]
                                         pointers_count: literal_text.len() as uoffset32,
                                     })
                                 },
@@ -2227,7 +2211,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                         severity: MsgSeverity::Error,
                                         kind: ErrorKind::DecimalIntegerUnderflow,
                                         col: *column,
-                                        #[expect(clippy::cast_possible_truncation)]
                                         pointers_count: literal_text.len() as uoffset32,
                                     })
                                 },
@@ -2251,7 +2234,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                         severity: MsgSeverity::Error,
                                         kind: ErrorKind::MinusZeroInteger,
                                         col: *column,
-                                        #[expect(clippy::cast_possible_truncation)]
                                         pointers_count: literal_text.len() as uoffset32,
                                     })
                                 },
@@ -2261,7 +2243,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                         severity: MsgSeverity::Error,
                                         kind: ErrorKind::HexadecimalIntegerUnderflow,
                                         col: *column,
-                                        #[expect(clippy::cast_possible_truncation)]
                                         pointers_count: literal_text.len() as uoffset32,
                                     })
                                 },
@@ -2624,7 +2605,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::VariableInTypeAnnotation,
                 col: *type_name_column,
-                #[expect(clippy::cast_possible_truncation)]
                 pointers_count: type_name_text.len() as uoffset32,
             });
         }
@@ -2633,7 +2613,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::TypeNotPreviouslyDefined,
                 col: *type_name_column,
-                #[expect(clippy::cast_possible_truncation)]
                 pointers_count: type_name_text.len() as uoffset32,
             });
         };
@@ -2715,14 +2694,12 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::NestedArrayNotSupportedYet,
                 col: *type_name_column,
-                #[expect(clippy::cast_possible_truncation)]
                 pointers_count: type_name_text.len() as uoffset32,
             });
         }
 
         return Ok(Type::Array {
             base_type,
-            #[expect(clippy::cast_sign_loss)]
             len: *len as u64,
         });
     }
@@ -2740,7 +2717,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::VariableAlreadyDefined,
                 col: *name_column,
-                #[expect(clippy::cast_possible_truncation)]
                 pointers_count: name_text.len() as uoffset32,
             });
         }
@@ -2749,7 +2725,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::TypeInVariableName,
                 col: *name_column,
-                #[expect(clippy::cast_possible_truncation)]
                 pointers_count: name_text.len() as uoffset32,
             });
         }
@@ -2760,7 +2735,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::CannotInferTypeOfVariable,
                     col: *name_column,
-                    #[expect(clippy::cast_possible_truncation)]
                     pointers_count: name_text.len() as uoffset32,
                 });
             };
@@ -2768,7 +2742,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::VariablesMustBeInitialized,
                 col: *name_column,
-                #[expect(clippy::cast_possible_truncation)]
                 pointers_count: name_text.len() as uoffset32,
             });
         };
@@ -2814,7 +2787,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotMutateVariable,
                         col: *column,
-                        #[expect(clippy::cast_possible_truncation)]
                         pointers_count: variable_name_text.len() as uoffset32,
                     });
                 }
@@ -2845,7 +2817,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotMutateVariable,
                         col: *column,
-                        #[expect(clippy::cast_possible_truncation)]
                         pointers_count: variable_name_text.len() as uoffset32,
                     });
                 }
@@ -2856,7 +2827,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             severity: MsgSeverity::Error,
                             kind: ErrorKind::CannotMutateStringCharacters,
                             col: *column,
-                            #[expect(clippy::cast_possible_truncation)]
                             pointers_count: variable_name_text.len() as uoffset32,
                         });
                     }
@@ -3057,7 +3027,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotMutateVariable,
                         col: *column,
-                        #[expect(clippy::cast_possible_truncation)]
                         pointers_count: variable_name_text.len() as uoffset32,
                     });
                 }
@@ -3088,7 +3057,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotMutateVariable,
                         col: *column,
-                        #[expect(clippy::cast_possible_truncation)]
                         pointers_count: variable_name_text.len() as uoffset32,
                     });
                 }

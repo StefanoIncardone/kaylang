@@ -109,7 +109,6 @@ fn main() -> ExitCode {
                     };
                     eprintln!("{error}");
                     return match output.status.code() {
-                        #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
                         Some(code) => ExitCode::from(code as u8),
                         None => ExitCode::FAILURE,
                     };
@@ -137,7 +136,6 @@ fn main() -> ExitCode {
                     };
                     eprintln!("{error}");
                     return match output.status.code() {
-                        #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
                         Some(code) => ExitCode::from(code as u8),
                         None => ExitCode::FAILURE,
                     };

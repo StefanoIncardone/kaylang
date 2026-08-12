@@ -966,11 +966,8 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
                 if let Some((src_path, src_flag)) = parser.src_path {
                     parser.errors.push(Error::StraySrcPath { arg: src_path, flag: src_flag } );
                 }
-                else {
-                    #[allow(clippy::collapsible_else_if)]
-                    if let Some((arg_index, language_flag)) = parser.language {
-                        parser.errors.push(Error::StrayLanguageFlag { arg_index, flag: language_flag });
-                    }
+                else if let Some((arg_index, language_flag)) = parser.language {
+                    parser.errors.push(Error::StrayLanguageFlag { arg_index, flag: language_flag });
                 }
 
                 if let Some((out_path, output_flag)) = parser.out_path {
@@ -1747,9 +1744,7 @@ impl<S: AsRef<str>> Display for Errors<'_, '_, S> {
                 message: &error_message,
                 cause: &error_cause_message,
                 line_text: &args_text,
-                #[expect(clippy::cast_possible_truncation)]
                 pointers_offset: display_pointers_offset as uoffset32,
-                #[expect(clippy::cast_possible_truncation)]
                 pointers_count: pointers_count as uoffset32,
             };
             writeln!(f, "{error_msg}\n")?;

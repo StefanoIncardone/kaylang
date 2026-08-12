@@ -178,7 +178,6 @@ pub(crate) fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
                 let stderr_out = String::from_utf8_lossy(&output.stderr);
                 eprintln!("{ASSEMBLING_ERROR}:\n{stderr_out}");
                 return match output.status.code() {
-                    #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
                     Some(code) => Err(ExitCode::from(code as u8)),
                     None => Err(ExitCode::FAILURE),
                 };
@@ -196,7 +195,6 @@ pub(crate) fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
                 let stderr_out = String::from_utf8_lossy(&output.stderr);
                 eprintln!("{LINKING_ERROR}:\n{stderr_out}");
                 return match output.status.code() {
-                    #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
                     Some(code) => Err(ExitCode::from(code as u8)),
                     None => Err(ExitCode::FAILURE),
                 };
@@ -232,7 +230,6 @@ pub(crate) fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
 
     if !run_result.status.success() {
         return match run_result.status.code() {
-            #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
             Some(code) => Err(ExitCode::from(code as u8)),
             None => Err(ExitCode::FAILURE),
         };
