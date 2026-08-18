@@ -667,7 +667,6 @@ impl Display for Help<'_> {
         const flags_option: ansi_flag = AnsiFlag::Bold as ansi_flag;
         const flags_flag:   ansi_flag = AnsiFlag::Bold as ansi_flag;
 
-        // IDEA(stefano): make languages flags instead of command variations
         return write!(
             f,
             r"{Version}
