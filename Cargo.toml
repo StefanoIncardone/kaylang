@@ -1,7 +1,7 @@
 [package]
 name = "kaylang"
 rust-version = "1.89.0"
-version = "0.6.4-dev"
+version = "0.6.4"
 edition = "2024"
 authors = ["Stefano Incardone"]
 categories = ["compilers", "command-line-utilities"]
@@ -13,17 +13,17 @@ documentation = "https://github.com/StefanoIncardone/kaylang/blob/main/LANGUAGE_
 license = "MIT"
 
 [dependencies]
-unicode-width = "0.2.1"
-unicode-segmentation = "1.12.0"
+unicode-width = "0.2.2"
+unicode-segmentation = "1.13.3"
 
 [dependencies.back-to-front]
 # For publishing
-# git = "https://github.com/StefanoIncardone/back-to-front"
-# tag = "v0.1.2"
-# rev = "4a9dc014d69a9fce6ffcbbd35225e658f16915d6"
+    git = "https://github.com/StefanoIncardone/back-to-front"
+    # tag = "v0.1.2"
+    rev = "8721354010223d1e35cca4bef919ef977a982e74"
 
 # For rapid development
-path = "../../back-to-front"
+    # path = "../../back-to-front"
 
 [profile.dev]
 debug = "full"
@@ -133,6 +133,8 @@ no_effect_underscore_binding = "warn"
 len_without_is_empty = "allow"
 allow_attributes_without_reason = "allow"
 allow_attributes = "allow"
+question_mark = "allow"
+upper_case_acronyms = "allow"
 
 # doesn't solve the problem, i.e.:
 # ```rust
@@ -159,5 +161,7 @@ manual_swap = "allow"
 ptr_as_ptr = "allow"
 get_last_with_len = "allow"
 get_first = "allow"
+else_if_without_else = "allow"
+collapsible_else_if = "allow"
 
 disallowed_names = "allow" # why is this even a lint?

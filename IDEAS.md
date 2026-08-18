@@ -1977,7 +1977,7 @@ let i64_or_i64_error: i64 | err: i64;
 type i64_or_i64_error = i64 | err: i64;
 ```
 
-## 0.6.4/0.6.5 - casts
+## 0.6.5 - casts
 
 ability to define/overload the casting operator for specific types.
 types with explicit conversions can be bit-casted to other types when possible
@@ -3148,7 +3148,7 @@ loop_0_end:
  %line 116 "0001.asm"
 ```
 
-## 0.6.4 - More escape characters
+## 0.6.5 - More escape characters
 
 ```kay
 ## enclosed in parentheses to avoid confusions such as "...\cNULL..." where \cNULL are two
