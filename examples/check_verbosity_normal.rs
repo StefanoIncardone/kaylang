@@ -26,7 +26,7 @@ fn main() -> ExitCode {
         Err(err) => {
             eprintln!("{err}");
             return ExitCode::FAILURE;
-        }
+        },
     };
 
     let (src, tokens) = {
@@ -38,7 +38,7 @@ fn main() -> ExitCode {
                     eprintln!("{}\n", error.display(&src));
                 }
                 return ExitCode::FAILURE;
-            }
+            },
         }
     };
 
@@ -49,7 +49,7 @@ fn main() -> ExitCode {
                 eprintln!("{}\n", error.display(&src));
             }
             return ExitCode::FAILURE;
-        }
+        },
     };
 
     execution_step.step(&DONE, None);

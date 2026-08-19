@@ -36,7 +36,7 @@ fn main() -> ExitCode {
             Err(err) => {
                 eprintln!("{err}");
                 return ExitCode::FAILURE;
-            }
+            },
         }
     };
 
@@ -51,7 +51,7 @@ fn main() -> ExitCode {
                     eprintln!("{}\n", error.display(&src));
                 }
                 return ExitCode::FAILURE;
-            }
+            },
         }
     };
 
@@ -66,7 +66,7 @@ fn main() -> ExitCode {
                     eprintln!("{}\n", error.display(&src));
                 }
                 return ExitCode::FAILURE;
-            }
+            },
         }
     };
 

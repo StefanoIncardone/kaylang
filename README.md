@@ -7,7 +7,7 @@ println "Kay let's go!";
 Experimenting with programming languages and exploring how to create one.
 
 > [!WARNING]
-> The language could change at any moment for now, and could contain many bugs
+> Changes can happen at any moment for now, use at your own risk
 
 ## Syntem requirements
 
@@ -19,7 +19,7 @@ executable file, thus it has been tested only on:
 - CPU: Intel i7-8565u
 - GPU: Nvidia MX250
 - RAM: 16 GB
-- [rust](https://www.rust-lang.org/) version [1.81.0](https://releases.rs/docs/1.81.0/)
+- [rust](https://www.rust-lang.org/) version [1.89.0](https://releases.rs/docs/1.89.0/)
     - [cargo](https://doc.rust-lang.org/cargo/) as the build system
 - [nasm](https://www.nasm.us/) assembler version [2.15.05](https://www.nasm.us/doc/nasmdocc.html)
 - [ld](https://ftp.gnu.org/old-gnu/Manuals/ld-2.9.1/html_mono/ld.html) linker verision 2.38

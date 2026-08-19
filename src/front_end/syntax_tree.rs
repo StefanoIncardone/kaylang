@@ -1,18 +1,18 @@
 use super::{
     src_file::{DisplayPosition, SrcCode},
     tokenizer::{Op, TextIndex, Token, TokenIndex, TokenKind, Tokens},
-    Error, ErrorDisplay, ErrorInfo, IntoErrorInfo,
+    IntoMsgInfo, Msg, MsgDisplay, MsgInfo,
 };
+use crate::front_end::{tokenizer::ascii, Index32, MsgSeverity};
 use core::{fmt::Display, marker::PhantomData, num::NonZero};
 extern crate alloc;
 use alloc::borrow::Cow;
-use back_to_front::offset32;
+use back_to_front::uoffset32;
 
-#[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
-pub(crate) enum PrefixOperator {
+pub(crate) enum PrefixOp {
     Len = Op::Len as u8,
     Not = Op::Not as u8,
 
@@ -25,21 +25,21 @@ pub(crate) enum PrefixOperator {
     SaturatingMinus = Op::SaturatingMinus as u8,
 }
 
-impl Into<PrefixOperator> for Op {
+impl Into<PrefixOp> for Op {
     #[inline(always)]
-    fn into(self) -> PrefixOperator {
+    fn into(self) -> PrefixOp {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Into<Op> for PrefixOperator {
+impl Into<Op> for PrefixOp {
     #[inline(always)]
     fn into(self) -> Op {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Display for PrefixOperator {
+impl Display for PrefixOp {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -47,20 +47,19 @@ impl Display for PrefixOperator {
     }
 }
 
-impl PrefixOperator {
-    #[expect(dead_code, reason = "kept for consistency")]
+impl PrefixOp {
+    #[expect(dead_code)]
     #[inline(always)]
-    pub(super) fn display_len(self) -> offset32 {
+    pub(super) fn display_len(self) -> uoffset32 {
         let op: Op = self.into();
         return op.display_len();
     }
 }
 
-#[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
-pub(crate) enum BinaryOperator {
+pub(crate) enum BinaryOp {
     // binary operators
     Pow           = Op::Pow as u8,
     WrappingPow   = Op::WrappingPow as u8,
@@ -106,28 +105,28 @@ pub(crate) enum BinaryOperator {
 
     // boolean comparison operators
     EqualsEquals    = Op::EqualsEquals as u8,
-    NotEquals       = Op::NotEquals as u8,
+    NotEqualsEquals = Op::NotEqualsEquals as u8,
     Greater         = Op::Greater as u8,
     GreaterOrEquals = Op::GreaterOrEquals as u8,
     Less            = Op::Less as u8,
     LessOrEquals    = Op::LessOrEquals as u8,
 }
 
-impl Into<BinaryOperator> for Op {
+impl Into<BinaryOp> for Op {
     #[inline(always)]
-    fn into(self) -> BinaryOperator {
+    fn into(self) -> BinaryOp {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Into<Op> for BinaryOperator {
+impl Into<Op> for BinaryOp {
     #[inline(always)]
     fn into(self) -> Op {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Display for BinaryOperator {
+impl Display for BinaryOp {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -135,20 +134,18 @@ impl Display for BinaryOperator {
     }
 }
 
-impl BinaryOperator {
-    #[expect(dead_code, reason = "kept for consistency")]
+impl BinaryOp {
     #[inline(always)]
-    pub(super) fn display_len(self) -> offset32 {
+    pub(super) fn display_len(self) -> uoffset32 {
         let op: Op = self.into();
         return op.display_len();
     }
 }
 
-#[expect(dead_code, reason = "it's in reality created by trasmuting an `Op`")]
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
-pub(crate) enum AssignmentOperator {
+pub(crate) enum BinaryAssignmentOp {
     Equals = Op::Equals as u8,
 
     Pow           = Op::PowEquals as u8,
@@ -190,21 +187,21 @@ pub(crate) enum AssignmentOperator {
     Or     = Op::OrEquals as u8,
 }
 
-impl Into<AssignmentOperator> for Op {
+impl Into<BinaryAssignmentOp> for Op {
     #[inline(always)]
-    fn into(self) -> AssignmentOperator {
+    fn into(self) -> BinaryAssignmentOp {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Into<Op> for AssignmentOperator {
+impl Into<Op> for BinaryAssignmentOp {
     #[inline(always)]
     fn into(self) -> Op {
         return unsafe { core::mem::transmute(self) };
     }
 }
 
-impl Display for AssignmentOperator {
+impl Display for BinaryAssignmentOp {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -212,281 +209,358 @@ impl Display for AssignmentOperator {
     }
 }
 
-impl AssignmentOperator {
-    #[expect(dead_code, reason = "kept for consistency")]
+impl BinaryAssignmentOp {
     #[inline(always)]
-    pub(super) fn display_len(self) -> offset32 {
+    pub(super) fn display_len(self) -> uoffset32 {
         let op: Op = self.into();
         return op.display_len();
     }
 }
 
-pub(crate) type ArrayItemsIndex = offset32;
-pub(crate) type ExpressionIndex = offset32;
+#[expect(clippy::enum_variant_names)]
+#[rustfmt::skip]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[repr(u8)]
+pub(crate) enum PrefixAssignmentOp {
+    NotEquals = Op::NotEquals as u8,
+
+    PlusEquals = Op::PlusEquals as u8,
+    WrappingPlusEquals = Op::WrappingPlusEquals as u8,
+    SaturatingPlusEquals = Op::SaturatingPlusEquals as u8,
+
+    MinusEquals = Op::MinusEquals as u8,
+    WrappingMinusEquals = Op::WrappingMinusEquals as u8,
+    SaturatingMinusEquals = Op::SaturatingMinusEquals as u8,
+}
+
+impl Into<PrefixAssignmentOp> for Op {
+    #[inline(always)]
+    fn into(self) -> PrefixAssignmentOp {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Into<Op> for PrefixAssignmentOp {
+    #[inline(always)]
+    fn into(self) -> Op {
+        return unsafe { core::mem::transmute(self) };
+    }
+}
+
+impl Display for PrefixAssignmentOp {
+    #[inline(always)]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let op: Op = (*self).into();
+        return write!(f, "{op}");
+    }
+}
+
+impl PrefixAssignmentOp {
+    #[inline(always)]
+    pub(super) fn display_len(self) -> uoffset32 {
+        let op: Op = self.into();
+        return op.display_len();
+    }
+}
+
+pub(crate) type ExpressionIndex<'code> = Index32<Expression<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub(crate) enum Expression {
+pub(crate) enum Expression<'code> {
     False {
-        column: offset32,
+        column: uoffset32,
     },
     True {
-        column: offset32,
+        column: uoffset32,
     },
     DecimalInteger {
-        literal: TextIndex,
-        column: offset32,
+        literal: TextIndex<'code>,
+        column: uoffset32,
+    },
+    DecimalIntegerPrefix {
+        literal: TextIndex<'code>,
+        column: uoffset32,
     },
     BinaryInteger {
-        literal: TextIndex,
-        column: offset32,
+        literal: TextIndex<'code>,
+        column: uoffset32,
     },
     OctalInteger {
-        literal: TextIndex,
-        column: offset32,
+        literal: TextIndex<'code>,
+        column: uoffset32,
     },
     HexadecimalInteger {
-        literal: TextIndex,
-        column: offset32,
+        literal: TextIndex<'code>,
+        column: uoffset32,
     },
     Ascii {
-        literal: TextIndex,
-        column: offset32,
+        literal: TextIndex<'code>,
+        value: ascii,
+        column: uoffset32,
     },
     Str {
-        literal: TextIndex,
-        column: offset32,
+        literal: TextIndex<'code>,
+        column: uoffset32,
     },
     RawStr {
-        literal: TextIndex,
-        column: offset32,
+        literal: TextIndex<'code>,
+        column: uoffset32,
     },
     Identifier {
-        identifier: TextIndex,
-        column: offset32,
+        identifier: TextIndex<'code>,
+        column: uoffset32,
     },
     IdentifierStr {
-        identifier: TextIndex,
-        column: offset32,
+        identifier: TextIndex<'code>,
+        column: uoffset32,
     },
     Array {
-        open_square_bracket_column: offset32,
-        items_start: ArrayItemsIndex,
-        items_len: offset32,
-        close_square_bracket_column: offset32,
+        open_square_bracket_column: uoffset32,
+        items_start: ArrayItemsIndex<'code>,
+        items_len: uoffset32,
+        close_square_bracket_column: uoffset32,
     },
     ArrayTrailingItem {
-        open_square_bracket_column: offset32,
-        items_start: ArrayItemsIndex,
-        items_len: offset32,
-        last_item: ExpressionIndex,
-        close_square_bracket_column: offset32,
+        open_square_bracket_column: uoffset32,
+        items_start: ArrayItemsIndex<'code>,
+        /// always greater than 0
+        items_len: uoffset32,
+        close_square_bracket_column: uoffset32,
     },
 
     Prefix {
-        operator: PrefixOperator,
-        operator_column: offset32,
-        right_operand: ExpressionIndex,
+        operator: PrefixOp,
+        operator_column: uoffset32,
+        right_operand: ExpressionIndex<'code>,
     },
     Binary {
-        left_operand: ExpressionIndex,
-        operator: BinaryOperator,
-        operator_column: offset32,
-        right_operand: ExpressionIndex,
+        left_operand: ExpressionIndex<'code>,
+        operator: BinaryOp,
+        operator_column: uoffset32,
+        right_operand: ExpressionIndex<'code>,
     },
 
     Parenthesis {
-        open_round_bracket_column: offset32,
-        inner_expression: ExpressionIndex,
-        close_round_bracket_column: offset32,
-    },
-    EmptyParenthesis {
-        open_round_bracket_column: offset32,
-        close_round_bracket_column: offset32,
+        open_round_bracket_column: uoffset32,
+        inner_expression: ExpressionIndex<'code>,
+        close_round_bracket_column: uoffset32,
     },
 
     Index {
-        indexed_expression: ExpressionIndex,
-        open_square_bracket_column: offset32,
-        index_expression: ExpressionIndex,
-        close_square_bracket_column: offset32,
+        indexed_expression: ExpressionIndex<'code>,
+        open_square_bracket_column: uoffset32,
+        index_expression: ExpressionIndex<'code>,
+        close_square_bracket_column: uoffset32,
     },
 }
 
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
-pub(crate) enum ArrayItemSeparator {
-    Comma,
-    Semicolon,
+#[derive(Clone, Copy, Eq)]
+#[repr(C)]
+pub(crate) union ArrayItemSeparator {
+    pub(crate) some: uoffset32,
+    pub(crate) none: (),
+}
+
+impl core::fmt::Debug for ArrayItemSeparator {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        return f
+            .debug_struct("ArrayItemSeparator")
+            .field("some", unsafe { &self.some })
+            .field("none", unsafe { &self.none })
+            .finish();
+    }
+}
+
+#[expect(clippy::missing_trait_methods)]
+impl core::hash::Hash for ArrayItemSeparator {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        let separator_bytes_ptr = unsafe { &raw const self.some as *const u8 };
+        let separator_bytes =
+            unsafe { core::slice::from_raw_parts(separator_bytes_ptr, size_of::<uoffset32>()) };
+        state.write(separator_bytes);
+    }
+}
+
+#[expect(clippy::missing_trait_methods)]
+impl PartialEq for ArrayItemSeparator {
+    fn eq(&self, other: &Self) -> bool {
+        return unsafe { self.some == other.some };
+    }
+}
+
+pub(crate) type ArrayItemsIndex<'code> = Index32<ArrayItem<'code>>;
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[repr(C)]
+pub(crate) struct ArrayItem<'code> {
+    pub(crate) expression: ExpressionIndex<'code>,
+    pub(crate) separator: ArrayItemSeparator,
+}
+
+pub(crate) type ArrayDimensionIndex<'code> = Index32<ArrayDimension<'code>>;
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub(crate) struct ArrayDimension<'code> {
+    pub(crate) open_square_bracket_column: uoffset32,
+    pub(crate) dimension_expression: ExpressionIndex<'code>,
+    pub(crate) close_square_bracket_column: uoffset32,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub(crate) struct ArrayItem {
-    item: ExpressionIndex,
-    separator_column: offset32,
-    separator: ArrayItemSeparator,
+pub(crate) struct TypeAnnotation<'code> {
+    pub(crate) colon_column: NonZero<uoffset32>,
+    pub(crate) type_name: TextIndex<'code>,
+    pub(crate) type_name_column: uoffset32,
+    pub(crate) array_dimensions_start: ArrayDimensionIndex<'code>,
+    pub(crate) array_dimensions_len: uoffset32,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub(crate) struct ArrayDimension {
-    open_square_bracket_column: offset32,
-    dimension_expression: ExpressionIndex,
-    close_square_bracket_column: offset32,
+pub(crate) struct InitialValue<'code> {
+    pub(crate) equals_column: NonZero<uoffset32>,
+    pub(crate) expression: ExpressionIndex<'code>,
 }
 
+pub(crate) type VariableDefinitionIndex<'code> = Index32<VariableDefinition<'code>>;
+
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub(crate) struct TypeAnnotation {
-    colon_column: NonZero<offset32>,
-    type_name: TextIndex,
-    type_name_column: offset32,
-    array_dimensions_start: offset32,
-    array_dimensions_len: offset32,
+pub(crate) struct VariableDefinition<'code> {
+    pub(crate) name: TextIndex<'code>,
+    pub(crate) name_column: uoffset32,
+    pub(crate) type_annotation: Option<TypeAnnotation<'code>>,
+    pub(crate) initial_value: Option<InitialValue<'code>>,
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub(crate) struct InitialValue {
-    equals_column: NonZero<offset32>,
-    expression: ExpressionIndex,
-}
+pub(crate) type NodeIndex<'code> = Index32<Node<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub(crate) struct VariableDefinition {
-    name: TextIndex,
-    name_column: offset32,
-    type_annotation: Option<TypeAnnotation>,
-    initial_value: Option<InitialValue>,
-}
-
-pub(crate) type VariableDefinitionIndex = offset32;
-
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub(crate) enum Node {
+pub(crate) enum Node<'code> {
     Semicolon {
-        column: offset32,
+        column: uoffset32,
     },
+
     Expression {
-        expression: ExpressionIndex,
-        semicolon_column: offset32,
+        expression: ExpressionIndex<'code>,
+        semicolon_column: uoffset32,
     },
 
     Print {
-        print_column: offset32,
-        argument: ExpressionIndex,
-        semicolon_column: offset32,
+        print_column: uoffset32,
+        argument: ExpressionIndex<'code>,
+        semicolon_column: uoffset32,
     },
     Println {
-        println_column: offset32,
-        argument: ExpressionIndex,
-        semicolon_column: offset32,
+        println_column: uoffset32,
+        argument: ExpressionIndex<'code>,
+        semicolon_column: uoffset32,
     },
     PrintlnNoArg {
-        println_column: offset32,
-        semicolon_column: offset32,
+        println_column: uoffset32,
+        semicolon_column: uoffset32,
     },
     Eprint {
-        eprint_column: offset32,
-        argument: ExpressionIndex,
-        semicolon_column: offset32,
+        eprint_column: uoffset32,
+        argument: ExpressionIndex<'code>,
+        semicolon_column: uoffset32,
     },
     Eprintln {
-        eprintln_column: offset32,
-        argument: ExpressionIndex,
-        semicolon_column: offset32,
+        eprintln_column: uoffset32,
+        argument: ExpressionIndex<'code>,
+        semicolon_column: uoffset32,
     },
     EprintlnNoArg {
-        eprintln_column: offset32,
-        semicolon_column: offset32,
+        eprintln_column: uoffset32,
+        semicolon_column: uoffset32,
     },
 
     LetVariableDefinition {
-        let_column: offset32,
-        variable_definition: VariableDefinitionIndex,
-        semicolon_column: offset32,
+        let_column: uoffset32,
+        variable_definition: VariableDefinitionIndex<'code>,
+        semicolon_column: uoffset32,
     },
     VarVariableDefinition {
-        var_column: offset32,
-        variable_definition: VariableDefinitionIndex,
-        semicolon_column: offset32,
+        var_column: uoffset32,
+        variable_definition: VariableDefinitionIndex<'code>,
+        semicolon_column: uoffset32,
     },
-    // IDEA(stefano): maybe move into expressions enum
-    Assignment {
-        target: ExpressionIndex,
-        operator: AssignmentOperator,
-        operator_column: offset32,
-        new_value: ExpressionIndex,
-        semicolon_column: offset32,
+
+    BinaryAssignment {
+        target: ExpressionIndex<'code>,
+        operator: BinaryAssignmentOp,
+        operator_column: uoffset32,
+        new_value: ExpressionIndex<'code>,
+        semicolon_column: uoffset32,
+    },
+    PrefixAssignment {
+        operator: PrefixAssignmentOp,
+        operator_column: uoffset32,
+        target: ExpressionIndex<'code>,
+        semicolon_column: uoffset32,
     },
 
     Scope {
-        open_curly_bracket_column: offset32,
-        raw_nodes_in_scope_count: offset32,
-        close_curly_bracket_column: offset32,
+        open_curly_bracket_column: uoffset32,
+        raw_nodes_in_scope_count: uoffset32,
+        close_curly_bracket_column: uoffset32,
     },
 
     If {
-        if_column: offset32,
-        condition: ExpressionIndex,
-        else_ifs_count: offset32,
-    },
-    IfElse {
-        if_column: offset32,
-        condition: ExpressionIndex,
-        else_ifs_count: offset32,
-        else_column: offset32,
+        if_column: uoffset32,
+        condition: ExpressionIndex<'code>,
     },
     ElseIf {
-        else_column: offset32,
-        if_column: offset32,
-        condition: ExpressionIndex,
+        else_column: uoffset32,
+        if_column: uoffset32,
+        condition: ExpressionIndex<'code>,
+    },
+    Else {
+        else_column: uoffset32,
     },
 
     Loop {
-        loop_column: offset32,
-        condition: ExpressionIndex,
+        loop_column: uoffset32,
+        condition: ExpressionIndex<'code>,
     },
     DoLoop {
-        do_column: offset32,
-        loop_column: offset32,
-        condition: ExpressionIndex,
+        do_column: uoffset32,
+        loop_column: uoffset32,
+        condition: ExpressionIndex<'code>,
     },
     Break {
-        break_column: offset32,
-        semicolon_column: offset32,
+        break_column: uoffset32,
+        semicolon_column: uoffset32,
     },
     Continue {
-        continue_column: offset32,
-        semicolon_column: offset32,
+        continue_column: uoffset32,
+        semicolon_column: uoffset32,
     },
 }
 
-pub(crate) type NodeIndex = offset32;
-
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-enum ParsedNode {
-    Node(Node),
-    Scope,
-    IfStatement,
-    LoopStatement,
+enum ParsedNode<'code> {
+    Node(Node<'code>),
+    ScopeEnd,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct SyntaxTree<'tokens, 'code: 'tokens> {
-    pub(crate) nodes: Vec<Node>,
+    pub(crate) nodes: Vec<Node<'code>>,
 
-    pub(crate) expressions: Vec<Expression>,
-    pub(crate) array_items: Vec<ArrayItem>,
+    pub(crate) expressions: Vec<Expression<'code>>,
+    pub(crate) array_items: Vec<ArrayItem<'code>>,
 
-    pub(crate) variable_definitions: Vec<VariableDefinition>,
-    pub(crate) array_dimensions: Vec<ArrayDimension>,
+    pub(crate) variable_definitions: Vec<VariableDefinition<'code>>,
+    pub(crate) array_dimensions: Vec<ArrayDimension<'code>>,
 
     _tokens: PhantomData<&'tokens Tokens<'code>>,
 }
 
-impl SyntaxTree<'_, '_> {
+impl<'code> SyntaxTree<'_, 'code> {
     #[inline]
-    fn new_expression(&mut self, expression: Expression) -> ExpressionIndex {
+    fn new_expression(&mut self, expression: Expression<'code>) -> ExpressionIndex<'code> {
+        let index = ExpressionIndex::new(self.expressions.len());
         self.expressions.push(expression);
-        #[expect(clippy::cast_possible_truncation)]
-        return self.expressions.len() as ExpressionIndex - 1;
+        return index;
     }
 }
 
@@ -496,13 +570,10 @@ pub struct SyntaxTreeDisplay<'syntax_tree, 'tokens: 'syntax_tree, 'code: 'tokens
     pub(crate) tokens: &'tokens Tokens<'code>,
 }
 
-impl<'tokens, 'code: 'tokens> SyntaxTree<'tokens, 'code> {
+impl<'tokens> SyntaxTree<'tokens, '_> {
     #[must_use]
     #[inline(always)]
-    pub const fn display(
-        &self,
-        tokens: &'tokens Tokens<'code>,
-    ) -> SyntaxTreeDisplay<'_, 'tokens, 'code> {
+    pub const fn display(&self, tokens: &'tokens Tokens<'_>) -> SyntaxTreeDisplay<'_, 'tokens, '_> {
         return SyntaxTreeDisplay { syntax_tree: self, tokens };
     }
 }
@@ -514,7 +585,7 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
     fn info_semicolon(
         f: &mut core::fmt::Formatter<'_>,
         indent: usize,
-        column: offset32,
+        column: uoffset32,
     ) -> core::fmt::Result {
         return writeln!(f, "{:>indent$}Semicolon: {column} = ;", "");
     }
@@ -522,10 +593,10 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
     fn info_if(
         &self,
         f: &mut core::fmt::Formatter<'_>,
-        node_index: &mut NodeIndex,
+        node_index: &mut NodeIndex<'_>,
         indent: usize,
-        if_column: offset32,
-        condition: ExpressionIndex,
+        if_column: uoffset32,
+        condition: ExpressionIndex<'_>,
     ) -> core::fmt::Result {
         writeln!(f, "{:>indent$}If: {if_column} = if", "")?;
         let if_indent = indent + Self::INDENT_INCREMENT;
@@ -536,15 +607,16 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
     fn info_node(
         &self,
         f: &mut core::fmt::Formatter<'_>,
-        node_index: &mut NodeIndex,
+        node_index: &mut NodeIndex<'_>,
         indent: usize,
     ) -> core::fmt::Result {
-        let node = &self.syntax_tree.nodes[*node_index as usize];
-        *node_index += 1;
+        let node = &self.syntax_tree.nodes[*node_index];
+        node_index.0 += 1;
 
         #[rustfmt::skip]
         return match node {
             Node::Semicolon { column } => Self::info_semicolon(f, indent, *column),
+
             Node::Expression { expression, semicolon_column } => {
                 self.info_expression(f, *expression, indent)?;
                 Self::info_semicolon(f, indent, *semicolon_column)
@@ -595,12 +667,19 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
                 self.info_variable_definition(f, *variable_definition, definition_indent)?;
                 Self::info_semicolon(f, definition_indent, *semicolon_column)
             }
-            Node::Assignment { target, operator, operator_column, new_value, semicolon_column } => {
-                writeln!(f, "{:>indent$}Assignment", "")?;
+            Node::BinaryAssignment { target, operator, operator_column, new_value, semicolon_column } => {
+                writeln!(f, "{:>indent$}BinaryAssignment", "")?;
                 let assignment_indent = indent + Self::INDENT_INCREMENT;
                 self.info_expression(f, *target, assignment_indent)?;
-                writeln!(f, "{:>assignment_indent$}AssignmentOp: {operator_column} = {operator}", "")?;
+                writeln!(f, "{:>assignment_indent$}BinaryAssignmentOp: {operator_column} = {operator}", "")?;
                 self.info_expression(f, *new_value, assignment_indent)?;
+                Self::info_semicolon(f, assignment_indent, *semicolon_column)
+            }
+            Node::PrefixAssignment { operator, operator_column, target, semicolon_column } => {
+                writeln!(f, "{:>indent$}PrefixAssignment", "")?;
+                let assignment_indent = indent + Self::INDENT_INCREMENT;
+                writeln!(f, "{:>assignment_indent$}PrefixAssignmentOp: {operator_column} = {operator}", "")?;
+                self.info_expression(f, *target, assignment_indent)?;
                 Self::info_semicolon(f, assignment_indent, *semicolon_column)
             }
 
@@ -609,34 +688,24 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
                 let scope_indent = indent + Self::INDENT_INCREMENT;
                 writeln!(f, "{:>scope_indent$}OpenCurlyBracket: {open_curly_bracket_column} = {{", "")?;
 
-                let after_end_scope_node_index = *node_index + raw_nodes_in_scope_count;
-                while *node_index < after_end_scope_node_index {
+                let after_end_scope_node_index = node_index.0 + raw_nodes_in_scope_count;
+                while node_index.0 < after_end_scope_node_index {
                     self.info_node(f, node_index, scope_indent)?;
                 }
                 writeln!(f, "{:>scope_indent$}CloseCurlyBracket: {close_curly_bracket_column} = }}", "")
             }
 
-            Node::If { if_column, condition, mut else_ifs_count } => {
-                self.info_if(f, node_index, indent, *if_column, *condition)?;
-                while else_ifs_count > 0 {
-                    else_ifs_count -= 1;
-                    self.info_node(f, node_index, indent)?;
-                }
-                Ok(())
-            }
-            Node::IfElse { if_column, condition, mut else_ifs_count, else_column } => {
-                self.info_if(f, node_index, indent, *if_column, *condition)?;
-                while else_ifs_count > 0 {
-                    else_ifs_count -= 1;
-                    self.info_node(f, node_index, indent)?;
-                }
-                let else_indent = indent + Self::INDENT_INCREMENT;
-                writeln!(f, "{:>indent$}Else: {else_column} = else", "")?;
-                self.info_node(f, node_index, else_indent)
+            Node::If { if_column, condition } => {
+                self.info_if(f, node_index, indent, *if_column, *condition)
             }
             Node::ElseIf { if_column, condition, else_column } => {
                 writeln!(f, "{:>indent$}Else: {else_column} = else", "")?;
                 self.info_if(f, node_index, indent, *if_column, *condition)
+            }
+            Node::Else { else_column } => {
+                writeln!(f, "{:>indent$}Else: {else_column} = else", "")?;
+                let else_indent = indent + Self::INDENT_INCREMENT;
+                self.info_node(f, node_index, else_indent)
             }
 
             Node::Loop { loop_column, condition } => {
@@ -666,128 +735,130 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
     fn info_expression(
         &self,
         f: &mut core::fmt::Formatter<'_>,
-        expression_index: ExpressionIndex,
+        expression_index: ExpressionIndex<'_>,
         indent: usize,
     ) -> core::fmt::Result {
-        let expression_indent = indent + Self::INDENT_INCREMENT;
-        let expression = &self.syntax_tree.expressions[expression_index as usize];
+        let expression = &self.syntax_tree.expressions[expression_index];
 
         #[rustfmt::skip]
         return match expression {
             Expression::False { column } => writeln!(f, "{:>indent$}False: {column} = false", ""),
             Expression::True { column } => writeln!(f, "{:>indent$}True: {column} = true", ""),
             Expression::DecimalInteger { literal, column } => {
-                let literal_str = self.tokens.text[*literal as usize];
+                let literal_str = self.tokens.text[*literal];
                 writeln!(f, "{:>indent$}DecimalInteger: {column} = {literal_str}", "")
             }
+            Expression::DecimalIntegerPrefix { literal, column } => {
+                let literal_str = self.tokens.text[*literal];
+                writeln!(f, "{:>indent$}DecimalIntegerPrefix: {column} = {literal_str}", "")
+            }
             Expression::BinaryInteger { literal, column } => {
-                let literal_str = self.tokens.text[*literal as usize];
+                let literal_str = self.tokens.text[*literal];
                 writeln!(f, "{:>indent$}BinaryInteger: {column} = {literal_str}", "")
             }
             Expression::OctalInteger { literal, column } => {
-                let literal_str = self.tokens.text[*literal as usize];
+                let literal_str = self.tokens.text[*literal];
                 writeln!(f, "{:>indent$}OctalInteger: {column} = {literal_str}", "")
             }
             Expression::HexadecimalInteger { literal, column } => {
-                let literal_str = self.tokens.text[*literal as usize];
+                let literal_str = self.tokens.text[*literal];
                 writeln!(f, "{:>indent$}HexadecimalInteger: {column} = {literal_str}", "")
             }
-            Expression::Ascii { literal, column } => {
-                let literal_str = &self.tokens.text[*literal as usize];
+            Expression::Ascii { literal, column, .. } => {
+                let literal_str = &self.tokens.text[*literal];
                 writeln!(f, "{:>indent$}Ascii: {column} = {literal_str}", "")
             }
             Expression::Str { literal, column } => {
-                let literal_str = &self.tokens.text[*literal as usize];
+                let literal_str = &self.tokens.text[*literal];
                 writeln!(f, "{:>indent$}Str: {column} = {literal_str}", "")
             }
             Expression::RawStr { literal, column } => {
-                let literal_str = &self.tokens.text[*literal as usize];
+                let literal_str = &self.tokens.text[*literal];
                 writeln!(f, "{:>indent$}RawStr: {column} = {literal_str}", "")
             }
             Expression::Identifier { identifier, column } => {
-                let identifier_str = self.tokens.text[*identifier as usize];
+                let identifier_str = self.tokens.text[*identifier];
                 writeln!(f, "{:>indent$}Identifier: {column} = {identifier_str}", "")
-            },
+            }
             Expression::IdentifierStr { identifier, column } => {
-                let identifier_str = self.tokens.text[*identifier as usize];
+                let identifier_str = self.tokens.text[*identifier];
                 writeln!(f, "{:>indent$}IdentifierStr: {column} = {identifier_str}", "")
-            },
+            }
             Expression::Array {
                 open_square_bracket_column,
                 items_start,
                 items_len,
                 close_square_bracket_column
             } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
                 writeln!(f, "{:>indent$}Array", "")?;
                 writeln!(f, "{:>expression_indent$}OpenSquareBracket: {open_square_bracket_column} = [", "")?;
 
                 let items_indent = expression_indent + Self::INDENT_INCREMENT;
-                let items_end = items_start + items_len;
-                let items = &self.syntax_tree.array_items[*items_start as usize..items_end as usize];
-                for ArrayItem { item, separator_column, separator } in items {
-                self.info_expression(f, *item, items_indent)?;
-                    match separator {
-                        ArrayItemSeparator::Comma => writeln!(f, "{:>items_indent$}Comma: {separator_column} = ,", "")?,
-                        ArrayItemSeparator::Semicolon => writeln!(f, "{:>items_indent$}Semicolon: {separator_column} = ;", "")?,
-                    }
+                let items_end = items_start.0 + items_len;
+                let items = &self.syntax_tree.array_items[items_start.0 as usize..items_end as usize];
+                for ArrayItem { expression: item_expression, separator } in items {
+                    self.info_expression(f, *item_expression, items_indent)?;
+
+                    let column = unsafe { separator.some };
+                    writeln!(f, "{:>items_indent$}Semicolon: {column} = ;", "")?;
                 }
 
                 writeln!(f, "{:>expression_indent$}CloseSquareBracket: {close_square_bracket_column} = ]", "")
-            },
+            }
             Expression::ArrayTrailingItem {
                 open_square_bracket_column,
                 items_start,
                 items_len,
-                last_item,
                 close_square_bracket_column
             } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
                 writeln!(f, "{:>indent$}Array", "")?;
                 writeln!(f, "{:>expression_indent$}OpenSquareBracket: {open_square_bracket_column} = [", "")?;
 
                 let items_indent = expression_indent + Self::INDENT_INCREMENT;
-                let items_end = items_start + items_len;
-                let items = &self.syntax_tree.array_items[*items_start as usize..items_end as usize];
-                for ArrayItem { item, separator_column, separator } in items {
-                self.info_expression(f, *item, items_indent)?;
-                    match separator {
-                        ArrayItemSeparator::Comma => writeln!(f, "{:>items_indent$}Comma: {separator_column} = ,", "")?,
-                        ArrayItemSeparator::Semicolon => writeln!(f, "{:>items_indent$}Semicolon: {separator_column} = ;", "")?,
-                    }
+                let items_end = items_start.0 + items_len;
+                let items = &self.syntax_tree.array_items[items_start.0 as usize..items_end as usize];
+                let mut items_iter = items.iter();
+                let Some(last_item) = items_iter.next_back() else {
+                    unreachable!();
+                };
+                for ArrayItem { expression: item_expression, separator } in items_iter {
+                    self.info_expression(f, *item_expression, items_indent)?;
+
+                    let column = unsafe { separator.some };
+                    writeln!(f, "{:>items_indent$}Semicolon: {column} = ;", "")?;
                 }
-                self.info_expression(f, *last_item, items_indent)?;
+
+                self.info_expression(f, last_item.expression, items_indent)?;
                 writeln!(f, "{:>expression_indent$}CloseSquareBracket: {close_square_bracket_column} = ]", "")
-            },
+            }
 
             Expression::Prefix { operator, operator_column, right_operand } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
                 writeln!(f, "{:>indent$}PrefixExpression", "")?;
-                writeln!(f, "{:>expression_indent$}PrefixOperator: {operator_column} = {operator}", "")?;
+                writeln!(f, "{:>expression_indent$}PrefixOp: {operator_column} = {operator}", "")?;
                 self.info_expression(f, *right_operand, expression_indent)
             }
             Expression::Binary { left_operand, operator, operator_column, right_operand } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
                 writeln!(f, "{:>indent$}BinaryExpression", "")?;
                 self.info_expression(f, *left_operand, expression_indent)?;
-                writeln!(f, "{:>expression_indent$}BinaryOperator: {operator_column} = {operator}", "")?;
+                writeln!(f, "{:>expression_indent$}BinaryOp: {operator_column} = {operator}", "")?;
                 self.info_expression(f, *right_operand, expression_indent)
-            },
+            }
 
             Expression::Parenthesis {
                 open_round_bracket_column,
                 inner_expression,
                 close_round_bracket_column
             } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
                 writeln!(f, "{:indent$}ParenthesisExpression", "")?;
                 writeln!(f, "{:>expression_indent$}OpenRoundBracket: {open_round_bracket_column} = (", "")?;
                 self.info_expression(f, *inner_expression, expression_indent)?;
                 writeln!(f, "{:>expression_indent$}CloseRoundBracket: {close_round_bracket_column} = )", "")
-            },
-            Expression::EmptyParenthesis {
-                open_round_bracket_column,
-                close_round_bracket_column
-            } => {
-                writeln!(f, "{:indent$}ParenthesisExpression", "")?;
-                writeln!(f, "{:>expression_indent$}OpenRoundBracket: {open_round_bracket_column} = (", "")?;
-                writeln!(f, "{:>expression_indent$}CloseRoundBracket: {close_round_bracket_column} = )", "")
-            },
+            }
 
             Expression::Index {
                 indexed_expression,
@@ -795,24 +866,25 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
                 index_expression,
                 close_square_bracket_column
             } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
                 writeln!(f, "{:indent$}IndexExpression", "")?;
                 self.info_expression(f, *indexed_expression, expression_indent)?;
                 writeln!(f, "{:>expression_indent$}OpenSquareBracket: {open_square_bracket_column} = [", "")?;
                 self.info_expression(f, *index_expression, expression_indent)?;
                 writeln!(f, "{:>expression_indent$}CloseSquareBracket: {close_square_bracket_column} = ]", "")
-            },
+            }
         };
     }
 
     fn info_variable_definition(
         &self,
         f: &mut core::fmt::Formatter<'_>,
-        variable_definition_index: VariableDefinitionIndex,
+        variable_definition_index: VariableDefinitionIndex<'_>,
         indent: usize,
     ) -> core::fmt::Result {
         let VariableDefinition { name, name_column, type_annotation, initial_value } =
-            &self.syntax_tree.variable_definitions[variable_definition_index as usize];
-        let name_str = self.tokens.text[*name as usize];
+            &self.syntax_tree.variable_definitions[variable_definition_index];
+        let name_str = self.tokens.text[*name];
         writeln!(f, "{:>indent$}Name: {name_column} = {name_str}", "")?;
 
         if let Some(TypeAnnotation {
@@ -827,7 +899,7 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
             writeln!(f, "{:>indent$}TypeAnnotation", "")?;
             writeln!(f, "{:>annotation_indent$}Colon: {colon_column} = :", "")?;
 
-            let type_name_str = self.tokens.text[*type_name as usize];
+            let type_name_str = self.tokens.text[*type_name];
             writeln!(
                 f,
                 "{:>annotation_indent$}TypeName: {type_name_column} = {type_name_str}",
@@ -835,9 +907,9 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
             )?;
 
             let dimension_indent = annotation_indent + Self::INDENT_INCREMENT;
-            let array_dimensions_end = array_dimensions_start + array_dimensions_len;
+            let array_dimensions_end = array_dimensions_start.0 + array_dimensions_len;
             let array_dimensions = &self.syntax_tree.array_dimensions
-                [*array_dimensions_start as usize..array_dimensions_end as usize];
+                [array_dimensions_start.0 as usize..array_dimensions_end as usize];
             for ArrayDimension {
                 open_square_bracket_column,
                 dimension_expression,
@@ -869,9 +941,8 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
 
 impl Display for SyntaxTreeDisplay<'_, '_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let mut node_index = 0;
-        #[expect(clippy::cast_possible_truncation)]
-        while node_index < self.syntax_tree.nodes.len() as NodeIndex {
+        let mut node_index = NodeIndex::new(0);
+        while (node_index.0 as usize) < self.syntax_tree.nodes.len() {
             self.info_node(f, &mut node_index, 0)?;
         }
 
@@ -882,32 +953,29 @@ impl Display for SyntaxTreeDisplay<'_, '_, '_> {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Parser<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> {
     src: &'src SrcCode<'code, 'path>,
-    errors: Vec<Error<ErrorKind>>,
+    errors: Vec<Msg<ErrorKind>>,
 
-    token_index: TokenIndex,
+    token_index: TokenIndex<'code>,
     tokens: &'tokens Tokens<'code>,
 
     loop_depth: u32,
+    temp_array_items: Vec<ArrayItem<'code>>,
     syntax_tree: SyntaxTree<'tokens, 'code>,
 }
 
-/* NOTE(stefano):
-only parsing until the first error until a fault tolerant parser is developed,
-this is because the first truly relevant error is the first one, which in turn causes a ripple
-effect that propagates to the rest of the parsing, causing subsequent errors to be wrong
-*/
 impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'code, 'path> {
-    #[expect(clippy::missing_errors_doc, reason = "syntax errors cannot be documented in docs")]
+    #[expect(clippy::missing_errors_doc)]
     pub fn parse(
         src: &'src SrcCode<'code, 'path>,
         tokens: &'tokens Tokens<'code>,
-    ) -> Result<SyntaxTree<'tokens, 'code>, Vec<Error<ErrorKind>>> {
+    ) -> Result<SyntaxTree<'tokens, 'code>, Vec<Msg<ErrorKind>>> {
         let mut parser = Self {
             src,
             errors: Vec::new(),
-            token_index: 0,
+            token_index: TokenIndex::new(0),
             tokens,
             loop_depth: 0,
+            temp_array_items: Vec::new(),
             syntax_tree: SyntaxTree {
                 nodes: Vec::new(),
 
@@ -921,40 +989,61 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
             },
         };
 
-        while let Some(peeked) = parser.peek_next_token() {
+        'parsing: while let Some(peeked) = parser.peek_next_token() {
+            let errors_start_index = parser.errors.len();
             parser.token_index = peeked.index;
             match parser.any(peeked.token) {
                 Ok(ParsedNode::Node(node)) => parser.syntax_tree.nodes.push(node),
-                Ok(ParsedNode::Scope) => continue,
-                Ok(ParsedNode::IfStatement) => continue,
-                Ok(ParsedNode::LoopStatement) => continue,
-                Err(err) => {
-                    parser.errors.push(err);
-
-                    // consuming all remaining tokens until the end of the file
-                    #[expect(clippy::cast_possible_truncation)]
-                    {
-                        parser.token_index = parser.tokens.tokens.len() as TokenIndex;
+                Ok(ParsedNode::ScopeEnd) => {},
+                Err(()) => {
+                    let new_errors = &parser.errors[errors_start_index..];
+                    for error in new_errors {
+                        match error.severity {
+                            MsgSeverity::Error => {
+                                // consuming all remaining tokens until the end of the file
+                                parser.token_index = TokenIndex::new(parser.tokens.tokens.len());
+                                break 'parsing;
+                            },
+                            MsgSeverity::NonTerminalError | MsgSeverity::Warning => {},
+                        }
                     }
-                    break;
-                }
-            };
+                },
+            }
         }
 
-        return if parser.errors.is_empty() { Ok(parser.syntax_tree) } else { Err(parser.errors) };
+        return if parser.errors.len() == 0 { Ok(parser.syntax_tree) } else { Err(parser.errors) };
     }
-}
 
-impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'code, 'path> {
-    fn any(&mut self, token: Token) -> Result<ParsedNode, Error<ErrorKind>> {
+    fn any(&mut self, token: Token<'code>) -> Result<ParsedNode<'code>, ()> {
         return match token.kind {
+            TokenKind::Op(
+                operator @ (Op::NotEquals
+                | Op::PlusEquals
+                | Op::WrappingPlusEquals
+                | Op::SaturatingPlusEquals
+                | Op::MinusEquals
+                | Op::WrappingMinusEquals
+                | Op::SaturatingMinusEquals),
+            ) => {
+                let start_of_new_value_token = self.next_expected_token(Expected::Expression)?;
+                let expression = self.expression(start_of_new_value_token)?;
+                let semicolon_column = self.semicolon()?;
+                Ok(ParsedNode::Node(Node::PrefixAssignment {
+                    operator: operator.into(),
+                    operator_column: token.col,
+                    target: expression,
+                    semicolon_column,
+                }))
+            },
+
             TokenKind::True
             | TokenKind::False
             | TokenKind::DecimalInteger(_)
+            | TokenKind::DecimalIntegerPrefix(_)
             | TokenKind::BinaryInteger(_)
             | TokenKind::OctalInteger(_)
             | TokenKind::HexadecimalInteger(_)
-            | TokenKind::Ascii(_)
+            | TokenKind::Ascii(_, _)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
@@ -982,6 +1071,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                     })),
                     TokenKind::Op(
                         operator @ (Op::Equals
+                        | Op::NotEquals
                         | Op::PowEquals
                         | Op::WrappingPowEquals
                         | Op::SaturatingPowEquals
@@ -1014,14 +1104,14 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                             self.next_expected_token(Expected::Expression)?;
                         let new_value = self.expression(start_of_new_value_token)?;
                         let semicolon_column = self.semicolon()?;
-                        Ok(ParsedNode::Node(Node::Assignment {
+                        Ok(ParsedNode::Node(Node::BinaryAssignment {
                             target: expression,
                             operator: operator.into(),
                             operator_column: after_expression_token.col,
                             new_value,
                             semicolon_column,
                         }))
-                    }
+                    },
                     TokenKind::Op(
                         Op::Len
                         | Op::Not
@@ -1054,7 +1144,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                         | Op::Or
                         | Op::Compare
                         | Op::EqualsEquals
-                        | Op::NotEquals
+                        | Op::NotEqualsEquals
                         | Op::Greater
                         | Op::GreaterOrEquals
                         | Op::Less
@@ -1075,10 +1165,11 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                     | TokenKind::False
                     | TokenKind::True
                     | TokenKind::DecimalInteger(_)
+                    | TokenKind::DecimalIntegerPrefix(_)
                     | TokenKind::BinaryInteger(_)
                     | TokenKind::OctalInteger(_)
                     | TokenKind::HexadecimalInteger(_)
-                    | TokenKind::Ascii(_)
+                    | TokenKind::Ascii(_, _)
                     | TokenKind::Str(_)
                     | TokenKind::RawStr(_)
                     | TokenKind::Identifier(_)
@@ -1094,16 +1185,20 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                     | TokenKind::Else
                     | TokenKind::Loop
                     | TokenKind::Break
-                    | TokenKind::Continue => Err(Error {
-                        kind: ErrorKind::MissingSemicolon,
-                        col: end_of_expression_token.col,
-                        pointers_count: end_of_expression_token.kind.display_len(self.tokens),
-                    }),
+                    | TokenKind::Continue => {
+                        self.errors.push(Msg {
+                            severity: MsgSeverity::NonTerminalError,
+                            kind: ErrorKind::MissingSemicolon,
+                            col: end_of_expression_token.col,
+                            pointers_count: end_of_expression_token.kind.display_len(self.tokens),
+                        });
+                        Err(())
+                    },
                     TokenKind::Unexpected(_)
-                    | TokenKind::Comment(_)
+                    | TokenKind::LineComment(_)
                     | TokenKind::BlockComment(_) => self.should_have_been_skipped(token),
                 }
-            }
+            },
 
             TokenKind::SemiColon => Ok(ParsedNode::Node(Node::Semicolon { column: token.col })),
 
@@ -1116,7 +1211,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                     argument,
                     semicolon_column,
                 }))
-            }
+            },
             TokenKind::PrintLn => {
                 let start_of_argument_token =
                     self.next_expected_token(Expected::ExpressionOrSemicolon)?;
@@ -1134,7 +1229,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                     argument,
                     semicolon_column,
                 }))
-            }
+            },
             TokenKind::Eprint => {
                 let start_of_argument_token = self.next_expected_token(Expected::Expression)?;
                 let argument = self.expression(start_of_argument_token)?;
@@ -1144,7 +1239,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                     argument,
                     semicolon_column,
                 }))
-            }
+            },
             TokenKind::EprintLn => {
                 let start_of_argument_token =
                     self.next_expected_token(Expected::ExpressionOrSemicolon)?;
@@ -1162,32 +1257,30 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                     argument,
                     semicolon_column,
                 }))
-            }
+            },
 
             TokenKind::Let => {
                 let (variable_definition, semicolon_column) = self.variable_definition(token)?;
+                let variable_definition_index =
+                    VariableDefinitionIndex::new(self.syntax_tree.variable_definitions.len());
                 self.syntax_tree.variable_definitions.push(variable_definition);
                 Ok(ParsedNode::Node(Node::LetVariableDefinition {
                     let_column: token.col,
-                    #[expect(clippy::cast_possible_truncation)]
-                    variable_definition: self.syntax_tree.variable_definitions.len()
-                        as VariableDefinitionIndex
-                        - 1,
+                    variable_definition: variable_definition_index,
                     semicolon_column,
                 }))
-            }
+            },
             TokenKind::Var => {
                 let (variable_definition, semicolon_column) = self.variable_definition(token)?;
+                let variable_definition_index =
+                    VariableDefinitionIndex::new(self.syntax_tree.variable_definitions.len());
                 self.syntax_tree.variable_definitions.push(variable_definition);
                 Ok(ParsedNode::Node(Node::VarVariableDefinition {
                     var_column: token.col,
-                    #[expect(clippy::cast_possible_truncation)]
-                    variable_definition: self.syntax_tree.variable_definitions.len()
-                        as VariableDefinitionIndex
-                        - 1,
+                    variable_definition: variable_definition_index,
                     semicolon_column,
                 }))
-            }
+            },
 
             TokenKind::OpenCurlyBracket => {
                 let placeholder_scope = Node::Scope {
@@ -1195,158 +1288,168 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                     raw_nodes_in_scope_count: 0,
                     close_curly_bracket_column: 0,
                 };
+                let placeholder_scope_node_index = NodeIndex::new(self.syntax_tree.nodes.len());
                 self.syntax_tree.nodes.push(placeholder_scope);
-                #[expect(clippy::cast_possible_truncation)]
-                let placeholder_scope_node_index = self.syntax_tree.nodes.len() as NodeIndex - 1;
 
                 while let Some(peeked) = self.peek_next_token() {
                     self.token_index = peeked.index;
                     if let TokenKind::CloseCurlyBracket = peeked.token.kind {
-                        #[expect(clippy::cast_possible_truncation)]
-                        let last_scope_node_index = self.syntax_tree.nodes.len() as NodeIndex - 1;
+                        let last_scope_node_index =
+                            NodeIndex::new(self.syntax_tree.nodes.len() - 1);
                         let Node::Scope {
                             raw_nodes_in_scope_count,
                             close_curly_bracket_column,
-                            open_curly_bracket_column: _open_curly_bracket_column,
-                        } = &mut self.syntax_tree.nodes[placeholder_scope_node_index as usize]
+                            ..
+                        } = &mut self.syntax_tree.nodes[placeholder_scope_node_index]
                         else {
                             self.unbalanced_bracket(token);
                         };
 
                         *raw_nodes_in_scope_count =
-                            last_scope_node_index - placeholder_scope_node_index;
+                            last_scope_node_index.0 - placeholder_scope_node_index.0;
                         *close_curly_bracket_column = peeked.token.col;
                         break;
                     }
 
                     match self.any(peeked.token)? {
                         ParsedNode::Node(node) => self.syntax_tree.nodes.push(node),
-                        ParsedNode::Scope => continue,
-                        ParsedNode::IfStatement => continue,
-                        ParsedNode::LoopStatement => continue,
-                    };
+                        ParsedNode::ScopeEnd => {},
+                    }
                 }
 
-                Ok(ParsedNode::Scope)
-            }
-            TokenKind::If => match self.if_statement(token.col) {
-                Ok(()) => Ok(ParsedNode::IfStatement),
-                Err(err) => Err(err),
+                Ok(ParsedNode::ScopeEnd)
             },
+            TokenKind::If => self.if_statement(token.col),
 
             TokenKind::Do => {
                 let do_column = token.col;
                 let loop_token = self.next_expected_token(Expected::LoopStatement)?;
                 let TokenKind::Loop = loop_token.kind else {
-                    return Err(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::DoMustBeFollowedByLoop,
                         col: token.col,
                         pointers_count: token.kind.display_len(self.tokens),
                     });
+                    return Err(());
                 };
 
                 self.loop_depth += 1;
                 let loop_result = self.do_loop_statement(do_column, loop_token.col);
                 self.loop_depth -= 1;
 
-                match loop_result {
-                    Ok(()) => Ok(ParsedNode::LoopStatement),
-                    Err(err) => Err(err),
-                }
-            }
+                loop_result
+            },
             TokenKind::Loop => {
-                let loop_token = token;
+                let loop_column = token.col;
 
                 self.loop_depth += 1;
-                let loop_result = self.loop_statement(loop_token.col);
+                let loop_result = self.loop_statement(loop_column);
                 self.loop_depth -= 1;
 
-                match loop_result {
-                    Ok(()) => Ok(ParsedNode::LoopStatement),
-                    Err(err) => Err(err),
-                }
-            }
+                loop_result
+            },
             TokenKind::Break => {
                 let semicolon_column = self.semicolon()?;
 
                 if self.loop_depth == 0 {
-                    return Err(Error {
-                        kind: ErrorKind::BreakOutsideOfLoop,
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
+                        kind: ErrorKind::StrayBreak,
                         col: token.col,
                         pointers_count: token.kind.display_len(self.tokens),
                     });
+                    return Err(());
                 }
 
                 Ok(ParsedNode::Node(Node::Break { break_column: token.col, semicolon_column }))
-            }
+            },
             TokenKind::Continue => {
                 let semicolon_column = self.semicolon()?;
 
                 if self.loop_depth == 0 {
-                    return Err(Error {
-                        kind: ErrorKind::ContinueOutsideOfLoop,
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
+                        kind: ErrorKind::StrayContinue,
                         col: token.col,
                         pointers_count: token.kind.display_len(self.tokens),
                     });
+                    return Err(());
                 }
 
                 Ok(ParsedNode::Node(Node::Continue {
                     continue_column: token.col,
                     semicolon_column,
                 }))
-            }
+            },
 
-            TokenKind::Else => Err(Error {
-                kind: ErrorKind::StrayElse,
-                col: token.col,
-                pointers_count: token.kind.display_len(self.tokens),
-            }),
-            TokenKind::Colon => Err(Error {
-                kind: ErrorKind::StrayColon,
-                col: token.col,
-                pointers_count: token.kind.display_len(self.tokens),
-            }),
-            TokenKind::Comma => Err(Error {
-                kind: ErrorKind::StrayComma,
-                col: token.col,
-                pointers_count: token.kind.display_len(self.tokens),
-            }),
-            TokenKind::Op(op) => Err(Error {
-                kind: ErrorKind::StrayOperator(op),
-                col: token.col,
-                pointers_count: token.kind.display_len(self.tokens),
-            }),
+            TokenKind::Else => {
+                self.errors.push(Msg {
+                    severity: MsgSeverity::Error,
+                    kind: ErrorKind::StrayElse,
+                    col: token.col,
+                    pointers_count: token.kind.display_len(self.tokens),
+                });
+                Err(())
+            },
+            TokenKind::Colon => {
+                self.errors.push(Msg {
+                    severity: MsgSeverity::Error,
+                    kind: ErrorKind::StrayColon,
+                    col: token.col,
+                    pointers_count: token.kind.display_len(self.tokens),
+                });
+                Err(())
+            },
+            TokenKind::Comma => {
+                self.errors.push(Msg {
+                    severity: MsgSeverity::Error,
+                    kind: ErrorKind::StrayComma,
+                    col: token.col,
+                    pointers_count: token.kind.display_len(self.tokens),
+                });
+                Err(())
+            },
+            TokenKind::Op(op) => {
+                self.errors.push(Msg {
+                    severity: MsgSeverity::Error,
+                    kind: ErrorKind::StrayOperator(op),
+                    col: token.col,
+                    pointers_count: token.kind.display_len(self.tokens),
+                });
+                Err(())
+            },
             TokenKind::CloseRoundBracket
             | TokenKind::CloseSquareBracket
             | TokenKind::CloseCurlyBracket => self.unbalanced_bracket(token),
-            TokenKind::Unexpected(_) | TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
+            TokenKind::Unexpected(_) | TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {
                 self.should_have_been_skipped(token)
-            }
+            },
         };
     }
 
-    fn semicolon(&mut self) -> Result<offset32, Error<ErrorKind>> {
+    fn semicolon(&mut self) -> Result<uoffset32, ()> {
         let peeked = self.peek_next_expected_token(Expected::Semicolon)?;
         let TokenKind::SemiColon = peeked.token.kind else {
             let previous_token = self.peek_previous_token();
-            return Err(Error {
+            self.errors.push(Msg {
+                severity: MsgSeverity::NonTerminalError,
                 kind: ErrorKind::MissingSemicolon,
                 col: previous_token.col,
                 pointers_count: previous_token.kind.display_len(self.tokens),
             });
+            return Err(());
         };
 
         self.token_index = peeked.index;
         return Ok(peeked.token.col);
     }
-}
 
-impl Parser<'_, '_, '_, '_> {
-    #[expect(clippy::panic, reason = "it's basically a more descriptive panic implementation")]
+    #[expect(clippy::panic)]
     #[track_caller]
     fn invalid_token(
         &self,
-        token: Token,
+        token: Token<'code>,
         error_message: Cow<'static, str>,
         error_cause_message: Cow<'static, str>,
     ) -> ! {
@@ -1354,7 +1457,8 @@ impl Parser<'_, '_, '_, '_> {
         let line_span = self.src.lines[line as usize - 1];
         let line_text = &self.src.code()[line_span.start as usize..line_span.end as usize];
 
-        let error = ErrorDisplay {
+        let error = MsgDisplay {
+            severity: MsgSeverity::Error,
             error_message,
             file: self.src.path(),
             line,
@@ -1369,7 +1473,7 @@ impl Parser<'_, '_, '_, '_> {
     }
 
     #[track_caller]
-    fn should_have_been_skipped(&self, token: Token) -> ! {
+    fn should_have_been_skipped(&self, token: Token<'code>) -> ! {
         self.invalid_token(
             token,
             "unexpected".into(),
@@ -1378,7 +1482,7 @@ impl Parser<'_, '_, '_, '_> {
     }
 
     #[track_caller]
-    fn unexpected(&self, token: Token) -> ! {
+    fn unexpected(&self, token: Token<'code>) -> ! {
         self.invalid_token(
             token,
             "unexpected".into(),
@@ -1387,7 +1491,7 @@ impl Parser<'_, '_, '_, '_> {
     }
 
     #[track_caller]
-    fn unbalanced_bracket(&self, token: Token) -> ! {
+    fn unbalanced_bracket(&self, token: Token<'code>) -> ! {
         self.invalid_token(
             token,
             "unbalanced bracket".into(),
@@ -1397,16 +1501,17 @@ impl Parser<'_, '_, '_, '_> {
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-struct Peeked {
-    token: Token,
-    index: TokenIndex,
+struct Peeked<'code> {
+    token: Token<'code>,
+    index: TokenIndex<'code>,
 }
 
-impl Parser<'_, '_, '_, '_> {
-    fn peek_next_token(&self) -> Option<Peeked> {
-        #[expect(clippy::cast_possible_truncation)]
-        for next_token_index in self.token_index..self.tokens.tokens.len() as TokenIndex {
-            let next_token = self.tokens.tokens[next_token_index as usize];
+impl<'code> Parser<'_, '_, 'code, '_> {
+    fn peek_next_token(&self) -> Option<Peeked<'code>> {
+        let token_index_end = TokenIndex::new(self.tokens.tokens.len());
+        for next_token_index in self.token_index.0..token_index_end.0 {
+            let next_token_index_index = TokenIndex::new_uoffset32(next_token_index);
+            let next_token = self.tokens.tokens[next_token_index_index];
             match next_token.kind {
                 TokenKind::OpenRoundBracket
                 | TokenKind::CloseRoundBracket
@@ -1421,10 +1526,11 @@ impl Parser<'_, '_, '_, '_> {
                 | TokenKind::False
                 | TokenKind::True
                 | TokenKind::DecimalInteger(_)
+                | TokenKind::DecimalIntegerPrefix(_)
                 | TokenKind::BinaryInteger(_)
                 | TokenKind::OctalInteger(_)
                 | TokenKind::HexadecimalInteger(_)
-                | TokenKind::Ascii(_)
+                | TokenKind::Ascii(_, _)
                 | TokenKind::Str(_)
                 | TokenKind::RawStr(_)
                 | TokenKind::Identifier(_)
@@ -1441,9 +1547,11 @@ impl Parser<'_, '_, '_, '_> {
                 | TokenKind::Loop
                 | TokenKind::Break
                 | TokenKind::Continue => {
-                    return Some(Peeked { token: next_token, index: next_token_index + 1 })
-                }
-                TokenKind::Comment(_) | TokenKind::BlockComment(_) => {}
+                    let peeked_token_index_index =
+                        TokenIndex::new_uoffset32(next_token_index_index.0 + 1);
+                    return Some(Peeked { token: next_token, index: peeked_token_index_index });
+                },
+                TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {},
                 TokenKind::Unexpected(_) => self.unexpected(next_token),
             }
         }
@@ -1451,29 +1559,32 @@ impl Parser<'_, '_, '_, '_> {
         return None;
     }
 
-    fn peek_next_expected_token(&self, expected: Expected) -> Result<Peeked, Error<ErrorKind>> {
+    fn peek_next_expected_token(&mut self, expected: Expected) -> Result<Peeked<'code>, ()> {
         let Some(peeked) = self.peek_next_token() else {
             let previous_token = self.peek_previous_token();
-            return Err(Error {
+            self.errors.push(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::PrematureEndOfFile(expected),
                 col: previous_token.col,
                 pointers_count: previous_token.kind.display_len(self.tokens),
             });
+            return Err(());
         };
 
         return Ok(peeked);
     }
 
-    fn next_expected_token(&mut self, expected: Expected) -> Result<Token, Error<ErrorKind>> {
+    fn next_expected_token(&mut self, expected: Expected) -> Result<Token<'code>, ()> {
         let peeked = self.peek_next_expected_token(expected)?;
         self.token_index = peeked.index;
         return Ok(peeked.token);
     }
 
     /// Warning: should always be called with at least a previus token
-    fn peek_previous_token(&self) -> Token {
-        for previous_token_index in (0..self.token_index).rev() {
-            let previous_token = self.tokens.tokens[previous_token_index as usize];
+    fn peek_previous_token(&self) -> Token<'code> {
+        for previous_token_index in (0..self.token_index.0).rev() {
+            let previous_token_index_index = TokenIndex::new_uoffset32(previous_token_index);
+            let previous_token = self.tokens.tokens[previous_token_index_index];
             match previous_token.kind {
                 TokenKind::OpenRoundBracket
                 | TokenKind::CloseRoundBracket
@@ -1488,10 +1599,11 @@ impl Parser<'_, '_, '_, '_> {
                 | TokenKind::False
                 | TokenKind::True
                 | TokenKind::DecimalInteger(_)
+                | TokenKind::DecimalIntegerPrefix(_)
                 | TokenKind::BinaryInteger(_)
                 | TokenKind::OctalInteger(_)
                 | TokenKind::HexadecimalInteger(_)
-                | TokenKind::Ascii(_)
+                | TokenKind::Ascii(_, _)
                 | TokenKind::Str(_)
                 | TokenKind::RawStr(_)
                 | TokenKind::Identifier(_)
@@ -1508,7 +1620,7 @@ impl Parser<'_, '_, '_, '_> {
                 | TokenKind::Loop
                 | TokenKind::Break
                 | TokenKind::Continue => return previous_token,
-                TokenKind::Comment(_) | TokenKind::BlockComment(_) => {}
+                TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {},
                 TokenKind::Unexpected(_) => self.unexpected(previous_token),
             }
         }
@@ -1518,14 +1630,14 @@ impl Parser<'_, '_, '_, '_> {
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-struct Operator {
-    token: Token,
+struct Operator<'code> {
+    token: Token<'code>,
     operator: Op,
 }
 
 // TODO(stefano): make less recursive by only recursing based on operator precedence
-impl Parser<'_, '_, '_, '_> {
-    fn operator(&mut self, accepted_operators: &[Op]) -> Option<Operator> {
+impl<'code> Parser<'_, '_, 'code, '_> {
+    fn operator(&mut self, accepted_operators: &[Op]) -> Option<Operator<'code>> {
         let peeked = self.peek_next_token()?;
         let TokenKind::Op(operator) = peeked.token.kind else {
             return None;
@@ -1541,41 +1653,49 @@ impl Parser<'_, '_, '_, '_> {
         return None;
     }
 
-    fn primary_expression(&mut self, token: Token) -> Result<ExpressionIndex, Error<ErrorKind>> {
+    fn primary_expression(&mut self, token: Token<'code>) -> Result<ExpressionIndex<'code>, ()> {
         let mut expression = match token.kind {
             TokenKind::False => Expression::False { column: token.col },
             TokenKind::True => Expression::True { column: token.col },
             TokenKind::DecimalInteger(literal) => {
                 Expression::DecimalInteger { literal, column: token.col }
-            }
+            },
+            TokenKind::DecimalIntegerPrefix(literal) => {
+                Expression::DecimalIntegerPrefix { literal, column: token.col }
+            },
             TokenKind::BinaryInteger(literal) => {
                 Expression::BinaryInteger { literal, column: token.col }
-            }
+            },
             TokenKind::OctalInteger(literal) => {
                 Expression::OctalInteger { literal, column: token.col }
-            }
+            },
             TokenKind::HexadecimalInteger(literal) => {
                 Expression::HexadecimalInteger { literal, column: token.col }
-            }
-            TokenKind::Ascii(literal) => Expression::Ascii { literal, column: token.col },
+            },
+            TokenKind::Ascii(literal, value) => {
+                Expression::Ascii { literal, value, column: token.col }
+            },
             TokenKind::Str(literal) => Expression::Str { literal, column: token.col },
             TokenKind::RawStr(literal) => Expression::RawStr { literal, column: token.col },
             TokenKind::Identifier(identifier) => {
                 Expression::Identifier { identifier, column: token.col }
-            }
+            },
             TokenKind::IdentifierStr(identifier) => {
                 Expression::IdentifierStr { identifier, column: token.col }
-            }
-            TokenKind::OpenRoundBracket => 'bracket: {
+            },
+            TokenKind::OpenRoundBracket => {
                 let open_round_bracket_token = token;
 
                 let start_of_inner_expression_token =
                     self.next_expected_token(Expected::Operand)?;
                 if let TokenKind::CloseRoundBracket = start_of_inner_expression_token.kind {
-                    break 'bracket Expression::EmptyParenthesis {
-                        open_round_bracket_column: open_round_bracket_token.col,
-                        close_round_bracket_column: start_of_inner_expression_token.col,
-                    };
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::Error,
+                        kind: ErrorKind::EmptyParenthesis,
+                        col: open_round_bracket_token.col,
+                        pointers_count: 1,
+                    });
+                    return Err(());
                 }
 
                 let inner_expression = self.expression(start_of_inner_expression_token)?;
@@ -1583,11 +1703,13 @@ impl Parser<'_, '_, '_, '_> {
                 let close_round_bracket_token =
                     self.next_expected_token(Expected::CloseRoundBracket)?;
                 let TokenKind::CloseRoundBracket = close_round_bracket_token.kind else {
-                    return Err(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::ExpectedCloseRoundBracket,
                         col: close_round_bracket_token.col,
                         pointers_count: close_round_bracket_token.kind.display_len(self.tokens),
                     });
+                    return Err(());
                 };
 
                 Expression::Parenthesis {
@@ -1595,57 +1717,57 @@ impl Parser<'_, '_, '_, '_> {
                     inner_expression,
                     close_round_bracket_column: close_round_bracket_token.col,
                 }
-            }
-            TokenKind::OpenSquareBracket => 'array: {
+            },
+            TokenKind::OpenSquareBracket => {
                 let open_square_bracket_token = token;
 
-                #[expect(clippy::cast_possible_truncation)]
-                let items_start = self.syntax_tree.array_items.len() as ArrayItemsIndex;
-                loop {
+                let temp_array_items_start = self.temp_array_items.len();
+
+                let (open_square_bracket_column, close_square_bracket_column, trailing_item) = 'array: loop {
                     let start_of_item_token =
                         self.next_expected_token(Expected::ArrayItemOrCloseSquareBracket)?;
                     if let TokenKind::CloseSquareBracket = start_of_item_token.kind {
-                        break 'array Expression::Array {
-                            open_square_bracket_column: open_square_bracket_token.col,
-                            items_start,
-                            #[expect(clippy::cast_possible_truncation)]
-                            items_len: self.syntax_tree.array_items.len() as ArrayItemsIndex
-                                - items_start,
-                            close_square_bracket_column: start_of_item_token.col,
-                        };
+                        break 'array (
+                            open_square_bracket_token.col,
+                            start_of_item_token.col,
+                            None,
+                        );
                     }
 
                     let item = self.expression(start_of_item_token)?;
 
-                    let comma_or_close_square_bracket_token =
-                        self.next_expected_token(Expected::CommaOrSemicolonCloseSquareBracket)?;
-                    match comma_or_close_square_bracket_token.kind {
-                        TokenKind::Comma => {
-                            self.syntax_tree.array_items.push(ArrayItem {
-                                item,
-                                separator_column: comma_or_close_square_bracket_token.col,
-                                separator: ArrayItemSeparator::Comma,
-                            });
-                        }
-                        TokenKind::SemiColon => {
-                            self.syntax_tree.array_items.push(ArrayItem {
-                                item,
-                                separator_column: comma_or_close_square_bracket_token.col,
-                                separator: ArrayItemSeparator::Semicolon,
-                            });
-                        }
+                    let semicolon_or_close_square_bracket_token =
+                        self.next_expected_token(Expected::SemicolonCloseSquareBracket)?;
+                    let array_item = match semicolon_or_close_square_bracket_token.kind {
+                        TokenKind::SemiColon => ArrayItem {
+                            expression: item,
+                            separator: ArrayItemSeparator {
+                                some: semicolon_or_close_square_bracket_token.col,
+                            },
+                        },
                         TokenKind::CloseSquareBracket => {
-                            break 'array Expression::ArrayTrailingItem {
-                                open_square_bracket_column: open_square_bracket_token.col,
-                                items_start,
-                                #[expect(clippy::cast_possible_truncation)]
-                                items_len: self.syntax_tree.array_items.len() as ArrayItemsIndex
-                                    - items_start,
-                                last_item: item,
-                                close_square_bracket_column: comma_or_close_square_bracket_token
-                                    .col,
-                            };
-                        }
+                            break 'array (
+                                open_square_bracket_token.col,
+                                semicolon_or_close_square_bracket_token.col,
+                                Some(item),
+                            );
+                        },
+                        TokenKind::Comma => {
+                            self.errors.push(Msg {
+                                severity: MsgSeverity::NonTerminalError,
+                                kind: ErrorKind::UseSemicolonInsteadOfComma,
+                                col: semicolon_or_close_square_bracket_token.col,
+                                pointers_count: semicolon_or_close_square_bracket_token
+                                    .kind
+                                    .display_len(self.tokens),
+                            });
+                            ArrayItem {
+                                expression: item,
+                                separator: ArrayItemSeparator {
+                                    some: semicolon_or_close_square_bracket_token.col,
+                                },
+                            }
+                        },
                         TokenKind::Colon
                         | TokenKind::Op(_)
                         | TokenKind::OpenRoundBracket
@@ -1656,10 +1778,11 @@ impl Parser<'_, '_, '_, '_> {
                         | TokenKind::False
                         | TokenKind::True
                         | TokenKind::DecimalInteger(_)
+                        | TokenKind::DecimalIntegerPrefix(_)
                         | TokenKind::BinaryInteger(_)
                         | TokenKind::OctalInteger(_)
                         | TokenKind::HexadecimalInteger(_)
-                        | TokenKind::Ascii(_)
+                        | TokenKind::Ascii(_, _)
                         | TokenKind::Str(_)
                         | TokenKind::RawStr(_)
                         | TokenKind::Identifier(_)
@@ -1676,20 +1799,60 @@ impl Parser<'_, '_, '_, '_> {
                         | TokenKind::Loop
                         | TokenKind::Break
                         | TokenKind::Continue => {
-                            return Err(Error {
-                                kind: ErrorKind::ExpectedCommaOrCloseSquareBracket,
-                                col: comma_or_close_square_bracket_token.col,
-                                pointers_count: comma_or_close_square_bracket_token
+                            self.errors.push(Msg {
+                                severity: MsgSeverity::Error,
+                                kind: ErrorKind::ExpectedSemicolonOrCloseSquareBracket,
+                                col: semicolon_or_close_square_bracket_token.col,
+                                pointers_count: semicolon_or_close_square_bracket_token
                                     .kind
                                     .display_len(self.tokens),
                             });
-                        }
+                            return Err(());
+                        },
                         TokenKind::Unexpected(_)
-                        | TokenKind::Comment(_)
+                        | TokenKind::LineComment(_)
                         | TokenKind::BlockComment(_) => self.should_have_been_skipped(token),
+                    };
+
+                    self.temp_array_items.push(array_item);
+                };
+
+                let items_start = ArrayItemsIndex::new(self.syntax_tree.array_items.len());
+
+                let array_expression = if let Some(last_item) = trailing_item {
+                    self.temp_array_items.push(ArrayItem {
+                        expression: last_item,
+                        separator: ArrayItemSeparator { none: () },
+                    });
+
+                    let array_items = &self.temp_array_items[temp_array_items_start..];
+                    let items_len = array_items.len() as uoffset32;
+                    self.syntax_tree.array_items.extend_from_slice(array_items);
+
+                    Expression::ArrayTrailingItem {
+                        open_square_bracket_column,
+                        items_start,
+                        items_len,
+                        close_square_bracket_column,
                     }
+                } else {
+                    let array_items = &self.temp_array_items[temp_array_items_start..];
+                    let items_len = array_items.len() as uoffset32;
+                    self.syntax_tree.array_items.extend_from_slice(array_items);
+
+                    Expression::Array {
+                        open_square_bracket_column,
+                        items_start,
+                        items_len,
+                        close_square_bracket_column,
+                    }
+                };
+
+                unsafe {
+                    self.temp_array_items.set_len(temp_array_items_start);
                 }
-            }
+                array_expression
+            },
             TokenKind::Op(
                 operator @ (Op::Len
                 | Op::Plus
@@ -1707,7 +1870,7 @@ impl Parser<'_, '_, '_, '_> {
                     operator_column: token.col,
                     right_operand,
                 }
-            }
+            },
             TokenKind::Let
             | TokenKind::Var
             | TokenKind::Print
@@ -1720,12 +1883,14 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::Eprint
             | TokenKind::EprintLn
             | TokenKind::Do => {
-                return Err(Error {
+                self.errors.push(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::KeywordInExpression,
                     col: token.col,
                     pointers_count: token.kind.display_len(self.tokens),
-                })
-            }
+                });
+                return Err(());
+            },
             TokenKind::CloseRoundBracket
             | TokenKind::CloseSquareBracket
             | TokenKind::OpenCurlyBracket
@@ -1734,15 +1899,17 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::Colon
             | TokenKind::SemiColon
             | TokenKind::Comma => {
-                return Err(Error {
+                self.errors.push(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::ExpectedOperand,
                     col: token.col,
                     pointers_count: token.kind.display_len(self.tokens),
-                })
-            }
-            TokenKind::Unexpected(_) | TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
+                });
+                return Err(());
+            },
+            TokenKind::Unexpected(_) | TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {
                 self.should_have_been_skipped(token)
-            }
+            },
         };
 
         while let Some(Peeked {
@@ -1758,11 +1925,13 @@ impl Parser<'_, '_, '_, '_> {
 
             let after_expression_token = self.next_expected_token(Expected::CloseSquareBracket)?;
             let TokenKind::CloseSquareBracket = after_expression_token.kind else {
-                return Err(Error {
+                self.errors.push(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::MissingCloseSquareBracketInIndex,
                     col: end_of_index_expression_token.col,
                     pointers_count: end_of_index_expression_token.kind.display_len(self.tokens),
                 });
+                return Err(());
             };
 
             expression = Expression::Index {
@@ -1778,8 +1947,8 @@ impl Parser<'_, '_, '_, '_> {
 
     fn exponentiative_expression(
         &mut self,
-        token: Token,
-    ) -> Result<ExpressionIndex, Error<ErrorKind>> {
+        token: Token<'code>,
+    ) -> Result<ExpressionIndex<'code>, ()> {
         static OPS: [Op; 3] = [Op::Pow, Op::WrappingPow, Op::SaturatingPow];
 
         let mut left_operand = self.primary_expression(token)?;
@@ -1799,8 +1968,8 @@ impl Parser<'_, '_, '_, '_> {
 
     fn multiplicative_expression(
         &mut self,
-        token: Token,
-    ) -> Result<ExpressionIndex, Error<ErrorKind>> {
+        token: Token<'code>,
+    ) -> Result<ExpressionIndex<'code>, ()> {
         static OPS: [Op; 7] = [
             Op::Times,
             Op::WrappingTimes,
@@ -1826,7 +1995,7 @@ impl Parser<'_, '_, '_, '_> {
         return Ok(left_operand);
     }
 
-    fn additive_expression(&mut self, token: Token) -> Result<ExpressionIndex, Error<ErrorKind>> {
+    fn additive_expression(&mut self, token: Token<'code>) -> Result<ExpressionIndex<'code>, ()> {
         static OPS: [Op; 6] = [
             Op::Plus,
             Op::WrappingPlus,
@@ -1851,7 +2020,7 @@ impl Parser<'_, '_, '_, '_> {
         return Ok(left_operand);
     }
 
-    fn shift_expression(&mut self, token: Token) -> Result<ExpressionIndex, Error<ErrorKind>> {
+    fn shift_expression(&mut self, token: Token<'code>) -> Result<ExpressionIndex<'code>, ()> {
         static OPS: [Op; 6] = [
             Op::LeftShift,
             Op::WrappingLeftShift,
@@ -1876,7 +2045,7 @@ impl Parser<'_, '_, '_, '_> {
         return Ok(left_operand);
     }
 
-    fn bitand_expression(&mut self, token: Token) -> Result<ExpressionIndex, Error<ErrorKind>> {
+    fn bitand_expression(&mut self, token: Token<'code>) -> Result<ExpressionIndex<'code>, ()> {
         static OPS: [Op; 1] = [Op::BitAnd];
 
         let mut left_operand = self.shift_expression(token)?;
@@ -1894,7 +2063,7 @@ impl Parser<'_, '_, '_, '_> {
         return Ok(left_operand);
     }
 
-    fn bitxor_expression(&mut self, token: Token) -> Result<ExpressionIndex, Error<ErrorKind>> {
+    fn bitxor_expression(&mut self, token: Token<'code>) -> Result<ExpressionIndex<'code>, ()> {
         static OPS: [Op; 1] = [Op::BitXor];
 
         let mut left_operand = self.bitand_expression(token)?;
@@ -1912,7 +2081,7 @@ impl Parser<'_, '_, '_, '_> {
         return Ok(left_operand);
     }
 
-    fn bitor_expression(&mut self, token: Token) -> Result<ExpressionIndex, Error<ErrorKind>> {
+    fn bitor_expression(&mut self, token: Token<'code>) -> Result<ExpressionIndex<'code>, ()> {
         static OPS: [Op; 1] = [Op::BitOr];
 
         let mut left_operand = self.bitxor_expression(token)?;
@@ -1930,11 +2099,12 @@ impl Parser<'_, '_, '_, '_> {
         return Ok(left_operand);
     }
 
-    fn comparison_expression(&mut self, token: Token) -> Result<ExpressionIndex, Error<ErrorKind>> {
-        static OPS: [Op; 7] = [
+    fn comparison_expression(&mut self, token: Token<'code>) -> Result<ExpressionIndex<'code>, ()> {
+        static OPS: [Op; 8] = [
             Op::Compare,
             Op::EqualsEquals,
             Op::NotEquals,
+            Op::NotEqualsEquals,
             Op::Greater,
             Op::GreaterOrEquals,
             Op::Less,
@@ -1942,7 +2112,17 @@ impl Parser<'_, '_, '_, '_> {
         ];
 
         let mut left_operand = self.bitor_expression(token)?;
-        while let Some(Operator { token: operator_token, operator }) = self.operator(&OPS) {
+        while let Some(Operator { token: operator_token, mut operator }) = self.operator(&OPS) {
+            if let Op::NotEquals = operator {
+                self.errors.push(Msg {
+                    severity: MsgSeverity::NonTerminalError,
+                    kind: ErrorKind::UseNotEqualsEqualsInsteadOfNotEquals,
+                    col: operator_token.col,
+                    pointers_count: operator.display_len(),
+                });
+                operator = Op::NotEqualsEquals;
+            }
+
             let start_of_right_operand_token = self.next_expected_token(Expected::Operand)?;
             let right_operand = self.bitor_expression(start_of_right_operand_token)?;
             left_operand = self.syntax_tree.new_expression(Expression::Binary {
@@ -1956,7 +2136,7 @@ impl Parser<'_, '_, '_, '_> {
         return Ok(left_operand);
     }
 
-    fn and_expression(&mut self, token: Token) -> Result<ExpressionIndex, Error<ErrorKind>> {
+    fn and_expression(&mut self, token: Token<'code>) -> Result<ExpressionIndex<'code>, ()> {
         static OPS: [Op; 1] = [Op::And];
 
         let mut left_operand = self.comparison_expression(token)?;
@@ -1974,7 +2154,7 @@ impl Parser<'_, '_, '_, '_> {
         return Ok(left_operand);
     }
 
-    fn or_expression(&mut self, token: Token) -> Result<ExpressionIndex, Error<ErrorKind>> {
+    fn or_expression(&mut self, token: Token<'code>) -> Result<ExpressionIndex<'code>, ()> {
         static OPS: [Op; 1] = [Op::Or];
 
         let mut left_operand = self.and_expression(token)?;
@@ -1992,16 +2172,16 @@ impl Parser<'_, '_, '_, '_> {
         return Ok(left_operand);
     }
 
-    fn expression(&mut self, token: Token) -> Result<ExpressionIndex, Error<ErrorKind>> {
+    fn expression(&mut self, token: Token<'code>) -> Result<ExpressionIndex<'code>, ()> {
         return self.or_expression(token);
     }
 }
 
-impl Parser<'_, '_, '_, '_> {
+impl<'code> Parser<'_, '_, 'code, '_> {
     fn variable_definition(
         &mut self,
-        mutability_token: Token,
-    ) -> Result<(VariableDefinition, offset32), Error<ErrorKind>> {
+        mutability_token: Token<'code>,
+    ) -> Result<(VariableDefinition<'code>, uoffset32), ()> {
         let variable_name_token = self.next_expected_token(Expected::VariableName)?;
         let variable_name = match variable_name_token.kind {
             TokenKind::Identifier(name) | TokenKind::IdentifierStr(name) => name,
@@ -2018,18 +2198,21 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::False
             | TokenKind::True
             | TokenKind::DecimalInteger(_)
+            | TokenKind::DecimalIntegerPrefix(_)
             | TokenKind::BinaryInteger(_)
             | TokenKind::OctalInteger(_)
             | TokenKind::HexadecimalInteger(_)
-            | TokenKind::Ascii(_)
+            | TokenKind::Ascii(_, _)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_) => {
-                return Err(Error {
+                self.errors.push(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::ExpectedVariableName,
                     col: mutability_token.col,
                     pointers_count: mutability_token.kind.display_len(self.tokens),
-                })
-            }
+                });
+                return Err(());
+            },
             TokenKind::Let
             | TokenKind::Var
             | TokenKind::Print
@@ -2042,15 +2225,17 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::Loop
             | TokenKind::Break
             | TokenKind::Continue => {
-                return Err(Error {
+                self.errors.push(Msg {
+                    severity: MsgSeverity::Error,
                     kind: ErrorKind::KeywordInVariableName,
                     col: mutability_token.col,
                     pointers_count: mutability_token.kind.display_len(self.tokens),
-                })
-            }
-            TokenKind::Unexpected(_) | TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
+                });
+                return Err(());
+            },
+            TokenKind::Unexpected(_) | TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {
                 self.should_have_been_skipped(variable_name_token)
-            }
+            },
         };
 
         let type_annotation = 'type_annotation: {
@@ -2078,18 +2263,21 @@ impl Parser<'_, '_, '_, '_> {
                 | TokenKind::False
                 | TokenKind::True
                 | TokenKind::DecimalInteger(_)
+                | TokenKind::DecimalIntegerPrefix(_)
                 | TokenKind::BinaryInteger(_)
                 | TokenKind::OctalInteger(_)
                 | TokenKind::HexadecimalInteger(_)
-                | TokenKind::Ascii(_)
+                | TokenKind::Ascii(_, _)
                 | TokenKind::Str(_)
                 | TokenKind::RawStr(_) => {
-                    return Err(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::ExpectedTypeName,
                         col: after_variable_name_token.col,
                         pointers_count: after_variable_name_token.kind.display_len(self.tokens),
-                    })
-                }
+                    });
+                    return Err(());
+                },
                 TokenKind::Let
                 | TokenKind::Var
                 | TokenKind::Print
@@ -2102,19 +2290,23 @@ impl Parser<'_, '_, '_, '_> {
                 | TokenKind::Loop
                 | TokenKind::Break
                 | TokenKind::Continue => {
-                    return Err(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::KeywordInTypeName,
                         col: after_variable_name_token.col,
                         pointers_count: after_variable_name_token.kind.display_len(self.tokens),
-                    })
-                }
-                TokenKind::Unexpected(_) | TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
+                    });
+                    return Err(());
+                },
+                TokenKind::Unexpected(_)
+                | TokenKind::LineComment(_)
+                | TokenKind::BlockComment(_) => {
                     self.should_have_been_skipped(after_variable_name_token)
-                }
+                },
             };
 
-            #[expect(clippy::cast_possible_truncation)]
-            let array_dimensions_start = self.syntax_tree.array_dimensions.len() as offset32;
+            let array_dimensions_start =
+                ArrayDimensionIndex::new(self.syntax_tree.array_dimensions.len());
             while let Some(Peeked {
                 token: Token { kind: TokenKind::OpenSquareBracket, col: open_square_bracket_column },
                 index: open_square_bracket_token_index,
@@ -2131,11 +2323,13 @@ impl Parser<'_, '_, '_, '_> {
                     index: close_square_bracket_token_index,
                 }) = self.peek_next_token()
                 else {
-                    return Err(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::MissingCloseSquareBracketInArrayType,
                         col: dimension_expression_token.col,
                         pointers_count: dimension_expression_token.kind.display_len(self.tokens),
                     });
+                    return Err(());
                 };
                 self.token_index = close_square_bracket_token_index;
 
@@ -2155,9 +2349,8 @@ impl Parser<'_, '_, '_, '_> {
                 type_name,
                 type_name_column: type_name_token.col,
                 array_dimensions_start,
-                #[expect(clippy::cast_possible_truncation)]
-                array_dimensions_len: self.syntax_tree.array_dimensions.len() as offset32
-                    - array_dimensions_start,
+                array_dimensions_len: self.syntax_tree.array_dimensions.len() as uoffset32
+                    - array_dimensions_start.0,
             })
         };
 
@@ -2191,7 +2384,7 @@ impl Parser<'_, '_, '_, '_> {
                     },
                     semicolon_column,
                 ))
-            }
+            },
             TokenKind::OpenRoundBracket
             | TokenKind::CloseRoundBracket
             | TokenKind::OpenSquareBracket
@@ -2204,10 +2397,11 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::False
             | TokenKind::True
             | TokenKind::DecimalInteger(_)
+            | TokenKind::DecimalIntegerPrefix(_)
             | TokenKind::BinaryInteger(_)
             | TokenKind::OctalInteger(_)
             | TokenKind::HexadecimalInteger(_)
-            | TokenKind::Ascii(_)
+            | TokenKind::Ascii(_, _)
             | TokenKind::Str(_)
             | TokenKind::RawStr(_)
             | TokenKind::Identifier(_)
@@ -2224,45 +2418,53 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::Loop
             | TokenKind::Break
             | TokenKind::Continue => match type_annotation {
-                None => Err(Error {
-                    kind: ErrorKind::ExpectedEqualsOrSemicolonAfterVariableName,
-                    col: variable_name_token.col,
-                    pointers_count: variable_name_token.kind.display_len(self.tokens),
-                }),
-                Some(_) => Err(Error {
-                    kind: ErrorKind::ExpectedEqualsOrSemicolonAfterTypeAnnotation,
-                    col: equals_or_semicolon_token.col,
-                    pointers_count: equals_or_semicolon_token.kind.display_len(self.tokens),
-                }),
+                None => {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::Error,
+                        kind: ErrorKind::ExpectedEqualsOrSemicolonAfterVariableName,
+                        col: variable_name_token.col,
+                        pointers_count: variable_name_token.kind.display_len(self.tokens),
+                    });
+                    Err(())
+                },
+                Some(_) => {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::Error,
+                        kind: ErrorKind::ExpectedEqualsOrSemicolonAfterTypeAnnotation,
+                        col: equals_or_semicolon_token.col,
+                        pointers_count: equals_or_semicolon_token.kind.display_len(self.tokens),
+                    });
+                    Err(())
+                },
             },
-            TokenKind::Unexpected(_) | TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
+            TokenKind::Unexpected(_) | TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {
                 self.should_have_been_skipped(equals_or_semicolon_token)
-            }
+            },
         };
     }
 }
 
 // control flow statements
-impl Parser<'_, '_, '_, '_> {
-    fn if_statement(&mut self, if_column: offset32) -> Result<(), Error<ErrorKind>> {
+impl<'code> Parser<'_, '_, 'code, '_> {
+    fn if_statement(&mut self, if_column: uoffset32) -> Result<ParsedNode<'code>, ()> {
         let start_of_condition_token = self.next_expected_token(Expected::Expression)?;
         let condition = self.expression(start_of_condition_token)?;
         let end_of_condition_token = self.peek_previous_token();
 
         let after_if_condition_token = self.next_expected_token(Expected::OpenCurlyBracket)?;
         let TokenKind::OpenCurlyBracket = after_if_condition_token.kind else {
-            return Err(Error {
+            self.errors.push(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::IfMustBeFollowedByBlock,
                 col: end_of_condition_token.col,
                 pointers_count: end_of_condition_token.kind.display_len(self.tokens),
             });
+            return Err(());
         };
 
-        let mut placeholder_if_else_ifs_count = 0;
-        self.syntax_tree.nodes.push(Node::If { if_column, condition, else_ifs_count: 0 });
-        let placeholder_if_node_index = self.syntax_tree.nodes.len() - 1;
+        self.syntax_tree.nodes.push(Node::If { if_column, condition });
 
-        let ParsedNode::Scope = self.any(after_if_condition_token)? else {
+        let ParsedNode::ScopeEnd = self.any(after_if_condition_token)? else {
             unreachable!();
         };
 
@@ -2276,54 +2478,44 @@ impl Parser<'_, '_, '_, '_> {
             let after_else_token = self.next_expected_token(Expected::OpenCurlyBracketOrIf)?;
             match after_else_token.kind {
                 TokenKind::OpenCurlyBracket => {
-                    let ParsedNode::Scope = self.any(after_else_token)? else {
+                    self.syntax_tree.nodes.push(Node::Else { else_column });
+                    let ParsedNode::ScopeEnd = self.any(after_else_token)? else {
                         unreachable!();
                     };
-
-                    self.syntax_tree.nodes[placeholder_if_node_index] = Node::IfElse {
-                        if_column,
-                        condition,
-                        else_ifs_count: placeholder_if_else_ifs_count,
-                        else_column,
-                    };
-                    return Ok(());
-                }
+                    break;
+                },
                 TokenKind::If => {
-                    let start_of_else_if_condition_token = self.next_expected_token(Expected::Expression)?;
+                    let start_of_else_if_condition_token =
+                        self.next_expected_token(Expected::Expression)?;
                     let else_if_condition = self.expression(start_of_else_if_condition_token)?;
                     let end_of_else_if_condition_token = self.peek_previous_token();
 
-                    let after_else_if_condition_token = self.next_expected_token(Expected::OpenCurlyBracket)?;
+                    let after_else_if_condition_token =
+                        self.next_expected_token(Expected::OpenCurlyBracket)?;
                     let TokenKind::OpenCurlyBracket = after_else_if_condition_token.kind else {
-                        return Err(Error {
+                        self.errors.push(Msg {
+                            severity: MsgSeverity::Error,
                             kind: ErrorKind::IfMustBeFollowedByBlock,
                             col: end_of_else_if_condition_token.col,
-                            pointers_count: end_of_else_if_condition_token.kind.display_len(self.tokens),
+                            pointers_count: end_of_else_if_condition_token
+                                .kind
+                                .display_len(self.tokens),
                         });
+                        return Err(());
                     };
 
-                    placeholder_if_else_ifs_count += 1;
                     self.syntax_tree.nodes.push(Node::ElseIf {
                         else_column,
                         if_column: after_else_token.col,
                         condition: else_if_condition,
                     });
 
-                    let ParsedNode::Scope = self.any(after_else_if_condition_token)? else {
+                    let ParsedNode::ScopeEnd = self.any(after_else_if_condition_token)? else {
                         unreachable!();
                     };
-                }
+                },
                 TokenKind::Do
                 | TokenKind::Colon
-                /* NOTE(stefano):
-                warn on semicolons after if statements followed by else branches
-                ```
-                if true { println "1"; }; # < here
-                else if true { println "2"; }
-                else if true { println 3; }
-                else { println "ciao"; }
-                ```
-                */
                 | TokenKind::SemiColon
                 | TokenKind::Comma
                 | TokenKind::Op(_)
@@ -2335,10 +2527,11 @@ impl Parser<'_, '_, '_, '_> {
                 | TokenKind::False
                 | TokenKind::True
                 | TokenKind::DecimalInteger(_)
+                | TokenKind::DecimalIntegerPrefix(_)
                 | TokenKind::BinaryInteger(_)
                 | TokenKind::OctalInteger(_)
                 | TokenKind::HexadecimalInteger(_)
-                | TokenKind::Ascii(_)
+                | TokenKind::Ascii(_, _)
                 | TokenKind::Str(_)
                 | TokenKind::RawStr(_)
                 | TokenKind::Identifier(_)
@@ -2353,84 +2546,85 @@ impl Parser<'_, '_, '_, '_> {
                 | TokenKind::Loop
                 | TokenKind::Break
                 | TokenKind::Continue => {
-                    return Err(Error {
+                    self.errors.push(Msg {
+                        severity: MsgSeverity::Error,
                         kind: ErrorKind::ElseMustBeFollowedByBlockOrIf,
                         col: else_token.col,
                         pointers_count: else_token.kind.display_len(self.tokens),
                     });
-                }
-                TokenKind::Unexpected(_) | TokenKind::Comment(_) | TokenKind::BlockComment(_) => {
-                    self.should_have_been_skipped(after_else_token)
-                }
+                    return Err(());
+                },
+                TokenKind::Unexpected(_)
+                | TokenKind::LineComment(_)
+                | TokenKind::BlockComment(_) => self.should_have_been_skipped(after_else_token),
             }
         }
 
-        self.syntax_tree.nodes[placeholder_if_node_index] =
-            Node::If { if_column, condition, else_ifs_count: placeholder_if_else_ifs_count };
-        return Ok(());
+        return Ok(ParsedNode::ScopeEnd);
     }
 
     fn do_loop_statement(
         &mut self,
-        do_column: offset32,
-        loop_column: offset32,
-    ) -> Result<(), Error<ErrorKind>> {
+        do_column: uoffset32,
+        loop_column: uoffset32,
+    ) -> Result<ParsedNode<'code>, ()> {
         let start_of_condition_token = self.next_expected_token(Expected::Expression)?;
         let condition = self.expression(start_of_condition_token)?;
         let end_of_condition_token = self.peek_previous_token();
 
         let after_condition_token = self.next_expected_token(Expected::OpenCurlyBracket)?;
         let TokenKind::OpenCurlyBracket = after_condition_token.kind else {
-            return Err(Error {
+            self.errors.push(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::LoopMustBeFollowedByBlock,
                 col: end_of_condition_token.col,
                 pointers_count: end_of_condition_token.kind.display_len(self.tokens),
             });
+            return Err(());
         };
 
         self.syntax_tree.nodes.push(Node::DoLoop { do_column, loop_column, condition });
 
-        let ParsedNode::Scope = self.any(after_condition_token)? else {
+        let ParsedNode::ScopeEnd = self.any(after_condition_token)? else {
             unreachable!();
         };
-        return Ok(());
+        return Ok(ParsedNode::ScopeEnd);
     }
 
-    fn loop_statement(&mut self, loop_column: offset32) -> Result<(), Error<ErrorKind>> {
+    fn loop_statement(&mut self, loop_column: uoffset32) -> Result<ParsedNode<'code>, ()> {
         let start_of_condition_token = self.next_expected_token(Expected::Expression)?;
         let condition = self.expression(start_of_condition_token)?;
         let end_of_condition_token = self.peek_previous_token();
 
         let after_condition_token = self.next_expected_token(Expected::OpenCurlyBracket)?;
         let TokenKind::OpenCurlyBracket = after_condition_token.kind else {
-            return Err(Error {
+            self.errors.push(Msg {
+                severity: MsgSeverity::Error,
                 kind: ErrorKind::LoopMustBeFollowedByBlock,
                 col: end_of_condition_token.col,
                 pointers_count: end_of_condition_token.kind.display_len(self.tokens),
             });
+            return Err(());
         };
 
         self.syntax_tree.nodes.push(Node::Loop { loop_column, condition });
 
-        let ParsedNode::Scope = self.any(after_condition_token)? else {
+        let ParsedNode::ScopeEnd = self.any(after_condition_token)? else {
             unreachable!();
         };
-        return Ok(());
+        return Ok(ParsedNode::ScopeEnd);
     }
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Expected {
-    Statement,
-    OperatorOrSemicolon,
     Operand,
     CloseRoundBracket,
     CloseSquareBracket,
     Expression,
     ExpressionOrSemicolon,
-    Comma,
-    CommaOrSemicolonCloseSquareBracket,
+    SemicolonCloseSquareBracket,
     ArrayItemOrCloseSquareBracket,
     Semicolon,
     VariableName,
@@ -2445,15 +2639,12 @@ pub enum Expected {
 impl Display for Expected {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
-            Self::Statement => write!(f, "statement"),
-            Self::OperatorOrSemicolon => write!(f, "operator or ';'"),
             Self::Operand => write!(f, "operand"),
             Self::CloseRoundBracket => write!(f, "')'"),
             Self::CloseSquareBracket => write!(f, "']'"),
             Self::Expression => write!(f, "expression"),
             Self::ExpressionOrSemicolon => write!(f, "expression or ';'"),
-            Self::Comma => write!(f, "','"),
-            Self::CommaOrSemicolonCloseSquareBracket => write!(f, "',', ';' or ']'"),
+            Self::SemicolonCloseSquareBracket => write!(f, "';' or ']'"),
             Self::ArrayItemOrCloseSquareBracket => write!(f, "array item or ']'"),
             Self::Semicolon => write!(f, "';'"),
             Self::VariableName => write!(f, "variable name"),
@@ -2467,21 +2658,24 @@ impl Display for Expected {
     }
 }
 
+// TODO(stefano): add syntax errors such as "if" not followed by an expression
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum ErrorKind {
     PrematureEndOfFile(Expected),
     MissingSemicolon,
-    StrayElse,
     StrayColon,
     StrayComma,
-    StrayOperator(Op),
 
     // expressions
     KeywordInExpression,
     ExpectedOperand,
+    EmptyParenthesis,
     ExpectedCloseRoundBracket,
-    ExpectedCommaOrCloseSquareBracket,
+    UseSemicolonInsteadOfComma,
+    ExpectedSemicolonOrCloseSquareBracket,
     MissingCloseSquareBracketInIndex,
+    StrayOperator(Op),
+    UseNotEqualsEqualsInsteadOfNotEquals,
 
     // variables
     ExpectedVariableName,
@@ -2493,18 +2687,21 @@ pub enum ErrorKind {
     ExpectedEqualsOrSemicolonAfterTypeAnnotation,
 
     // if statements
+    // IfMustBeFollowedByExpression,
     IfMustBeFollowedByBlock,
     ElseMustBeFollowedByBlockOrIf,
+    StrayElse,
 
     // loop statements
     DoMustBeFollowedByLoop,
-    BreakOutsideOfLoop,
-    ContinueOutsideOfLoop,
+    // LoopMustBeFollowedByExpression,
     LoopMustBeFollowedByBlock,
+    StrayBreak,
+    StrayContinue,
 }
 
-impl IntoErrorInfo for ErrorKind {
-    fn info(&self) -> ErrorInfo {
+impl IntoMsgInfo for ErrorKind {
+    fn info(&self) -> MsgInfo {
         #[rustfmt::skip]
         let (error_message, error_cause_message) = match self {
             Self::PrematureEndOfFile(expected) => (
@@ -2540,17 +2737,29 @@ impl IntoErrorInfo for ErrorKind {
                 "invalid expression".into(),
                 "expected operand before this token".into(),
             ),
+            Self::EmptyParenthesis => (
+                "invalid expression".into(),
+                "empty expressions are not allowed".into(),
+            ),
             Self::ExpectedCloseRoundBracket => (
                 "invalid expression".into(),
                 "expected ')' bracket before this token".into(),
             ),
-            Self::ExpectedCommaOrCloseSquareBracket => (
+            Self::UseSemicolonInsteadOfComma => (
+                "invalid array item separator".into(),
+                "this language uses ';' instead of ',' as the array's items separator".into(),
+            ),
+            Self::ExpectedSemicolonOrCloseSquareBracket => (
                 "invalid array".into(),
-                "expected ',' or ']' before this token".into(),
+                "expected ';' or ']' before this token".into(),
             ),
             Self::MissingCloseSquareBracketInIndex => (
                 "invalid array index".into(),
                 "must be followed by a ']'".into(),
+            ),
+            Self::UseNotEqualsEqualsInsteadOfNotEquals => (
+                "invalid operator".into(),
+                "this language uses '!==' instead of '!=' as the 'not equals' operator".into(),
             ),
 
             Self::ExpectedVariableName => (
@@ -2595,11 +2804,11 @@ impl IntoErrorInfo for ErrorKind {
                 "invalid do loop".into(),
                 "must be followed by a loop statement".into(),
             ),
-            Self::BreakOutsideOfLoop => (
+            Self::StrayBreak => (
                 "invalid break statement".into(),
                 "cannot be used outside of loops".into(),
             ),
-            Self::ContinueOutsideOfLoop => (
+            Self::StrayContinue => (
                 "invalid continue statement".into(),
                 "cannot be used outside of loops".into(),
             ),
@@ -2609,6 +2818,6 @@ impl IntoErrorInfo for ErrorKind {
             ),
         };
 
-        return ErrorInfo { error_message, error_cause_message };
+        return MsgInfo { message: error_message, cause: error_cause_message };
     }
 }

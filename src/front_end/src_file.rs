@@ -5,33 +5,33 @@ use unicode_width::UnicodeWidthChar as _;
 
 #[expect(clippy::useless_attribute, reason = "false positive")]
 #[expect(clippy::pub_use)]
-pub use back_to_front::offset32;
+pub use back_to_front::uoffset32;
 
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
 pub struct Span {
     /// inclusive
-    pub start: offset32,
+    pub start: uoffset32,
 
     /// not inclusive
-    pub end: offset32,
+    pub end: uoffset32,
 }
 
 pub type Line = Span;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct Position {
-    pub line: offset32,
-    pub column: offset32,
+    pub line: uoffset32,
+    pub column: uoffset32,
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct DisplayPosition {
-    pub line: offset32,
-    pub column: offset32,
-    pub display_column: offset32,
+    pub line: uoffset32,
+    pub column: uoffset32,
+    pub display_column: uoffset32,
 }
 
-// IDEA(stefano, 0.7.0): let the user chose how to obtain the source code and just store a reference to it
+// IDEA(stefano): let the user chose how to obtain the source code and just store a reference to it
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct SrcFile<'path> {
     pub(crate) path: &'path Path,
@@ -39,7 +39,7 @@ pub struct SrcFile<'path> {
 }
 
 impl<'path> SrcFile<'path> {
-    #[expect(clippy::missing_errors_doc, reason = "the code is the documentation")]
+    #[expect(clippy::missing_errors_doc)]
     pub fn load(path: &'path Path) -> Result<Self, Error<'path>> {
         let mut file = match File::open(path) {
             Ok(file) => file,
@@ -56,16 +56,14 @@ impl<'path> SrcFile<'path> {
         }
 
         let file_metadata_len = file_metadata.len();
-        if file_metadata_len > offset32::MAX as u64 {
-            return Err(Error { path, kind: ErrorKind::FileTooBig { max: offset32::MAX } });
-        };
-        #[expect(clippy::cast_possible_truncation)]
-        let file_len = file_metadata_len as offset32;
+        if file_metadata_len > uoffset32::MAX as u64 {
+            return Err(Error { path, kind: ErrorKind::FileTooBig { max: uoffset32::MAX } });
+        }
+        let file_len = file_metadata_len as uoffset32;
 
         let mut code = String::new();
         let bytes_read = match file.read_to_string(&mut code) {
-            #[expect(clippy::cast_possible_truncation)]
-            Ok(bytes_read) => bytes_read as offset32,
+            Ok(bytes_read) => bytes_read as uoffset32,
             Err(err) => return Err(Error { path, kind: ErrorKind::Io(err) }),
         };
 
@@ -115,12 +113,10 @@ impl<'code, 'path: 'code> SrcCode<'code, 'path> {
     }
 
     #[must_use]
-    fn line_index(&self, column: offset32) -> offset32 {
-        let mut left: offset32 = 0;
-        #[expect(clippy::cast_possible_truncation)]
-        let mut right = self.lines.len() as offset32 - 1;
+    fn line_index(&self, column: uoffset32) -> uoffset32 {
+        let mut left: uoffset32 = 0;
+        let mut right = self.lines.len() as uoffset32 - 1;
         while left < right {
-            #[expect(clippy::integer_division, reason = "it's intended to lose precision")]
             let middle = left + (right - left) / 2;
             if column <= self.lines[middle as usize].end {
                 right = middle;
@@ -132,7 +128,7 @@ impl<'code, 'path: 'code> SrcCode<'code, 'path> {
     }
 
     #[must_use]
-    pub(crate) fn position(&self, column: offset32) -> Position {
+    pub(crate) fn position(&self, column: uoffset32) -> Position {
         let line_index = self.line_index(column);
         let line = self.lines[line_index as usize];
         let line_text_before_error = &self.code()[line.start as usize..column as usize];
@@ -145,7 +141,7 @@ impl<'code, 'path: 'code> SrcCode<'code, 'path> {
     }
 
     #[must_use]
-    pub(crate) fn display_position(&self, column: offset32) -> DisplayPosition {
+    pub(crate) fn display_position(&self, column: uoffset32) -> DisplayPosition {
         let line_index = self.line_index(column);
         let line = self.lines[line_index as usize];
         let line_text_before_error = &self.code()[line.start as usize..column as usize];
@@ -153,10 +149,7 @@ impl<'code, 'path: 'code> SrcCode<'code, 'path> {
         let mut utf8_column = 1;
         for character in line_text_before_error.chars() {
             let character_utf8_len = character.width_cjk().unwrap_or_default();
-            #[expect(clippy::cast_possible_truncation)]
-            {
-                display_column += character_utf8_len as offset32;
-            }
+            display_column += character_utf8_len as uoffset32;
             utf8_column += 1;
         }
 
@@ -168,7 +161,7 @@ impl<'code, 'path: 'code> SrcCode<'code, 'path> {
 pub enum ErrorKind {
     Io(std::io::Error),
     MustBeAFilePath,
-    FileTooBig { max: offset32 },
+    FileTooBig { max: uoffset32 },
     CouldNotReadEntireFile,
 }
 
@@ -186,7 +179,7 @@ impl Display for Error<'_> {
             ErrorKind::MustBeAFilePath => "must be a file path".to_owned(),
             ErrorKind::FileTooBig { max } => {
                 format!("file exceeds the size limit of {max} bytes")
-            }
+            },
             ErrorKind::CouldNotReadEntireFile => "failed to read entire file".to_owned(),
         };
 
@@ -195,5 +188,5 @@ impl Display for Error<'_> {
     }
 }
 
-#[expect(clippy::missing_trait_methods, reason = "using default implementations")]
+#[expect(clippy::missing_trait_methods)]
 impl core::error::Error for Error<'_> {}

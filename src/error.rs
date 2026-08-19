@@ -1,41 +1,75 @@
 use crate::{
-    color::{ansi_flag, AnsiFlag, Bg, Colored, Fg},
-    AT, BAR, CAUSE,
+    AT, BAR, CAUSE, color::{AnsiFlag, Bg, Colored, Fg, ansi_flag}, front_end::{MsgSeverity, tokenizer::{ascii, utf32}},
 };
 use core::fmt::Display;
 use std::path::Path;
 
-use back_to_front::offset32;
+use back_to_front::uoffset32;
 use unicode_width::UnicodeWidthChar as _;
 
+// IDEA(stefano): move to back-to-front
+// IDEA(stefano): rename to PointersLen or something that refers to the fact that it's not
+// calculating the actual visible length of characters, but rather the length of the pointers in
+// error messages
 pub(crate) trait DisplayLen {
-    fn display_len(&self) -> offset32;
+    fn display_len(&self) -> uoffset32;
 }
 
 impl DisplayLen for str {
-    fn display_len(&self) -> offset32 {
+    fn display_len(&self) -> uoffset32 {
         let mut len = 0;
         for character in self.chars() {
-            let character_utf8_len = character.width_cjk().unwrap_or_default();
-            #[expect(clippy::cast_possible_truncation)]
-            {
-                len += character_utf8_len as offset32;
-            }
+            len += character.width_cjk().unwrap_or_default();
         }
         if len == 0 {
             len = 1;
         }
-        return len;
+        return len as uoffset32;
     }
 }
 
+impl DisplayLen for utf32 {
+    #[inline]
+    fn display_len(&self) -> uoffset32 {
+        let mut len = self.width_cjk().unwrap_or_default();
+        if len == 0 {
+            len = 1;
+        }
+        return len as uoffset32;
+    }
+}
+
+impl DisplayLen for ascii {
+    #[inline]
+    fn display_len(&self) -> uoffset32 {
+        return (*self as char).display_len();
+    }
+}
+
+// #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
+// pub enum MsgLocation<'loc> {
+//     #[default]
+//     None,
+//     Path(&'loc Path, Option<(uoffset32, Option<uoffset32>)>),
+//     Str(&'loc str, Option<(uoffset32, Option<uoffset32>)>),
+// }
+
+// #[derive(Clone, Debug)]
+// pub struct Msg<'kind, 'message, 'loc> {
+//     pub severity: MsgSeverity,
+//     pub kind: &'kind str,
+//     pub message: &'message str,
+//     pub cause:
+//     pub location: MsgLocation<'loc>,
+// }
+
 #[derive(Clone)]
-pub struct Msg<'kind, 'message> {
+pub struct MsgSimple<'kind, 'message> {
     pub kind: &'kind dyn Display,
     pub message: &'message dyn Display,
 }
 
-impl Display for Msg<'_, '_> {
+impl Display for MsgSimple<'_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return write!(f, "{kind}: {message}", kind = self.kind, message = self.message);
     }
@@ -67,21 +101,21 @@ pub struct MsgWithCauseUnderText<'kind, 'message, 'cause, 'src> {
     pub message: &'message dyn Display,
     pub cause: &'cause dyn Display,
     pub line_text: &'src dyn Display,
-    pub pointers_count: offset32,
-    pub pointers_offset: offset32,
+    pub pointers_count: uoffset32,
+    pub pointers_offset: uoffset32,
 }
 
 impl Display for MsgWithCauseUnderText<'_, '_, '_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let error_message = Colored {
-            text: self.message.to_string(),
+            text: self.message,
             fg: Fg::White,
             bg: Bg::Default,
             flags: AnsiFlag::Bold as ansi_flag,
         };
 
         let pointers_and_cause = Colored {
-            text: format!(
+            text: &format!(
                 "{spaces:^>pointers_count$} {cause}",
                 spaces = "",
                 pointers_count = self.pointers_count as usize,
@@ -108,58 +142,71 @@ impl Display for MsgWithCauseUnderText<'_, '_, '_, '_> {
 
 #[derive(Clone)]
 pub struct MsgWithCauseUnderTextWithLocation<'kind, 'message, 'cause, 'src> {
+    pub severity: MsgSeverity,
     pub kind: &'kind dyn Display,
     pub message: &'message dyn Display,
     pub cause: &'cause dyn Display,
     pub file: &'src Path,
-    pub line: offset32,
-    pub column: offset32,
-    pub absolute_column: offset32,
+    pub line: uoffset32,
+    pub column: uoffset32,
+    pub absolute_column: uoffset32,
     pub line_text: &'src dyn Display,
-    pub pointers_count: offset32,
-    pub pointers_offset: offset32,
+    pub pointers_count: uoffset32,
+    pub pointers_offset: uoffset32,
 }
 
-// IDEA(stefano, ?.?.?): add cli flag to control the amount of spaces (default 4) to display when printing tabs
+// IDEA(stefano): add cli flag to control the amount of spaces (default 4) to display when printing tabs
 impl Display for MsgWithCauseUnderTextWithLocation<'_, '_, '_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let error_message = Colored {
-            text: self.message.to_string(),
+            text: &self.message,
             fg: Fg::White,
             bg: Bg::Default,
             flags: AnsiFlag::Bold as ansi_flag,
         };
 
+        let line_number_text = self.line.to_string();
         let line_number = Colored {
-            text: self.line.to_string(),
+            text: &line_number_text,
             fg: Fg::LightBlue,
             bg: Bg::Default,
             flags: AnsiFlag::Bold as ansi_flag,
         };
 
-        let line_number_padding = line_number.text.len() + 1 + BAR.text.len();
+        let line_number_padding = line_number_text.len() + 1 + BAR.text.len();
+
+        let fg = match self.severity {
+            MsgSeverity::Error | MsgSeverity::NonTerminalError => Fg::LightRed,
+            MsgSeverity::Warning => Fg::LightYellow,
+        };
+        let bg = Bg::Default;
+        let flags = AnsiFlag::Bold as ansi_flag;
 
         let pointers_and_cause = Colored {
-            text: format!(
+            text: &format!(
                 "{spaces:^>pointers_count$} {cause}",
                 spaces = "",
                 pointers_count = self.pointers_count as usize,
                 cause = self.cause
             ),
-            fg: Fg::LightRed,
-            bg: Bg::Default,
-            flags: AnsiFlag::Bold as ansi_flag,
+            fg,
+            bg,
+            flags,
         };
+
+        let kind = Colored { text: self.kind, fg, bg, flags };
+        let at = Colored { text: AT, fg, bg, flags };
+        // TODO(stefano): avoid calling to_string to get the length of the inner content
+        let kind_text = kind.text.to_string();
 
         return write!(
             f,
             "{kind}: {error_message}\
-            \n{AT:>at_padding$}: {path}:{line}:{column}:{absolute_column}\
+            \n{at:>at_padding$}: {path}:{line}:{column}:{absolute_column}\
             \n{BAR:>line_number_padding$}\
             \n{line_number} {BAR} {line_text}\
             \n{BAR:>line_number_padding$}{spaces:>pointers_offset$}{pointers_and_cause}",
-            kind = self.kind,
-            at_padding = line_number_padding - 1,
+            at_padding = kind_text.len(),
             path = self.file.display(),
             line = self.line,
             column = self.column as usize,

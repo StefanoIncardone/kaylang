@@ -2,9 +2,7 @@
 
 # any file used to test language functionality
 test*.kay
-
-# vscode settings, tasks and launch configurations
-.vscode
+test*.kbe
 
 # rust build artifacts
 target
@@ -12,8 +10,7 @@ target
 # output directory of artifacts generated from debugging with vscode
 out
 
-# used to test the compiler, with a lot of hard coding specific to my current
-# vscode debugging launch configurations
-src/bin
+saved_for_later
 
-src/saved_for_later
+# kbe examples/tests
+examples/project_euler/*.kbe

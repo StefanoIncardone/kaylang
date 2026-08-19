@@ -1,8 +1,8 @@
 #![expect(clippy::print_stderr, reason = "it's a cli tool")]
 
 use kaylang::{
-    back_end::{artifacts::Artifacts, Compiler},
-    error,
+    back_end::{Artifacts, compiler::Compiler},
+    error::MsgSimple,
     front_end::{
         ast::Parser,
         src_file::SrcFile,
@@ -41,7 +41,7 @@ fn main() -> ExitCode {
             Err(err) => {
                 eprintln!("{err}");
                 return ExitCode::FAILURE;
-            }
+            },
         }
     };
 
@@ -56,7 +56,7 @@ fn main() -> ExitCode {
                     eprintln!("{}\n", error.display(&src));
                 }
                 return ExitCode::FAILURE;
-            }
+            },
         }
     };
 
@@ -71,7 +71,7 @@ fn main() -> ExitCode {
                     eprintln!("{}\n", error.display(&src));
                 }
                 return ExitCode::FAILURE;
-            }
+            },
         }
     };
 
@@ -82,7 +82,7 @@ fn main() -> ExitCode {
         Err(err) => {
             eprintln!("{err}");
             return ExitCode::FAILURE;
-        }
+        },
     };
 
     Logger::info(&COMPILING, src_path);
@@ -93,7 +93,7 @@ fn main() -> ExitCode {
         let compiled_code = Compiler::compile(&src, &ast);
         generating_asm_sub_step.sub_step(&GENERATING_ASM, Some(&artifacts.asm_path));
         if let Err(err) = std::fs::write(&artifacts.asm_path, compiled_code) {
-            let error = error::Msg { kind: &COULD_NOT_WRITE_COMPILED_CODE, message: &err };
+            let error = MsgSimple { kind: &COULD_NOT_WRITE_COMPILED_CODE, message: &err };
             eprintln!("{error}");
             return ExitCode::FAILURE;
         }
@@ -107,23 +107,22 @@ fn main() -> ExitCode {
         match assembler_result {
             Ok(output) => {
                 if !output.status.success() {
-                    let error = error::Msg {
+                    let error = MsgSimple {
                         kind: &ASSEMBLING_ERROR,
                         message: &String::from_utf8_lossy(&output.stderr),
                     };
                     eprintln!("{error}");
                     return match output.status.code() {
-                        #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
                         Some(code) => ExitCode::from(code as u8),
                         None => ExitCode::FAILURE,
                     };
                 }
-            }
+            },
             Err(err) => {
-                let error = error::Msg { kind: &COULD_NOT_RUN_ASSEMBLER, message: &err };
+                let error = MsgSimple { kind: &COULD_NOT_RUN_ASSEMBLER, message: &err };
                 eprintln!("{error}");
                 return ExitCode::FAILURE;
-            }
+            },
         }
     };
 
@@ -135,23 +134,22 @@ fn main() -> ExitCode {
         match linker_result {
             Ok(output) => {
                 if !output.status.success() {
-                    let error = error::Msg {
+                    let error = MsgSimple {
                         kind: &LINKING_ERROR,
                         message: &String::from_utf8_lossy(&output.stderr),
                     };
                     eprintln!("{error}");
                     return match output.status.code() {
-                        #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
                         Some(code) => ExitCode::from(code as u8),
                         None => ExitCode::FAILURE,
                     };
                 }
-            }
+            },
             Err(err) => {
-                let error = error::Msg { kind: &COULD_NOT_RUN_LINKER, message: &err };
+                let error = MsgSimple { kind: &COULD_NOT_RUN_LINKER, message: &err };
                 eprintln!("{error}");
                 return ExitCode::FAILURE;
-            }
+            },
         }
     };
 
@@ -166,17 +164,16 @@ fn main() -> ExitCode {
         Ok(status) => {
             if !status.success() {
                 return match status.code() {
-                    #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
                     Some(code) => ExitCode::from(code as u8),
                     None => ExitCode::FAILURE,
                 };
             }
-        }
+        },
         Err(err) => {
-            let error = error::Msg { kind: &COULD_NOT_RUN_EXECUTABLE, message: &err };
+            let error = MsgSimple { kind: &COULD_NOT_RUN_EXECUTABLE, message: &err };
             eprintln!("{error}");
             return ExitCode::FAILURE;
-        }
+        },
     }
 
     return ExitCode::SUCCESS;

@@ -2,38 +2,57 @@
 //! This file is also an example of how it's possible to create cli tools based on this compiler
 
 use kaylang::{
-    back_end::{artifacts::Artifacts, Compiler},
-    error,
+    back_end::{Artifacts, compiler::Compiler},
+    error::MsgSimple,
     front_end::{
         ast::Parser,
         src_file::SrcFile,
+        syntax_tree,
         tokenizer::{TokenizedCode, Tokenizer},
+        typed_abstract_syntax_tree,
     },
-    Args, Command, Help, Language, Logger, Verbosity, Version, ASSEMBLING, ASSEMBLING_ERROR,
-    CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER,
-    COULD_NOT_WRITE_COMPILED_CODE, DONE, GENERATING_ASM, LINKING, LINKING_ERROR, LOADING_SOURCE,
-    PARSING_AST, RUNNING, SUBSTEP_DONE, TOKENIZATION,
+    Args, ArgsParser, Command, Help, Language, Logger, Verbosity, Version, ASSEMBLING,
+    ASSEMBLING_ERROR, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE,
+    COULD_NOT_RUN_LINKER, COULD_NOT_WRITE_COMPILED_CODE, DONE, GENERATING_ASM, LINKING,
+    LINKING_ERROR, LOADING_SOURCE, PARSING_AST, PARSING_SYNTAX_TREE, RUNNING, SUBSTEP_DONE,
+    TOKENIZATION, TYPE_CHECKING,
 };
 use std::{path::Path, process::ExitCode};
 
 fn main() -> ExitCode {
-    let Args { color, command } = match Args::try_from(std::env::args()) {
-        Ok(args) => args,
-        Err(err) => {
-            eprint!("{err}");
-            return ExitCode::FAILURE;
+    let mut env_args = std::env::args();
+    let executable_name_option = env_args.next();
+    let executable_name = match &executable_name_option {
+        Some(executable_name) => Path::new(executable_name),
+        None => Help::default_executable_name(),
+    };
+
+    let args = env_args.collect::<Vec<String>>();
+    let (color, command) = {
+        let Args { color, command } = ArgsParser::parse(&args);
+        color.set(&std::io::stderr());
+
+        match command {
+            Ok(parsed_command) => (color, parsed_command),
+            Err(errors) => {
+                let errors_display = kaylang::Errors {
+                    executable_name: Some(executable_name),
+                    args: &args,
+                    errors,
+                };
+                eprint!("{errors_display}");
+                return ExitCode::FAILURE;
+            },
         }
     };
 
-    color.set(&std::io::stderr());
-
-    if let Command::Version = command {
-        println!("{}", Version { color });
+    if let Command::Help = command {
+        println!("{}", Help { color, executable_name });
         return ExitCode::SUCCESS;
     }
 
-    if let Command::Help { executable_name } = command {
-        println!("{}", Help { color, executable_name });
+    if let Command::Version = command {
+        println!("{}", Version { color });
         return ExitCode::SUCCESS;
     }
 
@@ -44,10 +63,8 @@ fn main() -> ExitCode {
 
     let execution_step = Logger::new();
     if let Command::Check { src_path, verbosity: verbosity_ref }
-    | Command::Compile {
-        language: Language::Kay, src_path, verbosity: verbosity_ref, ..
-    }
-    | Command::Run { language: Language::Kay, src_path, verbosity: verbosity_ref, .. } = &command
+        | Command::Compile { src_path, verbosity: verbosity_ref, language: Language::Kay, .. }
+        | Command::Run { src_path, verbosity: verbosity_ref, language: Language::Kay, .. } = &command
     {
         language = Language::Kay;
         verbosity = *verbosity_ref;
@@ -64,7 +81,7 @@ fn main() -> ExitCode {
                 Err(err) => {
                     eprintln!("{err}");
                     return ExitCode::FAILURE;
-                }
+                },
             }
         };
 
@@ -79,7 +96,38 @@ fn main() -> ExitCode {
                         eprintln!("{}\n", error.display(&src));
                     }
                     return ExitCode::FAILURE;
-                }
+                },
+            }
+        };
+
+        let st = {
+            let building_st_sub_step = Logger::new();
+            let building_st_result = syntax_tree::Parser::parse(&src, &tokens);
+            building_st_sub_step.sub_step_with_verbosity(&PARSING_SYNTAX_TREE, None, verbosity);
+            match building_st_result {
+                Ok(st) => st,
+                Err(errors) => {
+                    for error in errors {
+                        eprintln!("{}\n", error.display(&src));
+                    }
+                    return ExitCode::FAILURE;
+                },
+            }
+        };
+
+        let _tast = {
+            let building_tast_sub_step = Logger::new();
+            let building_tast_result =
+                typed_abstract_syntax_tree::Parser::parse(&src, &tokens, &st);
+            building_tast_sub_step.sub_step_with_verbosity(&TYPE_CHECKING, None, verbosity);
+            match building_tast_result {
+                Ok(tast) => tast,
+                Err(errors) => {
+                    for error in errors {
+                        eprintln!("{}\n", error.display(&src));
+                    }
+                    return ExitCode::FAILURE;
+                },
             }
         };
 
@@ -94,7 +142,7 @@ fn main() -> ExitCode {
                         eprintln!("{}\n", error.display(&src));
                     }
                     return ExitCode::FAILURE;
-                }
+                },
             }
         };
 
@@ -113,7 +161,7 @@ fn main() -> ExitCode {
             Err(err) => {
                 eprintln!("{err}");
                 return ExitCode::FAILURE;
-            }
+            },
         };
 
         let _compiler_result: () = {
@@ -125,7 +173,7 @@ fn main() -> ExitCode {
                 verbosity,
             );
             if let Err(err) = std::fs::write(&artifacts.asm_path, compiled_code) {
-                let error = error::Msg { kind: &COULD_NOT_WRITE_COMPILED_CODE, message: &err };
+                let error = MsgSimple { kind: &COULD_NOT_WRITE_COMPILED_CODE, message: &err };
                 eprintln!("{error}");
                 return ExitCode::FAILURE;
             }
@@ -154,7 +202,7 @@ fn main() -> ExitCode {
             Err(err) => {
                 eprintln!("{err}");
                 return ExitCode::FAILURE;
-            }
+            },
         };
     }
 
@@ -171,23 +219,22 @@ fn main() -> ExitCode {
             match assembler_result {
                 Ok(output) => {
                     if !output.status.success() {
-                        let error = error::Msg {
+                        let error = MsgSimple {
                             kind: &ASSEMBLING_ERROR,
                             message: &String::from_utf8_lossy(&output.stderr),
                         };
                         eprintln!("{error}");
                         return match output.status.code() {
-                            #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
                             Some(code) => ExitCode::from(code as u8),
                             None => ExitCode::FAILURE,
                         };
                     }
-                }
+                },
                 Err(err) => {
-                    let error = error::Msg { kind: &COULD_NOT_RUN_ASSEMBLER, message: &err };
+                    let error = MsgSimple { kind: &COULD_NOT_RUN_ASSEMBLER, message: &err };
                     eprintln!("{error}");
                     return ExitCode::FAILURE;
-                }
+                },
             }
         };
     }
@@ -200,23 +247,22 @@ fn main() -> ExitCode {
         match linker_result {
             Ok(output) => {
                 if !output.status.success() {
-                    let error = error::Msg {
+                    let error = MsgSimple {
                         kind: &LINKING_ERROR,
                         message: &String::from_utf8_lossy(&output.stderr),
                     };
                     eprintln!("{error}");
                     return match output.status.code() {
-                        #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
                         Some(code) => ExitCode::from(code as u8),
                         None => ExitCode::FAILURE,
                     };
                 }
-            }
+            },
             Err(err) => {
-                let error = error::Msg { kind: &COULD_NOT_RUN_LINKER, message: &err };
+                let error = MsgSimple { kind: &COULD_NOT_RUN_LINKER, message: &err };
                 eprintln!("{error}");
                 return ExitCode::FAILURE;
-            }
+            },
         }
     };
 
@@ -235,17 +281,16 @@ fn main() -> ExitCode {
         Ok(status) => {
             if !status.success() {
                 return match status.code() {
-                    #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
                     Some(code) => ExitCode::from(code as u8),
                     None => ExitCode::FAILURE,
                 };
             }
-        }
+        },
         Err(err) => {
-            let error = error::Msg { kind: &COULD_NOT_RUN_EXECUTABLE, message: &err };
+            let error = MsgSimple { kind: &COULD_NOT_RUN_EXECUTABLE, message: &err };
             eprintln!("{error}");
             return ExitCode::FAILURE;
-        }
+        },
     }
 
     return ExitCode::SUCCESS;

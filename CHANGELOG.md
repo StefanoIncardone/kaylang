@@ -1,5 +1,8 @@
 # Change Log
 
+> [!WARNING]
+> Changes can happen at any moment for now, use at your own risk
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
@@ -10,12 +13,77 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 - Shortcircuted and/or operators
 - Unsigned integers
-- Reworked multiline comments to allow nesting
 
 ## Known issues
 
-- Lack of windows/unix path normalization in log messages
-- Cli arguments such as output and verbosity cannot be placed in arbitrary order
+- feature: lack of windows/unix path normalization in log messages
+- bug: incorrect error message pointers when line contains "invisible" characters such as tabs
+- but: empty cli arguments are not properly checked and skipped
+
+## 0.6.4 - 2026-08-13
+
+### Language
+
+#### Added
+
+- Decimal number prefix `0d` for consistency
+- Prefix short hand assignment operators `!=`, `+=`, `+\=`, `+|=`, `-=`, `-\=`, `-|=`:
+    `i = !i;` -> `!=i;`
+- More string and characters escape codes:
+    - `\e` -> ASCII `ESC` (`0x1b`)
+    - [ASCII caret escape characters](https://en.wikipedia.org/wiki/ASCII#:~:text=%5Bedit%5D-,Control%20code%20table):
+        - `\^@` -> `NUL` (`Null`, `0x00`)
+        - ...
+        - `\^?` -> `DEL` (`Delete`, `0x7f`)
+
+#### Changed
+
+- Made block comments delimited by `#*` and `*#` instead of `##`, allowing for nested block comments
+- Made line comments start with `##` instead of `#`
+- Made `;` the array's items separator
+- Made `!=` -> `!==` (boolean comparison "not equals" operator is now "not equals equals" operator)
+
+#### Fixed
+
+- Fixed bug where the `len` operator could not be used with nested expressions
+- Fixed bug where the `&&=` and `||=` operators could not be used with boolean variables
+
+### Compiler
+
+#### Added
+
+- Implemented basic syntax errors fault tolerance
+<!--  -->
+- Implemented position independent cli arguments
+- Implemented cli flags colorization
+- Implemented `:` cli arguments separator: `--color:auto`, `-o:out`
+- Implemented `--file` flag to avoid collision between files that may have the same name as flags
+
+#### Changed
+
+- `tokenizer::Token` is now `pub(crate)`
+- Syntax errors related entities are now named as `Msg` instead of `Error`
+- Refactored cli arguments and parsing:
+    - Introduced `ArgParser`: does not require the first argument to be the executable file
+    - `Command::Help` no longer contains the executable name
+    - `Command::Check`, `Command::Compile` and `Command::Run` now contain `&Path`
+- `error::Msg` is now `error::MsgSimple`
+- `back_end::artifacts` module inlined into `back_end`
+- `Help` now takes `&Path`
+- Allowed repeated output path options
+<!--  -->
+- [Syntax specification](SYNTAX.ebnf) only considers syntax and not typing
+<!--  -->
+- String and raw string literals now contain a null terminator by default
+
+#### Fixed
+
+- Actually removed do-statements
+- Corrected and improved cli error messages
+- Corrected crashes in compilation of unary operators on non-`i64` types
+- Corrected crashes in compilation of comparison expressions in variable assignments
+- Corrected parsing of character literals
+- Corrected tokenization of vertical tabs and line endings
 
 ## 0.6.3 - 2025-06-21
 
@@ -103,35 +171,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 - Empty binary/octal/hexadecimal numbers literals (`0b`, `0o`, `0x`) are no longer considered syntax
     errors and now mean `0`
-- Made block comments delimited by `##` instead of `#{` and `#}`:
-    - with opening `#{` and closing `}#` or `#}`:
-
-        ```text
-        println #{ symmetric }# 21; # looks symetric with `}#`
-
-        # look asymetric with `}#`
-        #{
-        asymmetric
-        }#
-
-        println #{ asymmetric #} 21; # looks asymetric with `#}`
-
-        # look symetric with `#}` 
-        #{
-        symmetric
-        #}
-        ```
-
-    - with `##`:
-
-        ```kay
-        # both single line and multiline block comments look symmetric
-        println ## symmetric ## 12;
-
-        ##
-        symmetric
-        ##
-        ```
+- Made block comments delimited by `##` instead of `#{` and `#}`
 
 #### Removed
 

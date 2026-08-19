@@ -1,8 +1,8 @@
 [package]
 name = "kaylang"
-rust-version = "1.81.0"
-version = "0.6.3"
-edition = "2021"
+rust-version = "1.89.0"
+version = "0.6.4"
+edition = "2024"
 authors = ["Stefano Incardone"]
 categories = ["compilers", "command-line-utilities"]
 keywords = ["language", "compiler"]
@@ -13,13 +13,17 @@ documentation = "https://github.com/StefanoIncardone/kaylang/blob/main/LANGUAGE_
 license = "MIT"
 
 [dependencies]
-unicode-width = "0.2.1"
-unicode-segmentation = "1.12.0"
+unicode-width = "0.2.2"
+unicode-segmentation = "1.13.3"
 
 [dependencies.back-to-front]
-version = "0.1.0"
-git = "https://github.com/StefanoIncardone/back-to-front"
-rev = "891cc758b87a1f0ea51a262de90e258505379114"
+# For publishing
+    git = "https://github.com/StefanoIncardone/back-to-front"
+    # tag = "v0.1.2"
+    rev = "8721354010223d1e35cca4bef919ef977a982e74"
+
+# For rapid development
+    # path = "../../back-to-front"
 
 [profile.dev]
 debug = "full"
@@ -116,6 +120,9 @@ undocumented_unsafe_blocks = "allow" # trust me
 missing_errors_doc = "allow" # will be changed to "warn" in the future when it comes time to document everything
 as_conversions = "allow" # do as i say please
 cast_lossless = "allow" # do as i say please
+cast_sign_loss = "allow" # do as i say please
+cast_possible_truncation = "allow" # do as i say please
+cast_possible_wrap = "allow" # do as i say please
 question_mark_used = "allow" # needlessly advocates for a macro instead of a language feature
 verbose_file_reads = "allow"
 single_match_else = "allow" # avoid forgetting to change the consumer when signatures change
@@ -125,6 +132,9 @@ zero_prefixed_literal = "allow"
 no_effect_underscore_binding = "warn"
 len_without_is_empty = "allow"
 allow_attributes_without_reason = "allow"
+allow_attributes = "allow"
+question_mark = "allow"
+upper_case_acronyms = "allow"
 
 # doesn't solve the problem, i.e.:
 # ```rust
@@ -144,8 +154,14 @@ option_if_let_else = "allow"
 if_then_some_else_none = "allow"
 manual_map = "allow"
 manual_unwrap_or = "allow"
-manual_let_else = "warn"
+manual_let_else = "allow"
 equatable_if_let = "allow"
 len_zero = "allow"
 manual_swap = "allow"
 ptr_as_ptr = "allow"
+get_last_with_len = "allow"
+get_first = "allow"
+else_if_without_else = "allow"
+collapsible_else_if = "allow"
+
+disallowed_names = "allow" # why is this even a lint?
