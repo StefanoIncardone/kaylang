@@ -8,7 +8,7 @@ fix allocation of arrays of 0 items when thet will be allowed by either
 pub(crate) mod asm;
 pub mod compiler;
 
-use crate::{error::MsgWithCause, ERROR};
+use crate::{ERROR, error::MsgWithCause};
 use core::fmt::{Display, Write as _};
 use std::{
     path::{Path, PathBuf},
@@ -29,8 +29,8 @@ pub struct Artifacts {
 impl Artifacts {
     // BUG(stefano): running `run-asm tests/test.kay -o=out` works accidentally because
     // `out/test.asm` exists, `run-asm` should directly use `tests/test.kay`
-        // IDEA(stefano): extract Command::Check/Compile/Run args to structs and have them calculate
-        // the relevant paths
+    // IDEA(stefano): extract Command::Check/Compile/Run args to structs and have them calculate
+    // the relevant paths
     #[expect(clippy::missing_errors_doc)]
     pub fn new(src_path: &Path, out_path: &Path) -> Result<Self, Error> {
         if src_path.is_dir() {
@@ -55,11 +55,10 @@ impl Artifacts {
             return Ok(artifacts);
         }
 
-        if let Err(err) = std::fs::create_dir_all(out_path) && err.kind() != std::io::ErrorKind::AlreadyExists {
-            return Err(Error::CouldNotCreateOutputDirectory {
-                path: out_path.to_owned(),
-                err,
-            });
+        if let Err(err) = std::fs::create_dir_all(out_path)
+            && err.kind() != std::io::ErrorKind::AlreadyExists
+        {
+            return Err(Error::CouldNotCreateOutputDirectory { path: out_path.to_owned(), err });
         }
 
         let artifacts = Self {

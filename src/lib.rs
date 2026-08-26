@@ -11,13 +11,13 @@ pub mod error;
 pub mod front_end;
 
 use back_to_front::{
-    cli::{Arg, FlagPrefix, FlagSeparator, Mask, bits, mask}, uoffset32,
+    cli::{Arg, FlagPrefix, FlagSeparator, Mask, bits, mask},
+    uoffset32,
 };
-use color::{ansi_flag, AnsiFlag, Bg, Colored, Fg};
+use color::{AnsiFlag, Bg, Colored, Fg, ansi_flag};
 use core::fmt::{Display, Write as _};
 use error::MsgWithCauseUnderText;
 use std::{io::IsTerminal, path::Path, time::Instant};
-
 
 const fn max_text_len(texts: &[&str]) -> usize {
     let mut max_len = 0;
@@ -105,7 +105,6 @@ messages!(
     pub LINKING_ERROR                 = "Linking Error",                ERR_FG, ERR_BG, ERR_FLAGS;
 );
 
-
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Logger {
     pub start: Instant,
@@ -130,11 +129,7 @@ impl Default for Logger {
 impl Logger {
     #[inline]
     pub fn info(text: &dyn Display, path: &Path) {
-        eprintln!(
-            "{spaces:STEP_INDENT$}{text:>STEP_PADDING$}: {path}",
-            spaces = "",
-            path = path.display()
-        );
+        eprintln!("{spaces:STEP_INDENT$}{text:>STEP_PADDING$}: {path}", spaces = "", path = path.display());
     }
 
     #[inline]
@@ -166,12 +161,7 @@ impl Logger {
     }
 
     #[inline]
-    pub fn step_with_verbosity(
-        self,
-        text: &dyn Display,
-        output: Option<&Path>,
-        verbosity: Verbosity,
-    ) {
+    pub fn step_with_verbosity(self, text: &dyn Display, output: Option<&Path>, verbosity: Verbosity) {
         if let Verbosity::Normal | Verbosity::Verbose = verbosity {
             self.done(text, output, STEP_INDENT + STEP_PADDING);
         }
@@ -183,12 +173,7 @@ impl Logger {
     }
 
     #[inline]
-    pub fn sub_step_with_verbosity(
-        self,
-        text: &dyn Display,
-        output: Option<&Path>,
-        verbosity: Verbosity,
-    ) {
+    pub fn sub_step_with_verbosity(self, text: &dyn Display, output: Option<&Path>, verbosity: Verbosity) {
         if let Verbosity::Verbose = verbosity {
             self.done(text, output, SUBSTEP_INDENT + SUBSTEP_PADDING);
         }
@@ -210,12 +195,8 @@ pub enum FlagLen {
 }
 
 impl Mask for FlagLen {
-    const MASK: u8 = mask(&[
-        Self::Long as u8,
-        Self::Short as u8,
-    ]);
+    const MASK: u8 = mask(&[Self::Long as u8, Self::Short as u8]);
 }
-
 
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -244,7 +225,6 @@ impl Display for ColorFlag {
     }
 }
 
-
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
 #[repr(u8)]
@@ -256,11 +236,7 @@ pub enum Color {
 }
 
 impl Mask for Color {
-    const MASK: u8 = mask(&[
-        Self::Auto as u8,
-        Self::Always as u8,
-        Self::Never as u8,
-    ]);
+    const MASK: u8 = mask(&[Self::Auto as u8, Self::Always as u8, Self::Never as u8]);
 }
 
 impl Color {
@@ -319,7 +295,6 @@ impl Color {
     }
 }
 
-
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
 #[repr(u8)]
@@ -331,11 +306,7 @@ pub enum Language {
 }
 
 impl Mask for Language {
-    const MASK: u8 = mask(&[
-        Self::Kay as u8,
-        Self::Asm as u8,
-        Self::Obj as u8,
-    ]);
+    const MASK: u8 = mask(&[Self::Kay as u8, Self::Asm as u8, Self::Obj as u8]);
 }
 
 impl Language {
@@ -361,7 +332,6 @@ impl Display for Language {
         return f.write_str(self.to_str());
     }
 }
-
 
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -392,7 +362,6 @@ impl Display for LanguageFlag {
     }
 }
 
-
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
@@ -419,7 +388,6 @@ impl Display for OutputFlag {
         return f.write_str(self.to_str());
     }
 }
-
 
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -448,7 +416,6 @@ impl Display for SrcFlag {
     }
 }
 
-
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
 #[repr(u8)]
@@ -460,11 +427,7 @@ pub enum Verbosity {
 }
 
 impl Mask for Verbosity {
-    const MASK: u8 = mask(&[
-        Self::Normal as u8,
-        Self::Quiet as u8,
-        Self::Verbose as u8,
-    ]);
+    const MASK: u8 = mask(&[Self::Normal as u8, Self::Quiet as u8, Self::Verbose as u8]);
 }
 
 impl Verbosity {
@@ -473,7 +436,6 @@ impl Verbosity {
         return bits(&[self as u8, tag << Self::MASK_SHIFT]);
     }
 }
-
 
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -508,7 +470,6 @@ impl Display for VerbosityFlag {
     }
 }
 
-
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
@@ -526,9 +487,7 @@ impl Mask for CommandFlagKey {
     const MASK: u8 = mask(&[
         Self::Help as u8,
         Self::Question as u8,
-
         Self::Version as u8,
-
         Self::Check as u8,
         Self::Compile as u8,
         Self::Run as u8,
@@ -541,7 +500,6 @@ impl CommandFlagKey {
         return bits(&[self as u8, tag << Self::MASK_SHIFT]);
     }
 }
-
 
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -596,7 +554,6 @@ impl Display for CommandFlag {
     }
 }
 
-
 #[rustfmt::skip]
 #[derive(Clone, Debug, Default, Hash, PartialEq, Eq)]
 pub enum Command<'args> {
@@ -648,10 +605,7 @@ impl Help<'_> {
 impl Default for Help<'_> {
     #[inline]
     fn default() -> Self {
-        return Self {
-            color: Color::Auto,
-            executable_name: Self::default_executable_name(),
-        };
+        return Self { color: Color::Auto, executable_name: Self::default_executable_name() };
     }
 }
 
@@ -784,7 +738,6 @@ impl Display for Help<'_> {
     }
 }
 
-
 #[must_use]
 #[derive(Debug)]
 enum ArgResult<P> {
@@ -792,7 +745,6 @@ enum ArgResult<P> {
     Err,
     Unrecognized,
 }
-
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Args<'args> {
@@ -823,7 +775,6 @@ struct ParsedArg<'args> {
     value: &'args str,
     parsed: Arg,
 }
-
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct ArgsParser<'args, S: AsRef<str>> {
@@ -887,7 +838,7 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
             }
 
             match parser.parse_help_command(&arg) {
-                ArgResult::Ok(command_flag) =>  {
+                ArgResult::Ok(command_flag) => {
                     parser.set_command(command_flag, arg.index);
                     continue;
                 },
@@ -944,7 +895,7 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
                 ArgResult::Ok(src_path) => {
                     parser.src_path = Some(src_path);
                     continue;
-                }
+                },
                 ArgResult::Err => continue,
                 ArgResult::Unrecognized => {},
             }
@@ -954,18 +905,16 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
 
         let command = 'command: {
             use CommandFlag::{
-                Help, DashDashHelp, DashH, Question, DashDashQuestion, DashQuestion,
-                Version, DashDashVersion, DashV,
-                Check, Compile, Run
+                Check, Compile, DashDashHelp, DashDashQuestion, DashDashVersion, DashH, DashQuestion, DashV,
+                Help, Question, Run, Version,
             };
 
             let verbosity = parser.verbosity;
 
             let Some((command_flag_index, command_flag)) = parser.command_flag else {
                 if let Some((src_path, src_flag)) = parser.src_path {
-                    parser.errors.push(Error::StraySrcPath { arg: src_path, flag: src_flag } );
-                }
-                else if let Some((arg_index, language_flag)) = parser.language {
+                    parser.errors.push(Error::StraySrcPath { arg: src_path, flag: src_flag });
+                } else if let Some((arg_index, language_flag)) = parser.language {
                     parser.errors.push(Error::StrayLanguageFlag { arg_index, flag: language_flag });
                 }
 
@@ -984,10 +933,9 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
             }
 
             let Some((src_path, _)) = parser.src_path else {
-                parser.errors.push(Error::MissingSrcPath {
-                    arg_index: command_flag_index,
-                    flag: command_flag,
-                });
+                parser
+                    .errors
+                    .push(Error::MissingSrcPath { arg_index: command_flag_index, flag: command_flag });
                 break 'command Err(());
             };
             let src_path_arg = parser.args[src_path.arg_index].as_ref();
@@ -1042,15 +990,11 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
                     out_path: out_path_path,
                     language,
                 }),
-                Run => Ok(Command::Run {
-                    src_path: src_path_path,
-                    verbosity,
-                    out_path: out_path_path,
-                    language,
-                }),
-                Help | DashDashHelp | DashH | Question | DashDashQuestion | DashQuestion
-                | Version | DashDashVersion | DashV
-                | Check => unreachable!(),
+                Run => {
+                    Ok(Command::Run { src_path: src_path_path, verbosity, out_path: out_path_path, language })
+                },
+                Help | DashDashHelp | DashH | Question | DashDashQuestion | DashQuestion | Version
+                | DashDashVersion | DashV | Check => unreachable!(),
             };
         };
 
@@ -1095,21 +1039,19 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
             "color" => match arg.parsed.prefix {
                 FlagPrefix::DashDash => ColorFlag::DashDashColor,
                 FlagPrefix::Empty | FlagPrefix::Dash => return ArgResult::Unrecognized,
-            }
+            },
             "c" => match arg.parsed.prefix {
                 FlagPrefix::Dash => ColorFlag::DashC,
                 FlagPrefix::Empty | FlagPrefix::DashDash => return ArgResult::Unrecognized,
-            }
+            },
             _ => return ArgResult::Unrecognized,
         };
 
         let (color_str, color_mode_index, start_of_color_index) = match arg.parsed.separator {
             FlagSeparator::Dash | FlagSeparator::Equals | FlagSeparator::Colon => {
                 if arg.value.len() == 0 {
-                    self.errors.push(Error::MustBeFollowedByColorMode {
-                        arg_index: arg.index,
-                        flag: color_flag,
-                    });
+                    self.errors
+                        .push(Error::MustBeFollowedByColorMode { arg_index: arg.index, flag: color_flag });
                     return ArgResult::Err;
                 }
 
@@ -1121,10 +1063,8 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
             },
             FlagSeparator::Empty => {
                 let Some(color_arg) = self.get_next_arg() else {
-                    self.errors.push(Error::MustBeFollowedByColorMode {
-                        arg_index: arg.index,
-                        flag: color_flag,
-                    });
+                    self.errors
+                        .push(Error::MustBeFollowedByColorMode { arg_index: arg.index, flag: color_flag });
                     return ArgResult::Err;
                 };
 
@@ -1150,8 +1090,8 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
     }
 
     fn parse_verbosity_flag(&self, arg: &ParsedArg<'args>) -> ArgResult<Verbosity> {
-        use Verbosity::{Quiet, Verbose};
         use FlagPrefix::{Dash, DashDash, Empty};
+        use Verbosity::{Quiet, Verbose};
 
         let verbosity = match arg.key {
             "quiet" => match arg.parsed.prefix {
@@ -1178,12 +1118,12 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
             return ArgResult::Unrecognized;
         };
 
-        return ArgResult::Ok(verbosity)
+        return ArgResult::Ok(verbosity);
     }
 
     fn parse_language_flag(&self, arg: &ParsedArg<'args>) -> ArgResult<(ArgIndex, LanguageFlag)> {
-        use LanguageFlag::{DashDashKay, DashDashAsm, DashDashObj};
         use FlagPrefix::{Dash, DashDash, Empty};
+        use LanguageFlag::{DashDashAsm, DashDashKay, DashDashObj};
 
         let language_flag = match arg.parsed.prefix {
             DashDash => match arg.key {
@@ -1204,7 +1144,7 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
     }
 
     fn parse_help_command(&self, arg: &ParsedArg<'args>) -> ArgResult<CommandFlag> {
-        use CommandFlag::{Help, DashDashHelp, DashH, Question, DashDashQuestion, DashQuestion};
+        use CommandFlag::{DashDashHelp, DashDashQuestion, DashH, DashQuestion, Help, Question};
         use FlagPrefix::{Dash, DashDash, Empty};
 
         let help_flag = match arg.key {
@@ -1234,7 +1174,7 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
     }
 
     fn parse_version_command(&self, arg: &ParsedArg<'args>) -> ArgResult<CommandFlag> {
-        use CommandFlag::{Version, DashDashVersion, DashV};
+        use CommandFlag::{DashDashVersion, DashV, Version};
         use FlagPrefix::{Dash, DashDash, Empty};
 
         let version_flag = match arg.key {
@@ -1266,7 +1206,7 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
             "check" => match arg.parsed.prefix {
                 Empty => Check,
                 Dash | DashDash => return ArgResult::Unrecognized,
-            }
+            },
             _ => return ArgResult::Unrecognized,
         };
 
@@ -1286,7 +1226,7 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
             "compile" => match arg.parsed.prefix {
                 Empty => Compile,
                 Dash | DashDash => return ArgResult::Unrecognized,
-            }
+            },
             _ => return ArgResult::Unrecognized,
         };
 
@@ -1306,7 +1246,7 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
             "run" => match arg.parsed.prefix {
                 Empty => Run,
                 Dash | DashDash => return ArgResult::Unrecognized,
-            }
+            },
             _ => return ArgResult::Unrecognized,
         };
 
@@ -1325,11 +1265,11 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
             "output" => match arg.parsed.prefix {
                 DashDash => OutputFlag::DashDashOutput,
                 Empty | Dash => return ArgResult::Unrecognized,
-            }
+            },
             "o" => match arg.parsed.prefix {
                 Dash => OutputFlag::DashO,
                 Empty | DashDash => return ArgResult::Unrecognized,
-            }
+            },
             _ => return ArgResult::Unrecognized,
         };
 
@@ -1383,12 +1323,12 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
                         DashDash => SrcFlag::DashDashSrc,
                         Dash => return ArgResult::Unrecognized,
                         Empty => unreachable!(),
-                    }
+                    },
                     "s" => match arg.parsed.prefix {
                         Dash => SrcFlag::DashS,
                         DashDash => return ArgResult::Unrecognized,
                         Empty => unreachable!(),
-                    }
+                    },
                     _ => return ArgResult::Unrecognized,
                 };
 
@@ -1406,12 +1346,18 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
                         let key_len = arg.key.len();
                         let separator_len = arg.parsed.separator.to_str().len();
                         let start_of_path_index = prefix_len + key_len + separator_len;
-                        (ArgValue { arg_index: arg.index, start_of_value_index: start_of_path_index as u8 }, Some(file_flag))
-                    }
+                        (
+                            ArgValue {
+                                arg_index: arg.index,
+                                start_of_value_index: start_of_path_index as u8,
+                            },
+                            Some(file_flag),
+                        )
+                    },
                     FlagSeparator::Dash => {
                         // TODO(stefano): report error
                         return ArgResult::Unrecognized;
-                    }
+                    },
                     FlagSeparator::Empty => {
                         let Some(src_arg) = self.get_next_arg() else {
                             self.errors.push(Error::MustBeFollowedBySrcPath {
@@ -1422,10 +1368,10 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
                         };
 
                         (ArgValue { arg_index: src_arg.index, start_of_value_index: 0 }, Some(file_flag))
-                    }
+                    },
                 }
-            }
-            Empty => (ArgValue { arg_index: arg.index, start_of_value_index: 0 }, None)
+            },
+            Empty => (ArgValue { arg_index: arg.index, start_of_value_index: 0 }, None),
         };
 
         if let Some((previous_src_path, _)) = self.src_path {
@@ -1449,16 +1395,15 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
 
     fn set_command(&mut self, command_flag: CommandFlag, command_flag_index: usize) {
         use CommandFlag::{
-            Help, DashDashHelp, DashH, Question, DashDashQuestion, DashQuestion,
-            Version, DashDashVersion, DashV,
-            Check, Compile, Run
+            Check, Compile, DashDashHelp, DashDashQuestion, DashDashVersion, DashH, DashQuestion, DashV,
+            Help, Question, Run, Version,
         };
 
         match command_flag {
             Help | DashDashHelp | DashH | Question | DashDashQuestion | DashQuestion => {
                 // always setting the help command regardless of where it is found
                 self.command_flag = Some((command_flag_index, command_flag));
-            }
+            },
 
             Version | DashDashVersion | DashV => match &self.command_flag {
                 Some((previous_command_flag_index, previous_command_flag)) => {
@@ -1470,13 +1415,13 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
                     });
                 },
                 None => self.command_flag = Some((command_flag_index, command_flag)),
-            }
+            },
 
             Check | Compile | Run => match &self.command_flag {
                 Some((
                     _,
-                    Help | DashDashHelp | DashH | Question | DashDashQuestion | DashQuestion
-                    | Version | DashDashVersion | DashV
+                    Help | DashDashHelp | DashH | Question | DashDashQuestion | DashQuestion | Version
+                    | DashDashVersion | DashV,
                 )) => {
                     // make sure the command is properly formatted
                 },
@@ -1489,33 +1434,65 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
                     });
                 },
                 None => self.command_flag = Some((command_flag_index, command_flag)),
-            }
+            },
         }
     }
 }
-
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum Error {
     UnrecognizedColorMode(ArgValue),
 
-    MustBeFollowedByColorMode { arg_index: ArgIndex, flag: ColorFlag },
-    MustBeFollowedByOutputDirectoryPath { arg_index: ArgIndex, flag: OutputFlag },
-    MustBeFollowedBySrcPath { arg_index: ArgIndex, flag: SrcFlag },
+    MustBeFollowedByColorMode {
+        arg_index: ArgIndex,
+        flag: ColorFlag,
+    },
+    MustBeFollowedByOutputDirectoryPath {
+        arg_index: ArgIndex,
+        flag: OutputFlag,
+    },
+    MustBeFollowedBySrcPath {
+        arg_index: ArgIndex,
+        flag: SrcFlag,
+    },
 
     MustBeADirectoryPath(ArgValue),
     MustBeAFilePath(ArgValue),
 
-    MissingOutputDirectoryPath { arg_index: ArgIndex, flag: CommandFlag },
-    MissingSrcPath { arg_index: ArgIndex, flag: CommandFlag },
+    MissingOutputDirectoryPath {
+        arg_index: ArgIndex,
+        flag: CommandFlag,
+    },
+    MissingSrcPath {
+        arg_index: ArgIndex,
+        flag: CommandFlag,
+    },
 
-    StrayOutputDirectoryFlag { arg: ArgValue, flag: OutputFlag },
-    StraySrcPath { arg: ArgValue, flag: Option<SrcFlag> },
-    StrayLanguageFlag { arg_index: ArgIndex, flag: LanguageFlag },
+    StrayOutputDirectoryFlag {
+        arg: ArgValue,
+        flag: OutputFlag,
+    },
+    StraySrcPath {
+        arg: ArgValue,
+        flag: Option<SrcFlag>,
+    },
+    StrayLanguageFlag {
+        arg_index: ArgIndex,
+        flag: LanguageFlag,
+    },
 
-    SrcPathAlreadySelected { previous: ArgValue, current: ArgValue, },
-    CannotUseOutputDirectoryPathWithCheckCommand { arg_index: ArgIndex, flag: OutputFlag },
-    CannotUseLanguageFlagWithCheckCommand { arg_index: ArgIndex, flag: LanguageFlag },
+    SrcPathAlreadySelected {
+        previous: ArgValue,
+        current: ArgValue,
+    },
+    CannotUseOutputDirectoryPathWithCheckCommand {
+        arg_index: ArgIndex,
+        flag: OutputFlag,
+    },
+    CannotUseLanguageFlagWithCheckCommand {
+        arg_index: ArgIndex,
+        flag: LanguageFlag,
+    },
     CommandAlreadySelected {
         current_arg_index: ArgIndex,
         current_flag: CommandFlag,
@@ -1523,8 +1500,12 @@ pub enum Error {
         previous_flag: CommandFlag,
     },
 
-    Unrecognized { arg_index: ArgIndex },
-    MaxLen { arg_index: ArgIndex },
+    Unrecognized {
+        arg_index: ArgIndex,
+    },
+    MaxLen {
+        arg_index: ArgIndex,
+    },
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -1561,169 +1542,181 @@ impl<S: AsRef<str>> Display for Errors<'_, '_, S> {
 
         arg_index = 0;
         for error in &self.errors {
-            let (erroneous_arg_index, pointers_count, arg_value_pointers_offset): (usize, usize, u8) = match error {
-                Error::UnrecognizedColorMode(color_mode) => {
-                    let arg = self.args[color_mode.arg_index].as_ref();
-                    let color = &arg[color_mode.start_of_value_index as usize..];
+            let (erroneous_arg_index, pointers_count, arg_value_pointers_offset): (usize, usize, u8) =
+                match error {
+                    Error::UnrecognizedColorMode(color_mode) => {
+                        let arg = self.args[color_mode.arg_index].as_ref();
+                        let color = &arg[color_mode.start_of_value_index as usize..];
 
-                    _ = write!(error_message, "unrecognized color mode '{color}'");
-                    _ = write!(
-                        error_cause_message,
-                        "must be one of '{auto}', '{always}' or '{never}'",
-                        auto = Color::Auto,
-                        always = Color::Always,
-                        never = Color::Never,
-                    );
-                    (color_mode.arg_index, color.len(), color_mode.start_of_value_index)
-                },
+                        _ = write!(error_message, "unrecognized color mode '{color}'");
+                        _ = write!(
+                            error_cause_message,
+                            "must be one of '{auto}', '{always}' or '{never}'",
+                            auto = Color::Auto,
+                            always = Color::Always,
+                            never = Color::Never,
+                        );
+                        (color_mode.arg_index, color.len(), color_mode.start_of_value_index)
+                    },
 
-                Error::MustBeFollowedByColorMode { arg_index: color_flag_index, flag: color_flag } => {
-                    let arg = self.args[*color_flag_index].as_ref();
-                    _ = write!(error_message, "invalid '{color_flag}' option");
-                    _ = write!(
-                        error_cause_message,
-                        "must be followed by '{auto}', '{always}' or '{never}'",
-                        auto = Color::Auto,
-                        always = Color::Always,
-                        never = Color::Never,
-                    );
-                    (*color_flag_index, arg.len(), 0)
-                },
-                Error::MustBeFollowedByOutputDirectoryPath { arg_index: output_flag_index, flag: output_flag } => {
-                    let arg = self.args[*output_flag_index].as_ref();
-                    _ = write!(error_message, "invalid '{output_flag}' option");
-                    _ = write!(error_cause_message, "must be followed by an output directory path");
-                    (*output_flag_index, arg.len(), 0)
-                },
-                Error::MustBeFollowedBySrcPath { arg_index: src_flag_index, flag: src_flag } => {
-                    let arg = self.args[*src_flag_index].as_ref();
-                    _ = write!(error_message, "invalid '{src_flag}' option");
-                    _ = write!(error_cause_message, "must be followed by source file path");
-                    (*src_flag_index, arg.len(), 0)
-                },
+                    Error::MustBeFollowedByColorMode { arg_index: color_flag_index, flag: color_flag } => {
+                        let arg = self.args[*color_flag_index].as_ref();
+                        _ = write!(error_message, "invalid '{color_flag}' option");
+                        _ = write!(
+                            error_cause_message,
+                            "must be followed by '{auto}', '{always}' or '{never}'",
+                            auto = Color::Auto,
+                            always = Color::Always,
+                            never = Color::Never,
+                        );
+                        (*color_flag_index, arg.len(), 0)
+                    },
+                    Error::MustBeFollowedByOutputDirectoryPath {
+                        arg_index: output_flag_index,
+                        flag: output_flag,
+                    } => {
+                        let arg = self.args[*output_flag_index].as_ref();
+                        _ = write!(error_message, "invalid '{output_flag}' option");
+                        _ = write!(error_cause_message, "must be followed by an output directory path");
+                        (*output_flag_index, arg.len(), 0)
+                    },
+                    Error::MustBeFollowedBySrcPath { arg_index: src_flag_index, flag: src_flag } => {
+                        let arg = self.args[*src_flag_index].as_ref();
+                        _ = write!(error_message, "invalid '{src_flag}' option");
+                        _ = write!(error_cause_message, "must be followed by source file path");
+                        (*src_flag_index, arg.len(), 0)
+                    },
 
-                Error::MustBeADirectoryPath(path) => {
-                    let path_arg = &self.args[path.arg_index].as_ref();
-                    let path_path = &path_arg[path.start_of_value_index as usize..];
+                    Error::MustBeADirectoryPath(path) => {
+                        let path_arg = &self.args[path.arg_index].as_ref();
+                        let path_path = &path_arg[path.start_of_value_index as usize..];
 
-                    _ = write!(error_message, "invalid '{path_path}' path");
-                    _ = write!(error_cause_message, "must be a directory path");
-                    (path.arg_index, path_path.len(), path.start_of_value_index)
-                },
-                Error::MustBeAFilePath(path) => {
-                    let path_arg = self.args[path.arg_index].as_ref();
-                    let path_path = &path_arg[path.start_of_value_index as usize..];
+                        _ = write!(error_message, "invalid '{path_path}' path");
+                        _ = write!(error_cause_message, "must be a directory path");
+                        (path.arg_index, path_path.len(), path.start_of_value_index)
+                    },
+                    Error::MustBeAFilePath(path) => {
+                        let path_arg = self.args[path.arg_index].as_ref();
+                        let path_path = &path_arg[path.start_of_value_index as usize..];
 
-                    _ = write!(error_message, "invalid '{path_path}' path");
-                    _ = write!(error_cause_message, "must be a source file path");
-                    (path.arg_index, path_path.len(), path.start_of_value_index)
-                },
+                        _ = write!(error_message, "invalid '{path_path}' path");
+                        _ = write!(error_cause_message, "must be a source file path");
+                        (path.arg_index, path_path.len(), path.start_of_value_index)
+                    },
 
-                Error::MissingOutputDirectoryPath { arg_index: flag_index, flag } => {
-                    _ = write!(error_message, "invalid '{flag}' command");
-                    _ = write!(error_cause_message, "missing output directory path");
-                    (*flag_index, flag.to_str().len(), 0)
-                },
-                Error::MissingSrcPath { arg_index: flag_index, flag } => {
-                    _ = write!(error_message, "invalid '{flag}' command");
-                    _ = write!(error_cause_message, "missing source file path");
-                    (*flag_index, flag.to_str().len(), 0)
-                },
+                    Error::MissingOutputDirectoryPath { arg_index: flag_index, flag } => {
+                        _ = write!(error_message, "invalid '{flag}' command");
+                        _ = write!(error_cause_message, "missing output directory path");
+                        (*flag_index, flag.to_str().len(), 0)
+                    },
+                    Error::MissingSrcPath { arg_index: flag_index, flag } => {
+                        _ = write!(error_message, "invalid '{flag}' command");
+                        _ = write!(error_cause_message, "missing source file path");
+                        (*flag_index, flag.to_str().len(), 0)
+                    },
 
-                Error::StrayOutputDirectoryFlag { arg, flag } => {
-                    _ = write!(error_message, "stray '{flag}' output directory argument");
-                    _ = write!(
-                        error_cause_message,
-                        "can only be used with a '{compile}' or '{run}' command",
-                        compile = CommandFlag::Compile,
-                        run = CommandFlag::Run,
-                    );
-                    (arg.arg_index, flag.to_str().len(), 0)
-                },
-                Error::StraySrcPath { arg, flag } => {
-                    _ = write!(
-                        error_cause_message,
-                        "can only be used with a '{check}', '{compile}' or '{run}' command",
-                        check = CommandFlag::Check,
-                        compile = CommandFlag::Compile,
-                        run = CommandFlag::Run,
-                    );
+                    Error::StrayOutputDirectoryFlag { arg, flag } => {
+                        _ = write!(error_message, "stray '{flag}' output directory argument");
+                        _ = write!(
+                            error_cause_message,
+                            "can only be used with a '{compile}' or '{run}' command",
+                            compile = CommandFlag::Compile,
+                            run = CommandFlag::Run,
+                        );
+                        (arg.arg_index, flag.to_str().len(), 0)
+                    },
+                    Error::StraySrcPath { arg, flag } => {
+                        _ = write!(
+                            error_cause_message,
+                            "can only be used with a '{check}', '{compile}' or '{run}' command",
+                            check = CommandFlag::Check,
+                            compile = CommandFlag::Compile,
+                            run = CommandFlag::Run,
+                        );
 
-                    match flag {
-                        None => {
-                            let src_arg = self.args[arg.arg_index].as_ref();
-                            _ = write!(error_message, "stray '{src_arg}' source file argument");
-                            (arg.arg_index, src_arg.len(), 0)
+                        match flag {
+                            None => {
+                                let src_arg = self.args[arg.arg_index].as_ref();
+                                _ = write!(error_message, "stray '{src_arg}' source file argument");
+                                (arg.arg_index, src_arg.len(), 0)
+                            },
+                            Some(src_flag) => {
+                                _ = write!(error_message, "stray '{src_flag}' source file argument");
+                                (arg.arg_index, src_flag.to_str().len(), 0)
+                            },
                         }
-                        Some(src_flag) => {
-                            _ = write!(error_message, "stray '{src_flag}' source file argument");
-                            (arg.arg_index, src_flag.to_str().len(), 0)
-                        }
-                    }
-                },
-                Error::StrayLanguageFlag { arg_index: language_arg_index, flag } => {
-                    _ = write!(error_message, "stray '{flag}' language flag");
-                    _ = write!(error_cause_message, "cannot be used without a source file argument");
-                    (*language_arg_index, flag.to_str().len(), 0)
-                },
+                    },
+                    Error::StrayLanguageFlag { arg_index: language_arg_index, flag } => {
+                        _ = write!(error_message, "stray '{flag}' language flag");
+                        _ = write!(error_cause_message, "cannot be used without a source file argument");
+                        (*language_arg_index, flag.to_str().len(), 0)
+                    },
 
-                Error::SrcPathAlreadySelected { previous, current } => {
-                    let current_src_arg = self.args[current.arg_index].as_ref();
-                    let current_src_path = &current_src_arg[current.start_of_value_index as usize..];
+                    Error::SrcPathAlreadySelected { previous, current } => {
+                        let current_src_arg = self.args[current.arg_index].as_ref();
+                        let current_src_path = &current_src_arg[current.start_of_value_index as usize..];
 
-                    let previous_src_arg = self.args[previous.arg_index].as_ref();
-                    let previous_src_path = &previous_src_arg[previous.start_of_value_index as usize..];
+                        let previous_src_arg = self.args[previous.arg_index].as_ref();
+                        let previous_src_path = &previous_src_arg[previous.start_of_value_index as usize..];
 
-                    _ = write!(error_message, "repeated '{current_src_path}' source file path argument");
-                    _ = write!(
-                        error_cause_message,
-                        "already selected '{previous_src_path}' source file path"
-                    );
-                    (current.arg_index, current_src_path.len(), current.start_of_value_index)
-                },
-                Error::CannotUseOutputDirectoryPathWithCheckCommand { arg_index: out_path_index, flag: output_flag } => {
-                    _ = write!(error_message, "invalid '{output_flag}' output directory argument");
-                    _ = write!(
-                        error_cause_message,
-                        "cannot be used with a '{check}' command",
-                        check = CommandFlag::Check
-                    );
-                    (*out_path_index, output_flag.to_str().len(), 0)
-                },
-                Error::CannotUseLanguageFlagWithCheckCommand { arg_index: language_arg_index, flag: language_flag } => {
-                    _ = write!(error_message, "invalid '{language_flag}' language flag");
-                    _ = write!(
-                        error_cause_message,
-                        "cannot be used with a '{check}' command",
-                        check = CommandFlag::Check
-                    );
-                    (*language_arg_index, language_flag.to_str().len(), 0)
-                },
-                Error::CommandAlreadySelected { current_arg_index, current_flag, previous_flag, .. } => {
-                    _ = write!(error_message, "invalid '{current_flag}' command");
-                    _ = write!(
-                        error_cause_message,
-                        "cannot use '{current_flag}' because '{previous_flag}' was already selected"
-                    );
-                    (*current_arg_index, current_flag.to_str().len(), 0)
-                },
+                        _ = write!(error_message, "repeated '{current_src_path}' source file path argument");
+                        _ = write!(
+                            error_cause_message,
+                            "already selected '{previous_src_path}' source file path"
+                        );
+                        (current.arg_index, current_src_path.len(), current.start_of_value_index)
+                    },
+                    Error::CannotUseOutputDirectoryPathWithCheckCommand {
+                        arg_index: out_path_index,
+                        flag: output_flag,
+                    } => {
+                        _ = write!(error_message, "invalid '{output_flag}' output directory argument");
+                        _ = write!(
+                            error_cause_message,
+                            "cannot be used with a '{check}' command",
+                            check = CommandFlag::Check
+                        );
+                        (*out_path_index, output_flag.to_str().len(), 0)
+                    },
+                    Error::CannotUseLanguageFlagWithCheckCommand {
+                        arg_index: language_arg_index,
+                        flag: language_flag,
+                    } => {
+                        _ = write!(error_message, "invalid '{language_flag}' language flag");
+                        _ = write!(
+                            error_cause_message,
+                            "cannot be used with a '{check}' command",
+                            check = CommandFlag::Check
+                        );
+                        (*language_arg_index, language_flag.to_str().len(), 0)
+                    },
+                    Error::CommandAlreadySelected {
+                        current_arg_index, current_flag, previous_flag, ..
+                    } => {
+                        _ = write!(error_message, "invalid '{current_flag}' command");
+                        _ = write!(
+                            error_cause_message,
+                            "cannot use '{current_flag}' because '{previous_flag}' was already selected"
+                        );
+                        (*current_arg_index, current_flag.to_str().len(), 0)
+                    },
 
-                Error::Unrecognized { arg_index: unrecognized_arg_index } => {
-                    let arg = self.args[*unrecognized_arg_index].as_ref();
-                    _ = write!(error_message, "unrecognized '{arg}' argument");
-                    _ = write!(error_cause_message, "unrecognized");
-                    (*unrecognized_arg_index, arg.len(), 0)
-                },
-                Error::MaxLen { arg_index: max_len_arg_index } => {
-                    let mut erroneous_arg = self.args[*max_len_arg_index].as_ref();
-                    let max_len = erroneous_arg.len().min(8);
-                    erroneous_arg = &erroneous_arg[..max_len];
+                    Error::Unrecognized { arg_index: unrecognized_arg_index } => {
+                        let arg = self.args[*unrecognized_arg_index].as_ref();
+                        _ = write!(error_message, "unrecognized '{arg}' argument");
+                        _ = write!(error_cause_message, "unrecognized");
+                        (*unrecognized_arg_index, arg.len(), 0)
+                    },
+                    Error::MaxLen { arg_index: max_len_arg_index } => {
+                        let mut erroneous_arg = self.args[*max_len_arg_index].as_ref();
+                        let max_len = erroneous_arg.len().min(8);
+                        erroneous_arg = &erroneous_arg[..max_len];
 
-                    _ = write!(error_message, "argument '{erroneous_arg}...' too long");
-                    _ = write!(error_cause_message, "over {} characters long", u16::MAX);
-                    (*max_len_arg_index, 8, 0)
-                },
-            };
+                        _ = write!(error_message, "argument '{erroneous_arg}...' too long");
+                        _ = write!(error_cause_message, "over {} characters long", u16::MAX);
+                        (*max_len_arg_index, 8, 0)
+                    },
+                };
 
             // Note: these two loops are mutually exclusive and avoid extra checking
             while arg_index < erroneous_arg_index {

@@ -2,15 +2,21 @@
 #![expect(clippy::panic, clippy::panic_in_result_fn, clippy::print_stderr)]
 
 use kaylang::{
-    ASSEMBLING_ERROR, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER, COULD_NOT_WRITE_COMPILED_CODE, Color, DONE, LINKING_ERROR, Logger, RUNNING, back_end::{Artifacts, compiler::Compiler}, front_end::{
+    ASSEMBLING_ERROR, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE,
+    COULD_NOT_RUN_LINKER, COULD_NOT_WRITE_COMPILED_CODE, Color, DONE, LINKING_ERROR, Logger, RUNNING,
+    back_end::{Artifacts, compiler::Compiler},
+    front_end::{
         ast::Parser,
         src_file::SrcFile,
         syntax_tree as st,
         tokenizer::{TokenizedCode, Tokenizer},
         typed_abstract_syntax_tree as tast,
-    }
+    },
 };
-use std::{path::Path, process::{Command, ExitCode}};
+use std::{
+    path::Path,
+    process::{Command, ExitCode},
+};
 
 #[test]
 fn check_project_euler() -> Result<(), ExitCode> {
@@ -30,7 +36,9 @@ fn check_project_euler() -> Result<(), ExitCode> {
             Ok(path) => path.path(),
             Err(err) => panic!("could not get path: {err}"),
         };
-        if let Some(extension) = src_path.extension() && extension == "kay" {
+        if let Some(extension) = src_path.extension()
+            && extension == "kay"
+        {
             if let Err(_) = check(&src_path) {
                 error = true;
             }
@@ -62,7 +70,9 @@ fn run_project_euler() -> Result<(), ExitCode> {
             Ok(path) => path.path(),
             Err(err) => panic!("could not get path: {err}"),
         };
-        if let Some(extension) = src_path.extension() && extension == "kay" {
+        if let Some(extension) = src_path.extension()
+            && extension == "kay"
+        {
             if let Err(_) = run(&src_path, out_path) {
                 error = true;
             }
@@ -85,7 +95,6 @@ fn run_escape_characters() -> Result<(), ExitCode> {
     let src_path = Path::new("tests/escape_characters.kay");
     return run(src_path, out_path);
 }
-
 
 #[expect(clippy::single_call_fn)]
 fn check(src_path: &Path) -> Result<(), ExitCode> {
@@ -293,18 +302,20 @@ fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
 
     let mut example_lines = stdout.lines();
 
-    let expected = if let Some(expected_line) = example_lines.next() && let Some(stripped_line) = expected_line.strip_prefix("expected:") {
+    let expected = if let Some(expected_line) = example_lines.next()
+        && let Some(stripped_line) = expected_line.strip_prefix("expected:")
+    {
         stripped_line.trim_start()
-    }
-    else {
+    } else {
         eprintln!("missing expected output line");
         return Err(ExitCode::FAILURE);
     };
 
-    let actual = if let Some(actual_line) = example_lines.next() && let Some(stripped_line) = actual_line.strip_prefix("actual:") {
+    let actual = if let Some(actual_line) = example_lines.next()
+        && let Some(stripped_line) = actual_line.strip_prefix("actual:")
+    {
         stripped_line.trim_start()
-    }
-    else {
+    } else {
         eprintln!("missing actual output line");
         return Err(ExitCode::FAILURE);
     };

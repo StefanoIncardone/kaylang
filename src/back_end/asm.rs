@@ -83,10 +83,7 @@ assert_array_index_in_range:
  call crash"
 };
 
-#[expect(
-    dead_code,
-    reason = "temporarily disabled, will be reanabled when we introduce the `bits` type"
-)]
+#[expect(dead_code, reason = "temporarily disabled, will be reanabled when we introduce the `bits` type")]
 static ASSERT_I64_BIT_INDEX_IN_RANGE_ASM: &str = {
     r"; fn !? = assert_i64_bit_index_in_range(index: i64 @rdi, bits: u64 @rsi, line: u64 @rdx, col: u64 @rcx)
 assert_i64_bit_index_in_range:

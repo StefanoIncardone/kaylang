@@ -1,6 +1,9 @@
 #![expect(clippy::print_stderr, reason = "it's a cli tool")]
 
 use kaylang::{
+    ASSEMBLING, ASSEMBLING_ERROR, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_LINKER,
+    COULD_NOT_WRITE_COMPILED_CODE, Color, DONE, GENERATING_ASM, LINKING, LINKING_ERROR, LOADING_SOURCE,
+    Language, Logger, PARSING_AST, SUBSTEP_DONE, TOKENIZATION,
     back_end::{Artifacts, compiler::Compiler},
     error::MsgSimple,
     front_end::{
@@ -8,10 +11,6 @@ use kaylang::{
         src_file::SrcFile,
         tokenizer::{TokenizedCode, Tokenizer},
     },
-    Color, Language, Logger, ASSEMBLING, ASSEMBLING_ERROR, CHECKING, COMPILING,
-    COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_LINKER, COULD_NOT_WRITE_COMPILED_CODE, DONE,
-    GENERATING_ASM, LINKING, LINKING_ERROR, LOADING_SOURCE, PARSING_AST, SUBSTEP_DONE,
-    TOKENIZATION,
 };
 use std::{path::Path, process::ExitCode};
 
@@ -158,10 +157,8 @@ fn main() -> ExitCode {
         match linker_result {
             Ok(output) => {
                 if !output.status.success() {
-                    let error = MsgSimple {
-                        kind: &LINKING_ERROR,
-                        message: &String::from_utf8_lossy(&output.stderr),
-                    };
+                    let error =
+                        MsgSimple { kind: &LINKING_ERROR, message: &String::from_utf8_lossy(&output.stderr) };
                     eprintln!("{error}");
                     return match output.status.code() {
                         Some(code) => ExitCode::from(code as u8),

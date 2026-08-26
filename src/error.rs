@@ -1,5 +1,10 @@
 use crate::{
-    AT, BAR, CAUSE, color::{AnsiFlag, Bg, Colored, Fg, ansi_flag}, front_end::{MsgSeverity, tokenizer::{ascii, utf32}},
+    AT, BAR, CAUSE,
+    color::{AnsiFlag, Bg, Colored, Fg, ansi_flag},
+    front_end::{
+        MsgSeverity,
+        tokenizer::{ascii, utf32},
+    },
 };
 use core::fmt::Display;
 use std::path::Path;

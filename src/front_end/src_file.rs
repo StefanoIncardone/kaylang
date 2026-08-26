@@ -1,4 +1,4 @@
-use crate::{error::MsgWithCause, ERROR};
+use crate::{ERROR, error::MsgWithCause};
 use core::fmt::Display;
 use std::{fs::File, io::Read as _, path::Path};
 use unicode_width::UnicodeWidthChar as _;

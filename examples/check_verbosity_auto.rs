@@ -1,13 +1,12 @@
 #![expect(clippy::print_stderr, reason = "it's a cli tool")]
 
 use kaylang::{
+    CHECKING, Color, DONE, LOADING_SOURCE, Logger, PARSING_AST, SUBSTEP_DONE, TOKENIZATION, Verbosity,
     front_end::{
         ast::Parser,
         src_file::SrcFile,
         tokenizer::{TokenizedCode, Tokenizer},
     },
-    Color, Logger, Verbosity, CHECKING, DONE, LOADING_SOURCE, PARSING_AST, SUBSTEP_DONE,
-    TOKENIZATION,
 };
 use std::{path::Path, process::ExitCode};
 

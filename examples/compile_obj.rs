@@ -1,8 +1,8 @@
 #![expect(clippy::print_stderr, reason = "it's a cli tool")]
 
 use kaylang::{
-    back_end::Artifacts, error::MsgSimple, Color, Logger, COMPILING,
-    COULD_NOT_RUN_LINKER, DONE, LINKING, LINKING_ERROR, SUBSTEP_DONE,
+    COMPILING, COULD_NOT_RUN_LINKER, Color, DONE, LINKING, LINKING_ERROR, Logger, SUBSTEP_DONE,
+    back_end::Artifacts, error::MsgSimple,
 };
 use std::{path::Path, process::ExitCode};
 
@@ -36,10 +36,8 @@ fn main() -> ExitCode {
         match linker_result {
             Ok(output) => {
                 if !output.status.success() {
-                    let error = MsgSimple {
-                        kind: &LINKING_ERROR,
-                        message: &String::from_utf8_lossy(&output.stderr),
-                    };
+                    let error =
+                        MsgSimple { kind: &LINKING_ERROR, message: &String::from_utf8_lossy(&output.stderr) };
                     eprintln!("{error}");
                     return match output.status.code() {
                         Some(code) => ExitCode::from(code as u8),

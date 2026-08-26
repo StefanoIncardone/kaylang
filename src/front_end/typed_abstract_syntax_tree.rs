@@ -1,15 +1,15 @@
 use crate::front_end::{
+    Index32, MsgDisplay, MsgSeverity,
     src_file::DisplayPosition,
     tokenizer::{self, TokenKind, Tokens},
-    Index32, MsgDisplay, MsgSeverity,
 };
 use back_to_front::{digit, uoffset32};
 
 use super::{
+    IntoMsgInfo, Msg, MsgInfo,
     src_file::SrcCode,
     syntax_tree::{self as st, SyntaxTree},
-    tokenizer::{ascii, Op, TextIndex},
-    IntoMsgInfo, Msg, MsgInfo,
+    tokenizer::{Op, TextIndex, ascii},
 };
 use core::{fmt::Display, marker::PhantomData};
 extern crate alloc;
@@ -913,9 +913,7 @@ impl Expression<'_> {
                 let expression = &ast.expressions[*indexed_expression];
                 match expression.typ(ast) {
                     Type::Base(BaseType::Str) => Type::Base(BaseType::Ascii),
-                    base_type @ Type::Base(BaseType::I64 | BaseType::Bool | BaseType::Ascii) => {
-                        base_type
-                    },
+                    base_type @ Type::Base(BaseType::I64 | BaseType::Bool | BaseType::Ascii) => base_type,
                     Type::Array { base_type, .. } => Type::Base(base_type),
                 }
             },
@@ -1048,10 +1046,7 @@ pub struct TypedSyntaxTreeDisplay<'tast, 'st: 'tast, 'tokens: 'st, 'code: 'token
 impl<'tokens> TypedSyntaxTree<'_, 'tokens, '_> {
     #[must_use]
     #[inline(always)]
-    pub const fn display(
-        &self,
-        tokens: &'tokens Tokens<'_>,
-    ) -> TypedSyntaxTreeDisplay<'_, '_, 'tokens, '_> {
+    pub const fn display(&self, tokens: &'tokens Tokens<'_>) -> TypedSyntaxTreeDisplay<'_, '_, 'tokens, '_> {
         return TypedSyntaxTreeDisplay { typed_syntax_tree: self, tokens };
     }
 }
@@ -1303,8 +1298,7 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
         variable_index: VariableDefinitionIndex<'_>,
         indent: usize,
     ) -> core::fmt::Result {
-        let VariableDefinition { name, value, typ } =
-            &self.typed_syntax_tree.variables[variable_index];
+        let VariableDefinition { name, value, typ } = &self.typed_syntax_tree.variables[variable_index];
         let name_str = self.tokens.text[*name];
         writeln!(f, "{:>indent$}Name = {name_str}", "")?;
         writeln!(f, "{:>indent$}Type = {typ}", "")?;
@@ -1341,9 +1335,7 @@ pub struct Parser<'st, 'tokens: 'st, 'src: 'tokens, 'code: 'src, 'path: 'code> {
     scopes: Vec<Scope<'code>>,
 }
 
-impl<'st, 'tokens: 'st, 'src: 'tokens, 'code: 'src, 'path: 'code>
-    Parser<'st, 'tokens, 'src, 'code, 'path>
-{
+impl<'st, 'tokens: 'st, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'st, 'tokens, 'src, 'code, 'path> {
     #[expect(clippy::missing_errors_doc)]
     pub fn parse(
         src: &'src SrcCode<'code, 'path>,
@@ -1405,8 +1397,7 @@ impl<'st, 'tokens: 'st, 'src: 'tokens, 'code: 'src, 'path: 'code>
                 Ok(ParsedNode::Node(parsed_assignment))
             },
             st::Node::PrefixAssignment { target, operator, operator_column, .. } => {
-                let parsed_assignment =
-                    self.prefix_assignment(*target, *operator, *operator_column)?;
+                let parsed_assignment = self.prefix_assignment(*target, *operator, *operator_column)?;
                 Ok(ParsedNode::Node(parsed_assignment))
             },
 
@@ -1535,8 +1526,7 @@ impl<'st, 'tokens: 'st, 'src: 'tokens, 'code: 'src, 'path: 'code>
         error_message: Cow<'static, str>,
         error_cause_message: Cow<'static, str>,
     ) -> ! {
-        let DisplayPosition { line, column, display_column } =
-            self.src.display_position(absolute_column);
+        let DisplayPosition { line, column, display_column } = self.src.display_position(absolute_column);
         let line_span = self.src.lines[line as usize - 1];
         let line_text = &self.src.code()[line_span.start as usize..line_span.end as usize];
 
@@ -1589,8 +1579,7 @@ impl<'st, 'code: 'st> Parser<'st, '_, '_, 'code, '_> {
             let next_node_index_index = st::NodeIndex::new_uoffset32(next_node_index);
             let next_node = &self.syntax_tree.nodes[next_node_index_index];
             let st::Node::Semicolon { .. } = next_node else {
-                let peeked_node_index_index =
-                    st::NodeIndex::new_uoffset32(next_node_index_index.0 + 1);
+                let peeked_node_index_index = st::NodeIndex::new_uoffset32(next_node_index_index.0 + 1);
                 return Some(Peeked { node: next_node, index: peeked_node_index_index });
             };
         }
@@ -1699,21 +1688,15 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             st::Expression::False { .. } => TokenKind::False,
             st::Expression::True { .. } => TokenKind::True,
             st::Expression::DecimalInteger { literal, .. } => TokenKind::DecimalInteger(*literal),
-            st::Expression::DecimalIntegerPrefix { literal, .. } => {
-                TokenKind::DecimalIntegerPrefix(*literal)
-            },
+            st::Expression::DecimalIntegerPrefix { literal, .. } => TokenKind::DecimalIntegerPrefix(*literal),
             st::Expression::BinaryInteger { literal, .. } => TokenKind::BinaryInteger(*literal),
             st::Expression::OctalInteger { literal, .. } => TokenKind::OctalInteger(*literal),
-            st::Expression::HexadecimalInteger { literal, .. } => {
-                TokenKind::HexadecimalInteger(*literal)
-            },
+            st::Expression::HexadecimalInteger { literal, .. } => TokenKind::HexadecimalInteger(*literal),
             st::Expression::Ascii { literal, value, .. } => TokenKind::Ascii(*literal, *value),
             st::Expression::Str { literal, .. } => TokenKind::Str(*literal),
             st::Expression::RawStr { literal, .. } => TokenKind::RawStr(*literal),
             st::Expression::Identifier { identifier, .. } => TokenKind::Identifier(*identifier),
-            st::Expression::IdentifierStr { identifier, .. } => {
-                TokenKind::IdentifierStr(*identifier)
-            },
+            st::Expression::IdentifierStr { identifier, .. } => TokenKind::IdentifierStr(*identifier),
             st::Expression::Array { .. } | st::Expression::ArrayTrailingItem { .. } => {
                 TokenKind::OpenSquareBracket
             },
@@ -1758,9 +1741,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             st::Expression::Binary { left_operand, .. } => {
                 return self.first_token_column(*left_operand);
             },
-            st::Expression::Parenthesis { open_round_bracket_column, .. } => {
-                *open_round_bracket_column
-            },
+            st::Expression::Parenthesis { open_round_bracket_column, .. } => *open_round_bracket_column,
             st::Expression::Index { indexed_expression, .. } => {
                 return self.first_token_column(*indexed_expression);
             },
@@ -1846,8 +1827,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             st::Expression::True { column } => Expression::True { column: *column },
             st::Expression::DecimalInteger { literal, column } => {
                 let literal_text = self.tokens.text[*literal];
-                let Ok(value) = Self::parse_positive_i64(literal_text, digit::Base::Decimal, false)
-                else {
+                let Ok(value) = Self::parse_positive_i64(literal_text, digit::Base::Decimal, false) else {
                     return Err(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::DecimalIntegerOverflow,
@@ -1859,8 +1839,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             },
             st::Expression::DecimalIntegerPrefix { literal, column } => {
                 let literal_text = self.tokens.text[*literal];
-                let Ok(value) = Self::parse_positive_i64(literal_text, digit::Base::Decimal, true)
-                else {
+                let Ok(value) = Self::parse_positive_i64(literal_text, digit::Base::Decimal, true) else {
                     return Err(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::DecimalIntegerOverflow,
@@ -1872,8 +1851,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             },
             st::Expression::BinaryInteger { literal, column } => {
                 let literal_text = self.tokens.text[*literal];
-                let Ok(value) = Self::parse_positive_i64(literal_text, digit::Base::Binary, false)
-                else {
+                let Ok(value) = Self::parse_positive_i64(literal_text, digit::Base::Binary, false) else {
                     return Err(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::BinaryIntegerOverflow,
@@ -1885,8 +1863,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             },
             st::Expression::OctalInteger { literal, column } => {
                 let literal_text = self.tokens.text[*literal];
-                let Ok(value) = Self::parse_positive_i64(literal_text, digit::Base::Octal, false)
-                else {
+                let Ok(value) = Self::parse_positive_i64(literal_text, digit::Base::Octal, false) else {
                     return Err(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::OctalIntegerOverflow,
@@ -1898,8 +1875,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             },
             st::Expression::HexadecimalInteger { literal, column } => {
                 let literal_text = self.tokens.text[*literal];
-                let Ok(value) =
-                    Self::parse_positive_i64(literal_text, digit::Base::Hexadecimal, false)
+                let Ok(value) = Self::parse_positive_i64(literal_text, digit::Base::Hexadecimal, false)
                 else {
                     return Err(Msg {
                         severity: MsgSeverity::Error,
@@ -1913,8 +1889,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             st::Expression::Ascii { value, column, .. } => {
                 Expression::Ascii { character: *value, column: *column }
             },
-            st::Expression::Str { literal, column }
-            | st::Expression::RawStr { literal, column } => {
+            st::Expression::Str { literal, column } | st::Expression::RawStr { literal, column } => {
                 Expression::Str { literal: *literal, column: *column }
             },
             st::Expression::Identifier { identifier, column }
@@ -1940,14 +1915,9 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 Expression::Variable { variable, column: *column }
             },
 
-            st::Expression::Array {
-                items_start, items_len, open_square_bracket_column, ..
-            }
+            st::Expression::Array { items_start, items_len, open_square_bracket_column, .. }
             | st::Expression::ArrayTrailingItem {
-                items_start,
-                items_len,
-                open_square_bracket_column,
-                ..
+                items_start, items_len, open_square_bracket_column, ..
             } => {
                 if *items_len == 0 {
                     return Err(Msg {
@@ -1995,8 +1965,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                     let item = &self.syntax_tree.array_items[item_index];
                     item_index.0 += 1;
 
-                    let parsed_item =
-                        self.expression(item.expression, expected_array_items_type_hint)?;
+                    let parsed_item = self.expression(item.expression, expected_array_items_type_hint)?;
                     let parsed_item_type = parsed_item.typ(&self.tast);
                     if let Type::Array { .. } = parsed_item_type {
                         return Err(Msg {
@@ -2078,8 +2047,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             operator_column: *operator_column,
                             right_operand: self.tast.new_expression(right_operand_expression),
                         },
-                        Type::Base(BaseType::Bool | BaseType::Ascii | BaseType::Str)
-                        | Type::Array { .. } => {
+                        Type::Base(BaseType::Bool | BaseType::Ascii | BaseType::Str) | Type::Array { .. } => {
                             return Err(Msg {
                                 severity: MsgSeverity::Error,
                                 kind: ErrorKind::CannotTakeAbsoluteValueOf(right_operand_type),
@@ -2089,36 +2057,31 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         },
                     }
                 },
-                st::PrefixOp::Minus
-                | st::PrefixOp::WrappingMinus
-                | st::PrefixOp::SaturatingMinus => {
+                st::PrefixOp::Minus | st::PrefixOp::WrappingMinus | st::PrefixOp::SaturatingMinus => {
                     let st_right_operand = &self.syntax_tree.expressions[*right_operand];
                     match st_right_operand {
                         st::Expression::BinaryInteger { literal, column } => {
                             let literal_text = self.tokens.text[*literal];
-                            let right_operand_expression = match Self::parse_negative_i64(
-                                literal_text,
-                                digit::Base::Binary,
-                                false,
-                            ) {
-                                Ok(0) => {
-                                    return Err(Msg {
-                                        severity: MsgSeverity::Error,
-                                        kind: ErrorKind::MinusZeroInteger,
-                                        col: *column,
-                                        pointers_count: literal_text.len() as uoffset32,
-                                    })
-                                },
-                                Ok(integer) => Expression::I64 { value: integer, column: *column },
-                                Err(()) => {
-                                    return Err(Msg {
-                                        severity: MsgSeverity::Error,
-                                        kind: ErrorKind::BinaryIntegerUnderflow,
-                                        col: *column,
-                                        pointers_count: literal_text.len() as uoffset32,
-                                    })
-                                },
-                            };
+                            let right_operand_expression =
+                                match Self::parse_negative_i64(literal_text, digit::Base::Binary, false) {
+                                    Ok(0) => {
+                                        return Err(Msg {
+                                            severity: MsgSeverity::Error,
+                                            kind: ErrorKind::MinusZeroInteger,
+                                            col: *column,
+                                            pointers_count: literal_text.len() as uoffset32,
+                                        });
+                                    },
+                                    Ok(integer) => Expression::I64 { value: integer, column: *column },
+                                    Err(()) => {
+                                        return Err(Msg {
+                                            severity: MsgSeverity::Error,
+                                            kind: ErrorKind::BinaryIntegerUnderflow,
+                                            col: *column,
+                                            pointers_count: literal_text.len() as uoffset32,
+                                        });
+                                    },
+                                };
 
                             Expression::Prefix {
                                 operator: (*operator).into(),
@@ -2128,29 +2091,26 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         },
                         st::Expression::OctalInteger { literal, column } => {
                             let literal_text = self.tokens.text[*literal];
-                            let right_operand_expression = match Self::parse_negative_i64(
-                                literal_text,
-                                digit::Base::Octal,
-                                false,
-                            ) {
-                                Ok(0) => {
-                                    return Err(Msg {
-                                        severity: MsgSeverity::Error,
-                                        kind: ErrorKind::MinusZeroInteger,
-                                        col: *column,
-                                        pointers_count: literal_text.len() as uoffset32,
-                                    })
-                                },
-                                Ok(integer) => Expression::I64 { value: integer, column: *column },
-                                Err(()) => {
-                                    return Err(Msg {
-                                        severity: MsgSeverity::Error,
-                                        kind: ErrorKind::OctalIntegerUnderflow,
-                                        col: *column,
-                                        pointers_count: literal_text.len() as uoffset32,
-                                    })
-                                },
-                            };
+                            let right_operand_expression =
+                                match Self::parse_negative_i64(literal_text, digit::Base::Octal, false) {
+                                    Ok(0) => {
+                                        return Err(Msg {
+                                            severity: MsgSeverity::Error,
+                                            kind: ErrorKind::MinusZeroInteger,
+                                            col: *column,
+                                            pointers_count: literal_text.len() as uoffset32,
+                                        });
+                                    },
+                                    Ok(integer) => Expression::I64 { value: integer, column: *column },
+                                    Err(()) => {
+                                        return Err(Msg {
+                                            severity: MsgSeverity::Error,
+                                            kind: ErrorKind::OctalIntegerUnderflow,
+                                            col: *column,
+                                            pointers_count: literal_text.len() as uoffset32,
+                                        });
+                                    },
+                                };
 
                             Expression::Prefix {
                                 operator: (*operator).into(),
@@ -2160,29 +2120,26 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         },
                         st::Expression::DecimalInteger { literal, column } => {
                             let literal_text = self.tokens.text[*literal];
-                            let right_operand_expression = match Self::parse_negative_i64(
-                                literal_text,
-                                digit::Base::Decimal,
-                                false,
-                            ) {
-                                Ok(0) => {
-                                    return Err(Msg {
-                                        severity: MsgSeverity::Error,
-                                        kind: ErrorKind::MinusZeroInteger,
-                                        col: *column,
-                                        pointers_count: literal_text.len() as uoffset32,
-                                    })
-                                },
-                                Ok(integer) => Expression::I64 { value: integer, column: *column },
-                                Err(()) => {
-                                    return Err(Msg {
-                                        severity: MsgSeverity::Error,
-                                        kind: ErrorKind::DecimalIntegerUnderflow,
-                                        col: *column,
-                                        pointers_count: literal_text.len() as uoffset32,
-                                    })
-                                },
-                            };
+                            let right_operand_expression =
+                                match Self::parse_negative_i64(literal_text, digit::Base::Decimal, false) {
+                                    Ok(0) => {
+                                        return Err(Msg {
+                                            severity: MsgSeverity::Error,
+                                            kind: ErrorKind::MinusZeroInteger,
+                                            col: *column,
+                                            pointers_count: literal_text.len() as uoffset32,
+                                        });
+                                    },
+                                    Ok(integer) => Expression::I64 { value: integer, column: *column },
+                                    Err(()) => {
+                                        return Err(Msg {
+                                            severity: MsgSeverity::Error,
+                                            kind: ErrorKind::DecimalIntegerUnderflow,
+                                            col: *column,
+                                            pointers_count: literal_text.len() as uoffset32,
+                                        });
+                                    },
+                                };
 
                             Expression::Prefix {
                                 operator: (*operator).into(),
@@ -2192,29 +2149,26 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         },
                         st::Expression::DecimalIntegerPrefix { literal, column } => {
                             let literal_text = self.tokens.text[*literal];
-                            let right_operand_expression = match Self::parse_negative_i64(
-                                literal_text,
-                                digit::Base::Decimal,
-                                true,
-                            ) {
-                                Ok(0) => {
-                                    return Err(Msg {
-                                        severity: MsgSeverity::Error,
-                                        kind: ErrorKind::MinusZeroInteger,
-                                        col: *column,
-                                        pointers_count: literal_text.len() as uoffset32,
-                                    })
-                                },
-                                Ok(integer) => Expression::I64 { value: integer, column: *column },
-                                Err(()) => {
-                                    return Err(Msg {
-                                        severity: MsgSeverity::Error,
-                                        kind: ErrorKind::DecimalIntegerUnderflow,
-                                        col: *column,
-                                        pointers_count: literal_text.len() as uoffset32,
-                                    })
-                                },
-                            };
+                            let right_operand_expression =
+                                match Self::parse_negative_i64(literal_text, digit::Base::Decimal, true) {
+                                    Ok(0) => {
+                                        return Err(Msg {
+                                            severity: MsgSeverity::Error,
+                                            kind: ErrorKind::MinusZeroInteger,
+                                            col: *column,
+                                            pointers_count: literal_text.len() as uoffset32,
+                                        });
+                                    },
+                                    Ok(integer) => Expression::I64 { value: integer, column: *column },
+                                    Err(()) => {
+                                        return Err(Msg {
+                                            severity: MsgSeverity::Error,
+                                            kind: ErrorKind::DecimalIntegerUnderflow,
+                                            col: *column,
+                                            pointers_count: literal_text.len() as uoffset32,
+                                        });
+                                    },
+                                };
 
                             Expression::Prefix {
                                 operator: (*operator).into(),
@@ -2224,29 +2178,27 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         },
                         st::Expression::HexadecimalInteger { literal, column } => {
                             let literal_text = self.tokens.text[*literal];
-                            let right_operand_expression = match Self::parse_negative_i64(
-                                literal_text,
-                                digit::Base::Hexadecimal,
-                                false,
-                            ) {
-                                Ok(0) => {
-                                    return Err(Msg {
-                                        severity: MsgSeverity::Error,
-                                        kind: ErrorKind::MinusZeroInteger,
-                                        col: *column,
-                                        pointers_count: literal_text.len() as uoffset32,
-                                    })
-                                },
-                                Ok(integer) => Expression::I64 { value: integer, column: *column },
-                                Err(()) => {
-                                    return Err(Msg {
-                                        severity: MsgSeverity::Error,
-                                        kind: ErrorKind::HexadecimalIntegerUnderflow,
-                                        col: *column,
-                                        pointers_count: literal_text.len() as uoffset32,
-                                    })
-                                },
-                            };
+                            let right_operand_expression =
+                                match Self::parse_negative_i64(literal_text, digit::Base::Hexadecimal, false)
+                                {
+                                    Ok(0) => {
+                                        return Err(Msg {
+                                            severity: MsgSeverity::Error,
+                                            kind: ErrorKind::MinusZeroInteger,
+                                            col: *column,
+                                            pointers_count: literal_text.len() as uoffset32,
+                                        });
+                                    },
+                                    Ok(integer) => Expression::I64 { value: integer, column: *column },
+                                    Err(()) => {
+                                        return Err(Msg {
+                                            severity: MsgSeverity::Error,
+                                            kind: ErrorKind::HexadecimalIntegerUnderflow,
+                                            col: *column,
+                                            pointers_count: literal_text.len() as uoffset32,
+                                        });
+                                    },
+                                };
 
                             Expression::Prefix {
                                 operator: (*operator).into(),
@@ -2271,22 +2223,19 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             let right_operand_type = right_operand_expression.typ(&self.tast);
                             match right_operand_type {
                                 Type::Base(BaseType::I64 | BaseType::Ascii)
-                                | Type::Array {
-                                    base_type: BaseType::I64 | BaseType::Ascii, ..
-                                } => Expression::Prefix {
-                                    operator: (*operator).into(),
-                                    operator_column: *operator_column,
-                                    right_operand: self
-                                        .tast
-                                        .new_expression(right_operand_expression),
+                                | Type::Array { base_type: BaseType::I64 | BaseType::Ascii, .. } => {
+                                    Expression::Prefix {
+                                        operator: (*operator).into(),
+                                        operator_column: *operator_column,
+                                        right_operand: self.tast.new_expression(right_operand_expression),
+                                    }
                                 },
                                 Type::Base(BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
                                     return Err(Msg {
                                         severity: MsgSeverity::Error,
                                         kind: ErrorKind::CannotNegate(right_operand_type),
                                         col: self.first_token_column(*right_operand),
-                                        pointers_count: self
-                                            .first_token_display_len(*right_operand),
+                                        pointers_count: self.first_token_display_len(*right_operand),
                                     });
                                 },
                             }
@@ -2494,8 +2443,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 let indexed_expression_type = indexed_expression_expression.typ(&self.tast);
                 match indexed_expression_type {
                     Type::Base(BaseType::Str) | Type::Array { .. } => {
-                        let index_expression_expression =
-                            self.expression(*index_expression, None)?;
+                        let index_expression_expression = self.expression(*index_expression, None)?;
                         let index_expression_type = index_expression_expression.typ(&self.tast);
                         match index_expression_type {
                             Type::Base(BaseType::I64) => {},
@@ -2511,9 +2459,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         }
 
                         Expression::Index {
-                            indexed_expression: self
-                                .tast
-                                .new_expression(indexed_expression_expression),
+                            indexed_expression: self.tast.new_expression(indexed_expression_expression),
                             open_square_bracket_column: *open_square_bracket_column,
                             index_expression: self.tast.new_expression(index_expression_expression),
                         }
@@ -2524,18 +2470,14 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             kind: ErrorKind::CannotIndexNonArrayLikeType(indexed_expression_type),
                             col: self.first_token_column(*indexed_expression),
                             pointers_count: self.first_token_display_len(*indexed_expression),
-                        })
+                        });
                     },
                 }
             },
         };
 
         if let Some(expected_expression_type) = expected_type {
-            self.expect_expression_type(
-                st_expression_index,
-                expected_expression_type,
-                &expression,
-            )?;
+            self.expect_expression_type(st_expression_index, expected_expression_type, &expression)?;
         }
 
         return Ok(expression);
@@ -2551,10 +2493,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         if expression_type != *expected_type {
             return Err(Msg {
                 severity: MsgSeverity::Error,
-                kind: ErrorKind::TypeMismatch {
-                    expected: expected_type.clone(),
-                    actual: expression_type,
-                },
+                kind: ErrorKind::TypeMismatch { expected: expected_type.clone(), actual: expression_type },
                 col: self.first_token_column(st_expression_index),
                 pointers_count: self.first_token_display_len(st_expression_index),
             });
@@ -2576,10 +2515,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
 
 impl<'code> TypedSyntaxTree<'_, '_, 'code> {
     #[inline]
-    fn new_variable(
-        &mut self,
-        variable: VariableDefinition<'code>,
-    ) -> VariableDefinitionIndex<'code> {
+    fn new_variable(&mut self, variable: VariableDefinition<'code>) -> VariableDefinitionIndex<'code> {
         let index = VariableDefinitionIndex::new(self.variables.len());
         self.variables.push(variable);
         return index;
@@ -2658,8 +2594,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             ..
         } in array_dimensions_iter
         {
-            let dimension_expression_expression =
-                &self.expression(*other_dimension_expression, None)?;
+            let dimension_expression_expression = &self.expression(*other_dimension_expression, None)?;
             let Expression::I64 { value: other_dimension_len, column: other_dimension_column } =
                 dimension_expression_expression
             else {
@@ -2697,10 +2632,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             });
         }
 
-        return Ok(Type::Array {
-            base_type,
-            len: *len as u64,
-        });
+        return Ok(Type::Array { base_type, len: *len as u64 });
     }
 
     fn parse_variable(
@@ -2786,9 +2718,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             },
             Expression::Index { indexed_expression, .. } => {
                 let mut base_indexed = &self.tast.expressions[*indexed_expression];
-                while let Expression::Index {
-                    indexed_expression: inner_indexed_expression, ..
-                } = base_indexed
+                while let Expression::Index { indexed_expression: inner_indexed_expression, .. } =
+                    base_indexed
                 {
                     base_indexed = &self.tast.expressions[*inner_indexed_expression];
                 }
@@ -2940,13 +2871,10 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                     (target_type, new_value_type) => {
                         return Err(Msg {
                             severity: MsgSeverity::Error,
-                            kind: ErrorKind::TypeMismatch {
-                                expected: target_type,
-                                actual: new_value_type,
-                            },
+                            kind: ErrorKind::TypeMismatch { expected: target_type, actual: new_value_type },
                             col: self.first_token_column(new_value),
                             pointers_count: self.first_token_display_len(new_value),
-                        })
+                        });
                     },
                 }
 
@@ -2960,8 +2888,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             st::BinaryAssignmentOp::And | st::BinaryAssignmentOp::Or => {
                 match parsed_target_type {
                     Type::Base(BaseType::Bool) => {},
-                    Type::Base(BaseType::Ascii | BaseType::I64 | BaseType::Str)
-                    | Type::Array { .. } => {
+                    Type::Base(BaseType::Ascii | BaseType::I64 | BaseType::Str) | Type::Array { .. } => {
                         return Err(Msg {
                             severity: MsgSeverity::Error,
                             kind: ErrorKind::LeftOperandTypeMismatch {
@@ -2976,8 +2903,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
 
                 match parsed_new_value_type {
                     Type::Base(BaseType::Bool) => {},
-                    Type::Base(BaseType::Ascii | BaseType::I64 | BaseType::Str)
-                    | Type::Array { .. } => {
+                    Type::Base(BaseType::Ascii | BaseType::I64 | BaseType::Str) | Type::Array { .. } => {
                         return Err(Msg {
                             severity: MsgSeverity::Error,
                             kind: ErrorKind::RightOperandTypeMismatch {
@@ -3026,9 +2952,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             },
             Expression::Index { indexed_expression, .. } => {
                 let mut base_indexed = &self.tast.expressions[*indexed_expression];
-                while let Expression::Index {
-                    indexed_expression: inner_indexed_expression, ..
-                } = base_indexed
+                while let Expression::Index { indexed_expression: inner_indexed_expression, .. } =
+                    base_indexed
                 {
                     base_indexed = &self.tast.expressions[*inner_indexed_expression];
                 }
@@ -3103,8 +3028,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             | st::PrefixAssignmentOp::SaturatingPlusEquals => {
                 match parsed_target_type {
                     Type::Base(BaseType::I64) => {},
-                    Type::Base(BaseType::Str | BaseType::Ascii | BaseType::Bool)
-                    | Type::Array { .. } => {
+                    Type::Base(BaseType::Str | BaseType::Ascii | BaseType::Bool) | Type::Array { .. } => {
                         return Err(Msg {
                             severity: MsgSeverity::Error,
                             kind: ErrorKind::CannotTakeAbsoluteValueOf(parsed_target_type),
@@ -3320,17 +3244,14 @@ impl IntoMsgInfo for ErrorKind {
                 .into(),
             ),
 
-            Self::MinusZeroInteger => (
-                "invalid integer literal".into(),
-                "-0 is not a valid two's complement integer".into(),
-            ),
+            Self::MinusZeroInteger => {
+                ("invalid integer literal".into(), "-0 is not a valid two's complement integer".into())
+            },
 
             Self::VariableNotPreviouslyDefined => {
                 ("variable not previously defined".into(), "was not previously defined".into())
             },
-            Self::VariableAlreadyDefined => {
-                ("variable already defined".into(), "was already defined".into())
-            },
+            Self::VariableAlreadyDefined => ("variable already defined".into(), "was already defined".into()),
             Self::VariableInTypeAnnotation => (
                 "invalid type annotation".into(),
                 "variable names are not allowed in type annotations".into(),
@@ -3367,21 +3288,18 @@ impl IntoMsgInfo for ErrorKind {
 
             Self::CannotTakeLenOf(invalid_type) => (
                 "invalid expression".into(),
-                format!("cannot take the length of '{invalid_type}', only of arrays and strings")
-                    .into(),
+                format!("cannot take the length of '{invalid_type}', only of arrays and strings").into(),
             ),
             Self::CannotTakeAbsoluteValueOf(invalid_type) => (
                 "invalid expression".into(),
                 format!("cannot take the absolute value of '{invalid_type}'").into(),
             ),
-            Self::CannotNegate(invalid_type) => (
-                "invalid expression".into(),
-                format!("cannot negate value of type '{invalid_type}'").into(),
-            ),
-            Self::CannotInvert(invalid_type) => (
-                "invalid expression".into(),
-                format!("cannot invert value of type '{invalid_type}'").into(),
-            ),
+            Self::CannotNegate(invalid_type) => {
+                ("invalid expression".into(), format!("cannot negate value of type '{invalid_type}'").into())
+            },
+            Self::CannotInvert(invalid_type) => {
+                ("invalid expression".into(), format!("cannot invert value of type '{invalid_type}'").into())
+            },
             Self::CannotCompareOperands { left_operand_type, right_operand_type } => (
                 "invalid expression".into(),
                 format!("cannot compare '{left_operand_type}' to '{right_operand_type}'").into(),
@@ -3389,27 +3307,23 @@ impl IntoMsgInfo for ErrorKind {
             Self::CannotChainComparisons => {
                 ("invalid expression".into(), "comparison operators cannot be chained".into())
             },
-            Self::CannotIndexIntoExpression => (
-                "invalid expression".into(),
-                "cannot index into an expression, only to variables".into(),
-            ),
-            Self::ExpectedIntegerExpressionInArrayIndex => (
-                "invalid expression".into(),
-                "array index must be followed by an integer literal".into(),
-            ),
+            Self::CannotIndexIntoExpression => {
+                ("invalid expression".into(), "cannot index into an expression, only to variables".into())
+            },
+            Self::ExpectedIntegerExpressionInArrayIndex => {
+                ("invalid expression".into(), "array index must be followed by an integer literal".into())
+            },
             Self::CannotIndexNonArrayLikeType(non_indexable_type) => (
                 "invalid expression".into(),
                 format!("cannot index into a value of type '{non_indexable_type}'").into(),
             ),
             Self::LeftOperandTypeMismatch { expected, actual } => (
                 "invalid expression".into(),
-                format!("expected expression of type '{expected}', but is preceded by '{actual}'")
-                    .into(),
+                format!("expected expression of type '{expected}', but is preceded by '{actual}'").into(),
             ),
             Self::RightOperandTypeMismatch { expected, actual } => (
                 "invalid expression".into(),
-                format!("expected expression of type '{expected}', but is followed by '{actual}'")
-                    .into(),
+                format!("expected expression of type '{expected}', but is followed by '{actual}'").into(),
             ),
             Self::TypeMismatch { expected, actual } => (
                 "invalid expression".into(),

@@ -4,12 +4,15 @@
 
 use back_to_front::{digit, uoffset32};
 
-use crate::front_end::{tokenizer::{self, EscapedAscii}, MsgSeverity};
+use crate::front_end::{
+    MsgSeverity,
+    tokenizer::{self, EscapedAscii},
+};
 
 use super::{
-    src_file::{Position, SrcCode},
-    tokenizer::{ascii, Op, Token, TokenIndex, TokenKind, Tokens},
     IntoMsgInfo, Msg, MsgInfo,
+    src_file::{Position, SrcCode},
+    tokenizer::{Op, Token, TokenIndex, TokenKind, Tokens, ascii},
 };
 use core::fmt::{Debug, Display};
 
@@ -606,10 +609,7 @@ impl TypeOf for Expression {
 
 impl<'ast, 'code: 'ast> Expression {
     #[inline(always)]
-    pub(crate) const fn display(
-        &'ast self,
-        ast: &'ast Ast<'code>,
-    ) -> ExpressionDisplay<'ast, 'code> {
+    pub(crate) const fn display(&'ast self, ast: &'ast Ast<'code>) -> ExpressionDisplay<'ast, 'code> {
         return ExpressionDisplay { ast, expr: self };
     }
 }
@@ -702,8 +702,7 @@ impl<'ast, 'code: 'ast> ExpressionDisplay<'ast, 'code> {
             },
             Expression::Variable { variable_index, .. } => {
                 let variable = &self.ast.variables[*variable_index as usize];
-                let variable_name_str =
-                    unsafe { core::str::from_utf8_unchecked(variable.name.as_bytes()) };
+                let variable_name_str = unsafe { core::str::from_utf8_unchecked(variable.name.as_bytes()) };
                 write!(f, "{variable_name_str}")
             },
         };
@@ -919,8 +918,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 let _ = self.next_token_bounded(Expected::Expression)?;
                 let expression = self.expression()?;
                 let assignment_op: PrefixAssignmentOp = op.into();
-                let reassignment =
-                    self.prefix_reassignment(expression, token, assignment_op, token)?;
+                let reassignment = self.prefix_reassignment(expression, token, assignment_op, token)?;
 
                 self.semicolon()?;
                 Ok(reassignment)
@@ -962,14 +960,11 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 match after_expression_token.kind {
                     TokenKind::SemiColon => {
                         if let Expression::Array { .. } = expression {
-                            let temporary_value_index =
-                                self.ast.temporaries.len() as ExpressionIndex;
+                            let temporary_value_index = self.ast.temporaries.len() as ExpressionIndex;
                             let expression_type = expression.typ();
                             self.ast.temporaries.push(expression);
-                            expression = Expression::Temporary {
-                                typ: expression_type,
-                                temporary_value_index,
-                            };
+                            expression =
+                                Expression::Temporary { typ: expression_type, temporary_value_index };
                         }
 
                         _ = self.next_token();
@@ -1006,12 +1001,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         | Op::OrEquals),
                     ) => {
                         let assignment_op: AssignmentOp = op.into();
-                        let reassignment = self.reassignment(
-                            expression,
-                            token,
-                            assignment_op,
-                            after_expression_token,
-                        )?;
+                        let reassignment =
+                            self.reassignment(expression, token, assignment_op, after_expression_token)?;
 
                         self.semicolon()?;
                         Ok(reassignment)
@@ -1163,9 +1154,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     file = self.src.path().display(),
                 );
             },
-            TokenKind::CloseCurlyBracket
-            | TokenKind::CloseSquareBracket
-            | TokenKind::CloseRoundBracket => {
+            TokenKind::CloseCurlyBracket | TokenKind::CloseSquareBracket | TokenKind::CloseRoundBracket => {
                 let Position { line, column } = self.src.position(token.col);
                 unreachable!(
                     "should have been cought during tokenization: {file}:{line}:{column}",
@@ -1395,11 +1384,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         return Ok(());
     }
 
-    fn assert_lhs_is_bool(
-        &self,
-        op_token: Token<'code>,
-        lhs: &Expression,
-    ) -> Result<(), Msg<ErrorKind>> {
+    fn assert_lhs_is_bool(&self, op_token: Token<'code>, lhs: &Expression) -> Result<(), Msg<ErrorKind>> {
         let lhs_type = lhs.typ();
         let Type::Base(BaseType::Bool) = lhs_type else {
             return Err(Msg {
@@ -1413,11 +1398,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         return Ok(());
     }
 
-    fn assert_rhs_is_bool(
-        &self,
-        op_token: Token<'code>,
-        rhs: &Expression,
-    ) -> Result<(), Msg<ErrorKind>> {
+    fn assert_rhs_is_bool(&self, op_token: Token<'code>, rhs: &Expression) -> Result<(), Msg<ErrorKind>> {
         let rhs_type = rhs.typ();
         let Type::Base(BaseType::Bool) = rhs_type else {
             return Err(Msg {
@@ -1445,11 +1426,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         };
     }
 
-    fn parse_positive_i64(
-        literal_str: &'code str,
-        base: digit::Base,
-        extended_prefix: bool,
-    ) -> Option<i64> {
+    fn parse_positive_i64(literal_str: &'code str, base: digit::Base, extended_prefix: bool) -> Option<i64> {
         let mut integer: i64 = 0;
         let mut digit_index = if extended_prefix {
             tokenizer::Base(base).prefix_extended().len()
@@ -1480,11 +1457,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         return Some(integer);
     }
 
-    fn parse_negative_i64(
-        literal_str: &'code str,
-        base: digit::Base,
-        extended_prefix: bool,
-    ) -> Option<i64> {
+    fn parse_negative_i64(literal_str: &'code str, base: digit::Base, extended_prefix: bool) -> Option<i64> {
         let mut integer: i64 = 0;
         let mut digit_index = if extended_prefix {
             tokenizer::Base(base).prefix_extended().len()
@@ -1761,8 +1734,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
                 let first_item = self.expression()?;
 
-                bracket_or_semicolon_token =
-                    self.current_token(Expected::SemicolonOrClosingSquareBracket)?;
+                bracket_or_semicolon_token = self.current_token(Expected::SemicolonOrClosingSquareBracket)?;
 
                 if let TokenKind::Comma = bracket_or_semicolon_token.kind {
                     break 'array Err(Msg {
@@ -1785,7 +1757,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             kind: ErrorKind::NestedArrayNotSupportedYet,
                             col: current_token.col,
                             pointers_count: current_token.kind.display_len(self.tokens),
-                        })
+                        });
                     },
                 };
                 let mut items = vec![first_item];
@@ -1809,9 +1781,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                 expected: Type::Base(items_type),
                             },
                             col: bracket_or_semicolon_token.col,
-                            pointers_count: bracket_or_semicolon_token
-                                .kind
-                                .display_len(self.tokens),
+                            pointers_count: bracket_or_semicolon_token.kind.display_len(self.tokens),
                         });
                     }
 
@@ -1834,9 +1804,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             severity: MsgSeverity::Error,
                             kind: ErrorKind::UseSemicolonInsteadOfComma,
                             col: bracket_or_semicolon_token.col,
-                            pointers_count: bracket_or_semicolon_token
-                                .kind
-                                .display_len(self.tokens),
+                            pointers_count: bracket_or_semicolon_token.kind.display_len(self.tokens),
                         });
                     }
                     if let TokenKind::SemiColon = bracket_or_semicolon_token.kind {
@@ -1898,9 +1866,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             Ok(operand)
                         }
                     },
-                    invalid_type @ (Type::Base(
-                        BaseType::Ascii | BaseType::Bool | BaseType::Str,
-                    )
+                    invalid_type @ (Type::Base(BaseType::Ascii | BaseType::Bool | BaseType::Str)
                     | Type::Array { .. }) => Err(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotTakeAbsoluteValueOf(invalid_type),
@@ -1932,18 +1898,14 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression
-                                        .kind
-                                        .display_len(self.tokens),
+                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
                                 }),
                                 Some(integer) => Ok(Expression::I64(integer)),
                                 None => Err(Msg {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::BinaryIntegerUnderflow,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression
-                                        .kind
-                                        .display_len(self.tokens),
+                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
                                 }),
                             }
                         } else {
@@ -1953,9 +1915,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::BinaryIntegerOverflow,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression
-                                        .kind
-                                        .display_len(self.tokens),
+                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
                                 }),
                             }
                         }
@@ -1968,18 +1928,14 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression
-                                        .kind
-                                        .display_len(self.tokens),
+                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
                                 }),
                                 Some(integer) => Ok(Expression::I64(integer)),
                                 None => Err(Msg {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::OctalIntegerUnderflow,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression
-                                        .kind
-                                        .display_len(self.tokens),
+                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
                                 }),
                             }
                         } else {
@@ -1989,9 +1945,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::OctalIntegerOverflow,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression
-                                        .kind
-                                        .display_len(self.tokens),
+                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
                                 }),
                             }
                         }
@@ -2004,18 +1958,14 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression
-                                        .kind
-                                        .display_len(self.tokens),
+                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
                                 }),
                                 Some(integer) => Ok(Expression::I64(integer)),
                                 None => Err(Msg {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::DecimalIntegerUnderflow,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression
-                                        .kind
-                                        .display_len(self.tokens),
+                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
                                 }),
                             }
                         } else {
@@ -2025,9 +1975,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::DecimalIntegerOverflow,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression
-                                        .kind
-                                        .display_len(self.tokens),
+                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
                                 }),
                             }
                         }
@@ -2040,18 +1988,14 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression
-                                        .kind
-                                        .display_len(self.tokens),
+                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
                                 }),
                                 Some(integer) => Ok(Expression::I64(integer)),
                                 None => Err(Msg {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::DecimalIntegerUnderflow,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression
-                                        .kind
-                                        .display_len(self.tokens),
+                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
                                 }),
                             }
                         } else {
@@ -2061,9 +2005,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::DecimalIntegerOverflow,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression
-                                        .kind
-                                        .display_len(self.tokens),
+                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
                                 }),
                             }
                         }
@@ -2071,37 +2013,29 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     TokenKind::HexadecimalInteger(literal_index) => {
                         let literal = self.tokens.text[literal_index];
                         if should_be_negated {
-                            match Self::parse_negative_i64(literal, digit::Base::Hexadecimal, false)
-                            {
+                            match Self::parse_negative_i64(literal, digit::Base::Hexadecimal, false) {
                                 Some(0) => Err(Msg {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression
-                                        .kind
-                                        .display_len(self.tokens),
+                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
                                 }),
                                 Some(integer) => Ok(Expression::I64(integer)),
                                 None => Err(Msg {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::HexadecimalIntegerUnderflow,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression
-                                        .kind
-                                        .display_len(self.tokens),
+                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
                                 }),
                             }
                         } else {
-                            match Self::parse_positive_i64(literal, digit::Base::Hexadecimal, false)
-                            {
+                            match Self::parse_positive_i64(literal, digit::Base::Hexadecimal, false) {
                                 Some(integer) => Ok(Expression::I64(integer)),
                                 None => Err(Msg {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::HexadecimalIntegerOverflow,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression
-                                        .kind
-                                        .display_len(self.tokens),
+                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
                                 }),
                             }
                         }
@@ -2261,7 +2195,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             kind: ErrorKind::CannotIndexNonArrayType(expression_type),
                             col: open_bracket_token.col,
                             pointers_count: open_bracket_token.kind.display_len(self.tokens),
-                        })
+                        });
                     },
                 },
                 Type::Array { base_type, .. } => Expression::ArrayIndex {
@@ -2466,9 +2400,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             let lhs_type = lhs.typ();
             let rhs_type = rhs.typ();
             let can_compare = match (lhs_type, rhs_type) {
-                (Type::Base(lhs_base_type), Type::Base(rhs_base_type)) => {
-                    lhs_base_type == rhs_base_type
-                },
+                (Type::Base(lhs_base_type), Type::Base(rhs_base_type)) => lhs_base_type == rhs_base_type,
                 (
                     Type::Array { base_type: lhs_base_typ, len: lhs_len },
                     Type::Array { base_type: rhs_base_typ, len: rhs_len },
@@ -2720,7 +2652,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             kind: ErrorKind::TypeInVariableName,
                             col: name_token.col,
                             pointers_count: name_token.kind.display_len(self.tokens),
-                        })
+                        });
                     },
                 }
             },
@@ -2752,7 +2684,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     kind: ErrorKind::ExpectedVariableName,
                     col: name_token.col,
                     pointers_count: name_token.kind.display_len(self.tokens),
-                })
+                });
             },
             TokenKind::Let
             | TokenKind::Var
@@ -2771,7 +2703,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     kind: ErrorKind::KeywordInVariableName,
                     col: name_token.col,
                     pointers_count: name_token.kind.display_len(self.tokens),
-                })
+                });
             },
         };
 
@@ -2827,7 +2759,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         kind: ErrorKind::ExpectedEqualsOrSemicolonAfterVariableName,
                         col: name_token.col,
                         pointers_count: name_token.kind.display_len(self.tokens),
-                    })
+                    });
                 },
                 Some((annotation_token, _)) => {
                     return Err(Msg {
@@ -2835,7 +2767,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         kind: ErrorKind::ExpectedEqualsOrSemicolonAfterTypeAnnotation,
                         col: annotation_token.col,
                         pointers_count: annotation_token.kind.display_len(self.tokens),
-                    })
+                    });
                 },
             },
         };
@@ -2867,7 +2799,9 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         };
 
         let expression_typ = expression.typ();
-        if let Some((token, annotation_typ)) = annotation && annotation_typ != expression_typ {
+        if let Some((token, annotation_typ)) = annotation
+            && annotation_typ != expression_typ
+        {
             return Err(Msg {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::VariableDefinitionTypeMismatch {
@@ -2894,9 +2828,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             Expression::ArrayIndex { base_type, indexable_index, .. } => {
                 let indexable = &self.ast.expressions[*indexable_index as usize];
                 let mut unwrapped_indexable = indexable;
-                while let Expression::ArrayIndex {
-                    indexable_index: inner_indexable_index, ..
-                } = unwrapped_indexable
+                while let Expression::ArrayIndex { indexable_index: inner_indexable_index, .. } =
+                    unwrapped_indexable
                 {
                     let inner_indexable = &self.ast.expressions[*inner_indexable_index as usize];
                     unwrapped_indexable = inner_indexable;
@@ -2922,7 +2855,9 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         });
                     }
 
-                    if let BaseType::Str = typ.base_typ() && let BaseType::Ascii = base_type {
+                    if let BaseType::Str = typ.base_typ()
+                        && let BaseType::Ascii = base_type
+                    {
                         return Err(Msg {
                             severity: MsgSeverity::Error,
                             kind: ErrorKind::CannotMutateStringCharacters,
@@ -3087,9 +3022,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             Expression::ArrayIndex { base_type, indexable_index, .. } => {
                 let indexable = &self.ast.expressions[*indexable_index as usize];
                 let mut unwrapped_indexable = indexable;
-                while let Expression::ArrayIndex {
-                    indexable_index: inner_indexable_index, ..
-                } = unwrapped_indexable
+                while let Expression::ArrayIndex { indexable_index: inner_indexable_index, .. } =
+                    unwrapped_indexable
                 {
                     let inner_indexable = &self.ast.expressions[*inner_indexable_index as usize];
                     unwrapped_indexable = inner_indexable;
@@ -3115,7 +3049,9 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         });
                     }
 
-                    if let BaseType::Str = typ.base_typ() && let BaseType::Ascii = base_type {
+                    if let BaseType::Str = typ.base_typ()
+                        && let BaseType::Ascii = base_type
+                    {
                         return Err(Msg {
                             severity: MsgSeverity::Error,
                             kind: ErrorKind::CannotMutateStringCharacters,
@@ -3170,11 +3106,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         return match op {
             PrefixAssignmentOp::Not => match target_type {
                 Type::Base(BaseType::I64 | BaseType::Ascii | BaseType::Bool) => {
-                    Ok(Node::PrefixReassignment {
-                        target,
-                        op: PrefixAssignmentOp::Not,
-                        op_col: op_token.col,
-                    })
+                    Ok(Node::PrefixReassignment { target, op: PrefixAssignmentOp::Not, op_col: op_token.col })
                 },
                 invalid_typ @ (Type::Base(BaseType::Str) | Type::Array { .. }) => Err(Msg {
                     severity: MsgSeverity::Error,
@@ -3203,13 +3135,14 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 Type::Base(BaseType::Ascii | BaseType::I64) => {
                     Ok(Node::PrefixReassignment { target, op, op_col: op_token.col })
                 },
-                invalid_type
-                @ (Type::Base(BaseType::Str | BaseType::Bool) | Type::Array { .. }) => Err(Msg {
-                    severity: MsgSeverity::Error,
-                    kind: ErrorKind::CannotNegate(invalid_type),
-                    col: error_token.col,
-                    pointers_count: error_token.kind.display_len(self.tokens),
-                }),
+                invalid_type @ (Type::Base(BaseType::Str | BaseType::Bool) | Type::Array { .. }) => {
+                    Err(Msg {
+                        severity: MsgSeverity::Error,
+                        kind: ErrorKind::CannotNegate(invalid_type),
+                        col: error_token.col,
+                        pointers_count: error_token.kind.display_len(self.tokens),
+                    })
+                },
             },
         };
     }
@@ -3666,15 +3599,13 @@ pub enum ErrorKind {
 impl IntoMsgInfo for ErrorKind {
     fn info(&self) -> MsgInfo {
         let (error_message, error_cause_message) = match self {
-            Self::PrematureEndOfFile(expected) => (
-                "premature end of file".into(),
-                format!("expected {expected} after here").into(),
-            ),
+            Self::PrematureEndOfFile(expected) => {
+                ("premature end of file".into(), format!("expected {expected} after here").into())
+            },
 
-            Self::MinusZeroInteger => (
-                "invalid integer literal".into(),
-                "-0 is not a valid two's complement integer".into(),
-            ),
+            Self::MinusZeroInteger => {
+                ("invalid integer literal".into(), "-0 is not a valid two's complement integer".into())
+            },
             Self::BinaryIntegerOverflow => (
                 "integer literal overflow".into(),
                 format!(
@@ -3682,7 +3613,8 @@ impl IntoMsgInfo for ErrorKind {
                     bits = i64::BITS,
                     prefix = tokenizer::Base(digit::Base::Binary).prefix(),
                     max = i64::MAX
-                ).into(),
+                )
+                .into(),
             ),
             Self::OctalIntegerOverflow => (
                 "integer literal overflow".into(),
@@ -3691,7 +3623,8 @@ impl IntoMsgInfo for ErrorKind {
                     bits = i64::BITS,
                     prefix = tokenizer::Base(digit::Base::Octal).prefix(),
                     max = i64::MAX
-                ).into(),
+                )
+                .into(),
             ),
             Self::DecimalIntegerOverflow => (
                 "integer literal overflow".into(),
@@ -3699,7 +3632,8 @@ impl IntoMsgInfo for ErrorKind {
                     "overflows a {bits} bit signed integer, over {max}",
                     bits = i64::BITS,
                     max = i64::MAX
-                ).into(),
+                )
+                .into(),
             ),
             Self::HexadecimalIntegerOverflow => (
                 "integer literal overflow".into(),
@@ -3708,7 +3642,8 @@ impl IntoMsgInfo for ErrorKind {
                     bits = i64::BITS,
                     prefix = tokenizer::Base(digit::Base::Hexadecimal).prefix(),
                     max = i64::MAX
-                ).into(),
+                )
+                .into(),
             ),
             Self::BinaryIntegerUnderflow => (
                 "integer literal underflow".into(),
@@ -3717,7 +3652,8 @@ impl IntoMsgInfo for ErrorKind {
                     bits = i64::BITS,
                     prefix = tokenizer::Base(digit::Base::Binary).prefix(),
                     min = i64::MIN
-                ).into(),
+                )
+                .into(),
             ),
             Self::OctalIntegerUnderflow => (
                 "integer literal underflow".into(),
@@ -3726,7 +3662,8 @@ impl IntoMsgInfo for ErrorKind {
                     bits = i64::BITS,
                     prefix = tokenizer::Base(digit::Base::Octal).prefix(),
                     min = i64::MIN
-                ).into(),
+                )
+                .into(),
             ),
             Self::DecimalIntegerUnderflow => (
                 "integer literal underflow".into(),
@@ -3734,7 +3671,8 @@ impl IntoMsgInfo for ErrorKind {
                     "underflows a {bits} bit signed integer, under {min}",
                     bits = i64::BITS,
                     min = i64::MIN
-                ).into(),
+                )
+                .into(),
             ),
             Self::HexadecimalIntegerUnderflow => (
                 "integer literal underflow".into(),
@@ -3743,82 +3681,60 @@ impl IntoMsgInfo for ErrorKind {
                     bits = i64::BITS,
                     prefix = tokenizer::Base(digit::Base::Hexadecimal).prefix(),
                     min = i64::MIN
-                ).into(),
+                )
+                .into(),
             ),
 
-            Self::MissingSemicolon => (
-                "invalid statement".into(),
-                "missing semicolon after here".into(),
-            ),
+            Self::MissingSemicolon => ("invalid statement".into(), "missing semicolon after here".into()),
 
-            Self::LeftOperandTypeMismatch(invalid_type) => (
-                "invalid expression".into(),
-                format!("cannot be preceded by '{invalid_type}'").into(),
-            ),
-            Self::RightOperandTypeMismatch(invalid_type) => (
-                "invalid expression".into(),
-                format!("cannot be followed by '{invalid_type}'").into(),
-            ),
-            Self::ExpectedNumberLiteralInArrayType => (
-                "invalid type".into(),
-                "must be followed by an integer literal".into(),
-            ),
-            Self::ExpectedNumberLiteralInArrayIndex => (
-                "invalid array index".into(),
-                "must be followed by an integer literal".into(),
-            ),
-            Self::MissingClosingSquareBracketInIndex => (
-                "invalid array index".into(),
-                "must be followed by a closing square bracket".into(),
-            ),
-            Self::MissingClosingSquareBracketInArrayType => (
-                "invalid type".into(),
-                "must be followed by a closing square bracket".into(),
-            ),
-            Self::CannotMutateStringCharacters => (
-                "invalid variable reassignment".into(),
-                "cannot mutate string characters".into(),
-            ),
+            Self::LeftOperandTypeMismatch(invalid_type) => {
+                ("invalid expression".into(), format!("cannot be preceded by '{invalid_type}'").into())
+            },
+            Self::RightOperandTypeMismatch(invalid_type) => {
+                ("invalid expression".into(), format!("cannot be followed by '{invalid_type}'").into())
+            },
+            Self::ExpectedNumberLiteralInArrayType => {
+                ("invalid type".into(), "must be followed by an integer literal".into())
+            },
+            Self::ExpectedNumberLiteralInArrayIndex => {
+                ("invalid array index".into(), "must be followed by an integer literal".into())
+            },
+            Self::MissingClosingSquareBracketInIndex => {
+                ("invalid array index".into(), "must be followed by a closing square bracket".into())
+            },
+            Self::MissingClosingSquareBracketInArrayType => {
+                ("invalid type".into(), "must be followed by a closing square bracket".into())
+            },
+            Self::CannotMutateStringCharacters => {
+                ("invalid variable reassignment".into(), "cannot mutate string characters".into())
+            },
             Self::CannotIndexNonArrayType(non_indexable_type) => (
                 "invalid expression".into(),
                 format!("cannot index into a value of type '{non_indexable_type}'").into(),
             ),
-            Self::CannotIndexIntoExpression => (
-                "invalid expression".into(),
-                "cannot index into an expression".into(),
-            ),
-            Self::VariableNotPreviouslyDefined => (
-                "variable not previously defined".into(),
-                "was not previously defined".into(),
-            ),
-            Self::VariableAlreadyDefined => (
-                "variable already defined".into(),
-                "was already defined".into(),
-            ),
-            Self::TypeInExpression => (
-                "invalid expression".into(),
-                "types are not allowed in expressions".into(),
-            ),
-            Self::EmptyExpression => (
-                "invalid expression".into(),
-                "empty expressions are not allowed".into(),
-            ),
-            Self::UnclosedRoundBracket => (
-                "invalid expression".into(),
-                "'(' bracket was not closed".into(),
-            ),
-            Self::ArrayOfNegativeLength => (
-                "invalid array length".into(),
-                "array length must be greater than 1".into(),
-            ),
-            Self::ArrayOfZeroElements => (
-                "invalid array".into(),
-                "arrays of zero items are not allowed yet".into(),
-            ),
-            Self::NestedArrayNotSupportedYet => (
-                "invalid array element".into(),
-                "nested arrays are not supported yet".into(),
-            ),
+            Self::CannotIndexIntoExpression => {
+                ("invalid expression".into(), "cannot index into an expression".into())
+            },
+            Self::VariableNotPreviouslyDefined => {
+                ("variable not previously defined".into(), "was not previously defined".into())
+            },
+            Self::VariableAlreadyDefined => ("variable already defined".into(), "was already defined".into()),
+            Self::TypeInExpression => {
+                ("invalid expression".into(), "types are not allowed in expressions".into())
+            },
+            Self::EmptyExpression => {
+                ("invalid expression".into(), "empty expressions are not allowed".into())
+            },
+            Self::UnclosedRoundBracket => ("invalid expression".into(), "'(' bracket was not closed".into()),
+            Self::ArrayOfNegativeLength => {
+                ("invalid array length".into(), "array length must be greater than 1".into())
+            },
+            Self::ArrayOfZeroElements => {
+                ("invalid array".into(), "arrays of zero items are not allowed yet".into())
+            },
+            Self::NestedArrayNotSupportedYet => {
+                ("invalid array element".into(), "nested arrays are not supported yet".into())
+            },
             Self::ArrayElementTypeMismatch { actual, expected } => (
                 "invalid array element".into(),
                 format!("expected item of type '{expected}', but got '{actual}'").into(),
@@ -3835,65 +3751,47 @@ impl IntoMsgInfo for ErrorKind {
                 "invalid expression".into(),
                 format!("cannot take the absolute value of '{invalid_type}'").into(),
             ),
-            Self::CannotNegate(invalid_type) => (
-                "invalid expression".into(),
-                format!("cannot negate value of type '{invalid_type}'").into(),
-            ),
-            Self::CannotInvert(invalid_type) => (
-                "invalid expression".into(),
-                format!("cannot invert value of type '{invalid_type}'").into(),
-            ),
-            Self::KeywordInExpression => (
-                "invalid expression".into(),
-                "cannot be a keyword".into(),
-            ),
-            Self::ExpectedOperand => (
-                "invalid expression".into(),
-                "expected expression operand before this token".into(),
-            ),
-            Self::CannotCompareOperands { lhs_type, rhs_type } => (
-                "invalid expression".into(),
-                format!("cannot compare '{lhs_type}' to '{rhs_type}'").into(),
-            ),
-            Self::CannotChainComparisons => (
-                "invalid expression".into(),
-                "comparison operators cannot be chained".into(),
-            ),
-            Self::ExpectedType => (
-                "invalid type annotation".into(),
-                "expected type after here".into(),
-            ),
-            Self::TypeInVariableName => (
-                "invalid variable name".into(),
-                "types are not allowed in variable names".into(),
-            ),
-            Self::TypeInVariableReassignment => (
-                "invalid variable reassignment".into(),
-                "cannot assign to a type".into(),
-            ),
-            Self::ExpectedVariableName => (
-                "invalid variable name".into(),
-                "expected variable name after here".into(),
-            ),
-            Self::KeywordInVariableName => (
-                "invalid variable name".into(),
-                "cannot be a keyword".into(),
-            ),
-            Self::ExpectedEqualsOrSemicolonAfterVariableName => (
-                "invalid variable definition".into(),
-                "expected '=' or ';' after variable name".into(),
-            ),
-            Self::ExpectedEqualsOrSemicolonAfterTypeAnnotation => (
-                "invalid variable definition".into(),
-                "expected '=' or ';' after type annotation".into(),
-            ),
+            Self::CannotNegate(invalid_type) => {
+                ("invalid expression".into(), format!("cannot negate value of type '{invalid_type}'").into())
+            },
+            Self::CannotInvert(invalid_type) => {
+                ("invalid expression".into(), format!("cannot invert value of type '{invalid_type}'").into())
+            },
+            Self::KeywordInExpression => ("invalid expression".into(), "cannot be a keyword".into()),
+            Self::ExpectedOperand => {
+                ("invalid expression".into(), "expected expression operand before this token".into())
+            },
+            Self::CannotCompareOperands { lhs_type, rhs_type } => {
+                ("invalid expression".into(), format!("cannot compare '{lhs_type}' to '{rhs_type}'").into())
+            },
+            Self::CannotChainComparisons => {
+                ("invalid expression".into(), "comparison operators cannot be chained".into())
+            },
+            Self::ExpectedType => ("invalid type annotation".into(), "expected type after here".into()),
+            Self::TypeInVariableName => {
+                ("invalid variable name".into(), "types are not allowed in variable names".into())
+            },
+            Self::TypeInVariableReassignment => {
+                ("invalid variable reassignment".into(), "cannot assign to a type".into())
+            },
+            Self::ExpectedVariableName => {
+                ("invalid variable name".into(), "expected variable name after here".into())
+            },
+            Self::KeywordInVariableName => ("invalid variable name".into(), "cannot be a keyword".into()),
+            Self::ExpectedEqualsOrSemicolonAfterVariableName => {
+                ("invalid variable definition".into(), "expected '=' or ';' after variable name".into())
+            },
+            Self::ExpectedEqualsOrSemicolonAfterTypeAnnotation => {
+                ("invalid variable definition".into(), "expected '=' or ';' after type annotation".into())
+            },
             Self::VariableDefinitionTypeMismatch { actual, expected } => (
                 "invalid variable definition".into(),
                 format!("value of type '{actual}' doesn't match declared type of '{expected}'").into(),
             ),
             Self::VariableReassignmentTypeMismatch { actual, expected } => (
                 "invalid variable definition".into(),
-                format!("trying to assign a value of type '{actual}' to a variable of type '{expected}'").into(),
+                format!("trying to assign a value of type '{actual}' to a variable of type '{expected}'")
+                    .into(),
             ),
             Self::CannotInferTypeOfVariable => (
                 "invalid variable definition".into(),
@@ -3903,69 +3801,51 @@ impl IntoMsgInfo for ErrorKind {
                 "invalid variable definition".into(),
                 "variables must be initialized, provide an initial value".into(),
             ),
-            Self::CannotMutateVariable => (
-                "invalid variable reassignment".into(),
-                "cannot mutate immutable variable".into(),
-            ),
+            Self::CannotMutateVariable => {
+                ("invalid variable reassignment".into(), "cannot mutate immutable variable".into())
+            },
             Self::CannotModifyInplace(typ) => (
                 "invalid variable reassignment".into(),
                 format!("cannot use inplace assignment operators on `{typ}` values").into(),
             ),
-            Self::CannotAssignToExpression => (
-                "invalid variable reassignment".into(),
-                "cannot assign to expression".into(),
-            ),
+            Self::CannotAssignToExpression => {
+                ("invalid variable reassignment".into(), "cannot assign to expression".into())
+            },
 
-            Self::StrayColon => (
-                "stray colon".into(),
-                "stray colon".into(),
-            ),
-            Self::StrayComma => (
-                "stray comma".into(),
-                "stray comma".into(),
-            ),
-            Self::StrayOperator(operator) => (
-                format!("stray operator '{operator}'").into(),
-                format!("stray operator '{operator}'").into(),
-            ),
+            Self::StrayColon => ("stray colon".into(), "stray colon".into()),
+            Self::StrayComma => ("stray comma".into(), "stray comma".into()),
+            Self::StrayOperator(operator) => {
+                (format!("stray operator '{operator}'").into(), format!("stray operator '{operator}'").into())
+            },
 
-            Self::StrayElseBlock => (
-                "stray else block".into(),
-                "no matching if statement previously found".into(),
-            ),
-            Self::IfMustBeFollowedByBooleanExpression => (
-                "invalid if condition".into(),
-                "must be followed by a boolean expression".into(),
-            ),
-            Self::IfMustBeFollowedByBlock => (
-                "invalid if statement".into(),
-                "must be followed by a block".into(),
-            ),
-            Self::MustBeFollowedByBlockOrIfStatement => (
-                "invalid if statement".into(),
-                "must be followed by a block or an other if statement".into(),
-            ),
+            Self::StrayElseBlock => {
+                ("stray else block".into(), "no matching if statement previously found".into())
+            },
+            Self::IfMustBeFollowedByBooleanExpression => {
+                ("invalid if condition".into(), "must be followed by a boolean expression".into())
+            },
+            Self::IfMustBeFollowedByBlock => {
+                ("invalid if statement".into(), "must be followed by a block".into())
+            },
+            Self::MustBeFollowedByBlockOrIfStatement => {
+                ("invalid if statement".into(), "must be followed by a block or an other if statement".into())
+            },
 
-            Self::DoMustBeFollowedByLoop => (
-                "invalid do loop".into(),
-                "must be followed by a loop statement".into(),
-            ),
-            Self::LoopMustBeFollowedByBooleanExpression => (
-                "invalid if condition".into(),
-                "must be followed by a boolean expression".into(),
-            ),
-            Self::LoopMustBeFollowedByBlock => (
-                "invalid if statement".into(),
-                "must be followed by a block".into(),
-            ),
-            Self::StrayBreakStatement => (
-                "stray break statement".into(),
-                "cannot be used outside of loops".into(),
-            ),
-            Self::StrayContinueStatement => (
-                "stray continue statement".into(),
-                "cannot be used outside of loops".into(),
-            ),
+            Self::DoMustBeFollowedByLoop => {
+                ("invalid do loop".into(), "must be followed by a loop statement".into())
+            },
+            Self::LoopMustBeFollowedByBooleanExpression => {
+                ("invalid if condition".into(), "must be followed by a boolean expression".into())
+            },
+            Self::LoopMustBeFollowedByBlock => {
+                ("invalid if statement".into(), "must be followed by a block".into())
+            },
+            Self::StrayBreakStatement => {
+                ("stray break statement".into(), "cannot be used outside of loops".into())
+            },
+            Self::StrayContinueStatement => {
+                ("stray continue statement".into(), "cannot be used outside of loops".into())
+            },
         };
 
         return MsgInfo { message: error_message, cause: error_cause_message };

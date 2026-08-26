@@ -1,13 +1,16 @@
 use super::{
-    src_file::{Line, SrcCode, SrcFile},
     IntoMsgInfo, Msg, MsgInfo,
+    src_file::{Line, SrcCode, SrcFile},
 };
 use crate::{
     error::DisplayLen as _,
     front_end::{Index32, MsgSeverity},
 };
 use back_to_front::{digit, uoffset32};
-use core::{fmt::{Write as _, Display}, ops::RangeInclusive};
+use core::{
+    fmt::{Display, Write as _},
+    ops::RangeInclusive,
+};
 use unicode_segmentation::UnicodeSegmentation as _;
 
 // TODO(stefano): move to primitives.rs
@@ -482,10 +485,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
 
         let tokens = Tokens { tokens: Vec::new(), text: Vec::new() };
         if src_file.code.len() == 0 {
-            return TokenizedCode {
-                result: Ok(tokens),
-                src: SrcCode { src_file, lines: Vec::new() },
-            };
+            return TokenizedCode { result: Ok(tokens), src: SrcCode { src_file, lines: Vec::new() } };
         }
 
         let mut tokenizer = Tokenizer {
@@ -517,9 +517,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             continue 'tokenization;
                         },
                         b'\r' => {
-                            if let Some(b'\n') =
-                                tokenizer.code.as_bytes().get(tokenizer.col as usize + 1)
-                            {
+                            if let Some(b'\n') = tokenizer.code.as_bytes().get(tokenizer.col as usize + 1) {
                                 tokenizer.new_line(LineEnd::CRLF);
                                 continue 'tokenization;
                             }
@@ -591,26 +589,20 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                     Some(b'*') => match tokenizer.get_next_byte_multiline() {
                                         Some(b'#') => {
                                             let comment_text = tokenizer.token_text();
-                                            let comment_index =
-                                                tokenizer.new_token_text(comment_text);
-                                            if back_patches.len()
-                                                == previous_block_comments_token_start_len
-                                            {
-                                                break 'comment Ok(TokenKind::BlockComment(
-                                                    comment_index,
-                                                ));
+                                            let comment_index = tokenizer.new_token_text(comment_text);
+                                            if back_patches.len() == previous_block_comments_token_start_len {
+                                                break 'comment Ok(TokenKind::BlockComment(comment_index));
                                             }
                                             let Some(token_start_col) = back_patches.pop() else {
                                                 unreachable!("unclosed block comment");
                                             };
 
                                             let kind = TokenKind::BlockComment(comment_index);
-                                            tokenizer.tokens.tokens.push(Token {
-                                                kind,
-                                                col: tokenizer.token_start_col,
-                                            });
-                                            tokenizer.token_start_col =
-                                                unsafe { token_start_col.column };
+                                            tokenizer
+                                                .tokens
+                                                .tokens
+                                                .push(Token { kind, col: tokenizer.token_start_col });
+                                            tokenizer.token_start_col = unsafe { token_start_col.column };
                                         },
                                         Some(_) => {},
                                         None => break 'next_character,
@@ -675,8 +667,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         },
                     },
                     b'(' => {
-                        let back_patch =
-                            BackPatch { token: TokenIndex::new(tokenizer.tokens.tokens.len()) };
+                        let back_patch = BackPatch { token: TokenIndex::new(tokenizer.tokens.tokens.len()) };
                         back_patches.push(back_patch);
                         Ok(TokenKind::OpenRoundBracket)
                     },
@@ -720,8 +711,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         }
                     },
                     b'[' => {
-                        let back_patch =
-                            BackPatch { token: TokenIndex::new(tokenizer.tokens.tokens.len()) };
+                        let back_patch = BackPatch { token: TokenIndex::new(tokenizer.tokens.tokens.len()) };
                         back_patches.push(back_patch);
                         Ok(TokenKind::OpenSquareBracket)
                     },
@@ -765,8 +755,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         }
                     },
                     b'{' => {
-                        let back_patch =
-                            BackPatch { token: TokenIndex::new(tokenizer.tokens.tokens.len()) };
+                        let back_patch = BackPatch { token: TokenIndex::new(tokenizer.tokens.tokens.len()) };
                         back_patches.push(back_patch);
                         Ok(TokenKind::OpenCurlyBracket)
                     },
@@ -1162,8 +1151,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
             });
         }
 
-        let result =
-            if tokenizer.errors.len() == 0 { Ok(tokenizer.tokens) } else { Err(tokenizer.errors) };
+        let result = if tokenizer.errors.len() == 0 { Ok(tokenizer.tokens) } else { Err(tokenizer.errors) };
         return TokenizedCode { result, src: SrcCode { src_file, lines: tokenizer.lines } };
     }
 }
@@ -1348,7 +1336,7 @@ impl<'code> Tokenizer<'code> {
                     col: self.col,
                     pointers_count: 1,
                 }),
-                _ => {}
+                _ => {},
             }
             self.col += 1;
         }
@@ -1409,15 +1397,15 @@ impl Display for EscapedAscii {
             control @ (b'\x00'..=b'\x1A') => {
                 let caret = (b'@' + control) as utf32;
                 write!(f, "\\^{caret}")
-            }
+            },
             control @ b'\x1B'..=b'\x1F' => {
                 let offset = control - b'\x1B';
                 let caret = (b'[' + offset) as utf32;
                 write!(f, "\\^{caret}")
-            }
+            },
             b'\x7F' => write!(f, "\\^?"),
             other => f.write_char(other as utf32),
-        }
+        };
     }
 }
 

@@ -6,7 +6,7 @@ pub mod typed_abstract_syntax_tree;
 // pub mod ir;
 
 use self::src_file::{DisplayPosition, SrcCode};
-use crate::{error::MsgWithCauseUnderTextWithLocation, ERROR};
+use crate::{ERROR, error::MsgWithCauseUnderTextWithLocation};
 use core::fmt::{Debug, Display};
 extern crate alloc;
 use alloc::borrow::Cow;
@@ -121,10 +121,7 @@ pub struct Msg<K: IntoMsgInfo> {
 }
 
 impl<K: IntoMsgInfo> Msg<K> {
-    pub fn display<'code, 'path: 'code>(
-        &self,
-        src: &SrcCode<'code, 'path>,
-    ) -> MsgDisplay<'code, 'path> {
+    pub fn display<'code, 'path: 'code>(&self, src: &SrcCode<'code, 'path>) -> MsgDisplay<'code, 'path> {
         let DisplayPosition { line, column, display_column } = src.display_position(self.col);
         let line_span = src.lines[line as usize - 1];
         let line_text = &src.code()[line_span.start as usize..line_span.end as usize];

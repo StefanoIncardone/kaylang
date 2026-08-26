@@ -1,11 +1,11 @@
 // TODO(stefano): improve usage consistency of NonZero<uoffset32>
 
 use super::{
+    IntoMsgInfo, Msg, MsgDisplay, MsgInfo,
     src_file::{DisplayPosition, SrcCode},
     tokenizer::{Op, TextIndex, Token, TokenIndex, TokenKind, Tokens},
-    IntoMsgInfo, Msg, MsgDisplay, MsgInfo,
 };
-use crate::front_end::{tokenizer::ascii, Index32, MsgSeverity};
+use crate::front_end::{Index32, MsgSeverity, tokenizer::ascii};
 use core::{fmt::Display, marker::PhantomData, num::NonZero};
 extern crate alloc;
 use alloc::borrow::Cow;
@@ -887,15 +887,11 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
             name_column,
 
             colon_column,
-            type_annotation: TypeAnnotation {
-                type_name,
-                type_name_column,
-                array_dimensions_start,
-                array_dimensions_len,
-            },
+            type_annotation:
+                TypeAnnotation { type_name, type_name_column, array_dimensions_start, array_dimensions_len },
 
             equals_column,
-            expression
+            expression,
         } = &self.syntax_tree.variable_definitions[variable_definition_index];
 
         let name_str = self.tokens.text[*name];
@@ -903,31 +899,23 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
         writeln!(f, "{:>indent$}Colon: {colon_column} = :", "")?;
         writeln!(f, "{:>indent$}TypeAnnotation", "")?;
 
-
         let annotation_indent = indent + Self::INDENT_INCREMENT;
         let type_name_str = self.tokens.text[*type_name];
-        writeln!(
-            f,
-            "{:>annotation_indent$}TypeName: {type_name_column} = {type_name_str}",
-            ""
-        )?;
+        writeln!(f, "{:>annotation_indent$}TypeName: {type_name_column} = {type_name_str}", "")?;
 
         let dimension_indent = annotation_indent + Self::INDENT_INCREMENT;
         let array_dimensions_end = array_dimensions_start.0 + array_dimensions_len;
         let array_dimensions = &self.syntax_tree.array_dimensions
             [array_dimensions_start.0 as usize..array_dimensions_end as usize];
-        for ArrayDimension { open_square_bracket_column, dimension_expression, close_square_bracket_column } in array_dimensions {
-            writeln!(
-                f,
-                "{:>annotation_indent$}OpenSquareBracket: {open_square_bracket_column} = [",
-                ""
-            )?;
+        for ArrayDimension {
+            open_square_bracket_column,
+            dimension_expression,
+            close_square_bracket_column,
+        } in array_dimensions
+        {
+            writeln!(f, "{:>annotation_indent$}OpenSquareBracket: {open_square_bracket_column} = [", "")?;
             self.info_expression(f, *dimension_expression, dimension_indent)?;
-            writeln!(
-                f,
-                "{:>annotation_indent$}CloseSquareBracket: {close_square_bracket_column} = ]",
-                ""
-            )?;
+            writeln!(f, "{:>annotation_indent$}CloseSquareBracket: {close_square_bracket_column} = ]", "")?;
         }
 
         writeln!(f, "{:>indent$}Equals: {equals_column} = =", "")?;
@@ -1096,8 +1084,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                         | Op::AndEquals
                         | Op::OrEquals),
                     ) => {
-                        let start_of_new_value_token =
-                            self.next_expected_token(Expected::Expression)?;
+                        let start_of_new_value_token = self.next_expected_token(Expected::Expression)?;
                         let new_value = self.expression(start_of_new_value_token)?;
                         let semicolon_column = self.semicolon()?;
                         Ok(ParsedNode::Node(Node::BinaryAssignment {
@@ -1190,9 +1177,9 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                         });
                         Err(())
                     },
-                    TokenKind::Unexpected(_)
-                    | TokenKind::LineComment(_)
-                    | TokenKind::BlockComment(_) => self.should_have_been_skipped(token),
+                    TokenKind::Unexpected(_) | TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {
+                        self.should_have_been_skipped(token)
+                    },
                 }
             },
 
@@ -1202,15 +1189,10 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                 let start_of_argument_token = self.next_expected_token(Expected::Expression)?;
                 let argument = self.expression(start_of_argument_token)?;
                 let semicolon_column = self.semicolon()?;
-                Ok(ParsedNode::Node(Node::Print {
-                    print_column: token.col,
-                    argument,
-                    semicolon_column,
-                }))
+                Ok(ParsedNode::Node(Node::Print { print_column: token.col, argument, semicolon_column }))
             },
             TokenKind::PrintLn => {
-                let start_of_argument_token =
-                    self.next_expected_token(Expected::ExpressionOrSemicolon)?;
+                let start_of_argument_token = self.next_expected_token(Expected::ExpressionOrSemicolon)?;
                 if let TokenKind::SemiColon = start_of_argument_token.kind {
                     return Ok(ParsedNode::Node(Node::PrintlnNoArg {
                         println_column: token.col,
@@ -1220,25 +1202,16 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
 
                 let argument = self.expression(start_of_argument_token)?;
                 let semicolon_column = self.semicolon()?;
-                Ok(ParsedNode::Node(Node::Println {
-                    println_column: token.col,
-                    argument,
-                    semicolon_column,
-                }))
+                Ok(ParsedNode::Node(Node::Println { println_column: token.col, argument, semicolon_column }))
             },
             TokenKind::Eprint => {
                 let start_of_argument_token = self.next_expected_token(Expected::Expression)?;
                 let argument = self.expression(start_of_argument_token)?;
                 let semicolon_column = self.semicolon()?;
-                Ok(ParsedNode::Node(Node::Eprint {
-                    eprint_column: token.col,
-                    argument,
-                    semicolon_column,
-                }))
+                Ok(ParsedNode::Node(Node::Eprint { eprint_column: token.col, argument, semicolon_column }))
             },
             TokenKind::EprintLn => {
-                let start_of_argument_token =
-                    self.next_expected_token(Expected::ExpressionOrSemicolon)?;
+                let start_of_argument_token = self.next_expected_token(Expected::ExpressionOrSemicolon)?;
                 if let TokenKind::SemiColon = start_of_argument_token.kind {
                     return Ok(ParsedNode::Node(Node::EprintlnNoArg {
                         eprintln_column: token.col,
@@ -1290,19 +1263,14 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                 while let Some(peeked) = self.peek_next_token() {
                     self.token_index = peeked.index;
                     if let TokenKind::CloseCurlyBracket = peeked.token.kind {
-                        let last_scope_node_index =
-                            NodeIndex::new(self.syntax_tree.nodes.len() - 1);
-                        let Node::Scope {
-                            raw_nodes_in_scope_count,
-                            close_curly_bracket_column,
-                            ..
-                        } = &mut self.syntax_tree.nodes[placeholder_scope_node_index]
+                        let last_scope_node_index = NodeIndex::new(self.syntax_tree.nodes.len() - 1);
+                        let Node::Scope { raw_nodes_in_scope_count, close_curly_bracket_column, .. } =
+                            &mut self.syntax_tree.nodes[placeholder_scope_node_index]
                         else {
                             self.unbalanced_bracket(token);
                         };
 
-                        *raw_nodes_in_scope_count =
-                            last_scope_node_index.0 - placeholder_scope_node_index.0;
+                        *raw_nodes_in_scope_count = last_scope_node_index.0 - placeholder_scope_node_index.0;
                         *close_curly_bracket_column = peeked.token.col;
                         break;
                     }
@@ -1373,10 +1341,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                     return Err(());
                 }
 
-                Ok(ParsedNode::Node(Node::Continue {
-                    continue_column: token.col,
-                    semicolon_column,
-                }))
+                Ok(ParsedNode::Node(Node::Continue { continue_column: token.col, semicolon_column }))
             },
 
             TokenKind::Else => {
@@ -1415,9 +1380,9 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
                 });
                 Err(())
             },
-            TokenKind::CloseRoundBracket
-            | TokenKind::CloseSquareBracket
-            | TokenKind::CloseCurlyBracket => self.unbalanced_bracket(token),
+            TokenKind::CloseRoundBracket | TokenKind::CloseSquareBracket | TokenKind::CloseCurlyBracket => {
+                self.unbalanced_bracket(token)
+            },
             TokenKind::Unexpected(_) | TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {
                 self.should_have_been_skipped(token)
             },
@@ -1479,11 +1444,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
 
     #[track_caller]
     fn unexpected(&self, token: Token<'code>) -> ! {
-        self.invalid_token(
-            token,
-            "unexpected".into(),
-            "should have been caught during tokenization".into(),
-        );
+        self.invalid_token(token, "unexpected".into(), "should have been caught during tokenization".into());
     }
 
     #[track_caller]
@@ -1543,8 +1504,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 | TokenKind::Loop
                 | TokenKind::Break
                 | TokenKind::Continue => {
-                    let peeked_token_index_index =
-                        TokenIndex::new_uoffset32(next_token_index_index.0 + 1);
+                    let peeked_token_index_index = TokenIndex::new_uoffset32(next_token_index_index.0 + 1);
                     return Some(Peeked { token: next_token, index: peeked_token_index_index });
                 },
                 TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {},
@@ -1653,37 +1613,26 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         let mut expression = match token.kind {
             TokenKind::False => Expression::False { column: token.col },
             TokenKind::True => Expression::True { column: token.col },
-            TokenKind::DecimalInteger(literal) => {
-                Expression::DecimalInteger { literal, column: token.col }
-            },
+            TokenKind::DecimalInteger(literal) => Expression::DecimalInteger { literal, column: token.col },
             TokenKind::DecimalIntegerPrefix(literal) => {
                 Expression::DecimalIntegerPrefix { literal, column: token.col }
             },
-            TokenKind::BinaryInteger(literal) => {
-                Expression::BinaryInteger { literal, column: token.col }
-            },
-            TokenKind::OctalInteger(literal) => {
-                Expression::OctalInteger { literal, column: token.col }
-            },
+            TokenKind::BinaryInteger(literal) => Expression::BinaryInteger { literal, column: token.col },
+            TokenKind::OctalInteger(literal) => Expression::OctalInteger { literal, column: token.col },
             TokenKind::HexadecimalInteger(literal) => {
                 Expression::HexadecimalInteger { literal, column: token.col }
             },
-            TokenKind::Ascii(literal, value) => {
-                Expression::Ascii { literal, value, column: token.col }
-            },
+            TokenKind::Ascii(literal, value) => Expression::Ascii { literal, value, column: token.col },
             TokenKind::Str(literal) => Expression::Str { literal, column: token.col },
             TokenKind::RawStr(literal) => Expression::RawStr { literal, column: token.col },
-            TokenKind::Identifier(identifier) => {
-                Expression::Identifier { identifier, column: token.col }
-            },
+            TokenKind::Identifier(identifier) => Expression::Identifier { identifier, column: token.col },
             TokenKind::IdentifierStr(identifier) => {
                 Expression::IdentifierStr { identifier, column: token.col }
             },
             TokenKind::OpenRoundBracket => {
                 let open_round_bracket_token = token;
 
-                let start_of_inner_expression_token =
-                    self.next_expected_token(Expected::Operand)?;
+                let start_of_inner_expression_token = self.next_expected_token(Expected::Operand)?;
                 if let TokenKind::CloseRoundBracket = start_of_inner_expression_token.kind {
                     self.errors.push(Msg {
                         severity: MsgSeverity::Error,
@@ -1696,8 +1645,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
                 let inner_expression = self.expression(start_of_inner_expression_token)?;
 
-                let close_round_bracket_token =
-                    self.next_expected_token(Expected::CloseRoundBracket)?;
+                let close_round_bracket_token = self.next_expected_token(Expected::CloseRoundBracket)?;
                 let TokenKind::CloseRoundBracket = close_round_bracket_token.kind else {
                     self.errors.push(Msg {
                         severity: MsgSeverity::Error,
@@ -1723,11 +1671,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     let start_of_item_token =
                         self.next_expected_token(Expected::ArrayItemOrCloseSquareBracket)?;
                     if let TokenKind::CloseSquareBracket = start_of_item_token.kind {
-                        break 'array (
-                            open_square_bracket_token.col,
-                            start_of_item_token.col,
-                            None,
-                        );
+                        break 'array (open_square_bracket_token.col, start_of_item_token.col, None);
                     }
 
                     let item = self.expression(start_of_item_token)?;
@@ -1805,9 +1749,9 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             });
                             return Err(());
                         },
-                        TokenKind::Unexpected(_)
-                        | TokenKind::LineComment(_)
-                        | TokenKind::BlockComment(_) => self.should_have_been_skipped(token),
+                        TokenKind::Unexpected(_) | TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {
+                            self.should_have_been_skipped(token)
+                        },
                     };
 
                     self.temp_array_items.push(array_item);
@@ -1861,11 +1805,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             ) => {
                 let start_of_prefix_expression = self.next_expected_token(Expected::Expression)?;
                 let right_operand = self.primary_expression(start_of_prefix_expression)?;
-                Expression::Prefix {
-                    operator: operator.into(),
-                    operator_column: token.col,
-                    right_operand,
-                }
+                Expression::Prefix { operator: operator.into(), operator_column: token.col, right_operand }
             },
             TokenKind::Let
             | TokenKind::Var
@@ -1941,10 +1881,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         return Ok(self.syntax_tree.new_expression(expression));
     }
 
-    fn exponentiative_expression(
-        &mut self,
-        token: Token<'code>,
-    ) -> Result<ExpressionIndex<'code>, ()> {
+    fn exponentiative_expression(&mut self, token: Token<'code>) -> Result<ExpressionIndex<'code>, ()> {
         static OPS: [Op; 3] = [Op::Pow, Op::WrappingPow, Op::SaturatingPow];
 
         let mut left_operand = self.primary_expression(token)?;
@@ -1962,10 +1899,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         return Ok(left_operand);
     }
 
-    fn multiplicative_expression(
-        &mut self,
-        token: Token<'code>,
-    ) -> Result<ExpressionIndex<'code>, ()> {
+    fn multiplicative_expression(&mut self, token: Token<'code>) -> Result<ExpressionIndex<'code>, ()> {
         static OPS: [Op; 7] = [
             Op::Times,
             Op::WrappingTimes,
@@ -2226,16 +2160,17 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 });
                 return Err(());
             },
-            TokenKind::Unexpected(_)
-            | TokenKind::LineComment(_)
-            | TokenKind::BlockComment(_) => self.should_have_been_skipped(type_name_token),
+            TokenKind::Unexpected(_) | TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {
+                self.should_have_been_skipped(type_name_token)
+            },
         };
 
         let array_dimensions_start = ArrayDimensionIndex::new(self.syntax_tree.array_dimensions.len());
         while let Some(Peeked {
             token: Token { kind: TokenKind::OpenSquareBracket, col: open_square_bracket_column },
             index: open_square_bracket_token_index,
-        }) = self.peek_next_token() {
+        }) = self.peek_next_token()
+        {
             self.token_index = open_square_bracket_token_index;
 
             let dimension_expression_token = self.next_expected_token(Expected::Expression)?;
@@ -2267,7 +2202,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             type_name,
             type_name_column: type_name_token.col,
             array_dimensions_start,
-            array_dimensions_len: self.syntax_tree.array_dimensions.len() as uoffset32 - array_dimensions_start.0,
+            array_dimensions_len: self.syntax_tree.array_dimensions.len() as uoffset32
+                - array_dimensions_start.0,
         });
     }
 
@@ -2472,8 +2408,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     break;
                 },
                 TokenKind::If => {
-                    let start_of_else_if_condition_token =
-                        self.next_expected_token(Expected::Expression)?;
+                    let start_of_else_if_condition_token = self.next_expected_token(Expected::Expression)?;
                     let else_if_condition = self.expression(start_of_else_if_condition_token)?;
                     let end_of_else_if_condition_token = self.peek_previous_token();
 
@@ -2484,9 +2419,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             severity: MsgSeverity::Error,
                             kind: ErrorKind::IfMustBeFollowedByBlock,
                             col: end_of_else_if_condition_token.col,
-                            pointers_count: end_of_else_if_condition_token
-                                .kind
-                                .display_len(self.tokens),
+                            pointers_count: end_of_else_if_condition_token.kind.display_len(self.tokens),
                         });
                         return Err(());
                     };
@@ -2541,9 +2474,9 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     });
                     return Err(());
                 },
-                TokenKind::Unexpected(_)
-                | TokenKind::LineComment(_)
-                | TokenKind::BlockComment(_) => self.should_have_been_skipped(after_else_token),
+                TokenKind::Unexpected(_) | TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {
+                    self.should_have_been_skipped(after_else_token)
+                },
             }
         }
 
@@ -2670,7 +2603,7 @@ pub enum ErrorKind {
     KeywordInVariableName,
 
     // IDEA(stefano): this error states '... after here' but points to the start of the token, it would be
-        // better if the error message pointed to the end of the token instead
+    // better if the error message pointed to the end of the token instead
     MissingTypeAnnotation,
     ExpectedTypeName,
     KeywordInTypeName,
