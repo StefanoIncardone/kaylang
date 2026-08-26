@@ -274,7 +274,11 @@ impl Color {
     pub fn set_color_auto<S: IsTerminal>(sink: &S) {
         use crate::color::{print, print_color, print_no_color};
         unsafe {
-            print = if sink.is_terminal() { print_color } else { print_no_color };
+            print = if sink.is_terminal() {
+                print_color
+            } else {
+                print_no_color
+            };
         }
     }
 

@@ -146,12 +146,7 @@ pub(super) fn print_color(
     }
 
     // precalculated from the max amount of digits that can appear in fg, bg and flags
-    #[rustfmt::skip]
-    let mut codes: Codes = [
-        b';', b';', b';', b';', b';', b';', b';', b';',
-        b';', b';', b';', b';', b';', b';', b';', b';',
-        b';', b';', b';', b';', b';', b';', b';', b'm',
-    ];
+    let mut codes: Codes = *b";;;;;;;;;;;;;;;;;;;;;;;m";
     let mut digit_index = CODES_START_INDEX;
 
     if fg != Fg::Default {

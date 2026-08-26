@@ -2329,10 +2329,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                             &self.ast.expressions[*nested_index_expression_index as usize];
 
                         self.index(
-                            *nested_base_type,
-                            nested_indexable,
-                            *nested_bracket_col,
-                            nested_index_expression,
+                            *nested_base_type, nested_indexable, *nested_bracket_col, nested_index_expression,
                         );
                         match nested_base_type {
                             BaseType::Str => {
@@ -2890,7 +2887,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                         unreachable!("nested indexes are not allowed in prefix assignment expressions")
                     },
                     Expression::Variable { typ, variable_index } => {
-                        _ = writeln!(self.asm, " ; {op}{}", target.display(self.ast),);
+                        _ = writeln!(self.asm, " ; {op}{}", target.display(self.ast));
 
                         let ast_variable = &self.ast.variables[*variable_index as usize];
                         let var = self.resolve(ast_variable.name);
@@ -3089,7 +3086,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                 }
             },
             Expression::Variable { typ, variable_index, .. } => {
-                _ = writeln!(self.asm, " ; {op}{}", target.display(self.ast),);
+                _ = writeln!(self.asm, " ; {op}{}", target.display(self.ast));
 
                 let ast_variable = &self.ast.variables[*variable_index as usize];
                 let var = self.resolve(ast_variable.name);
@@ -3185,10 +3182,10 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                     },
                     PrefixAssignmentOp::WrappingMinus => match typ {
                         Type::Base(BaseType::I64) => {
-                            _ = writeln!(self.asm, " neg qword [{base} + {var_offset}]\n",);
+                            _ = writeln!(self.asm, " neg qword [{base} + {var_offset}]\n");
                         },
                         Type::Base(BaseType::Ascii) => {
-                            _ = writeln!(self.asm, " neg byte [{base} + {var_offset}]\n",);
+                            _ = writeln!(self.asm, " neg byte [{base} + {var_offset}]\n");
                         },
                         Type::Base(BaseType::Bool | BaseType::Str) | Type::Array { .. } => {
                             unreachable!("can only take abs value of numerical values");

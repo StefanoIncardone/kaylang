@@ -532,7 +532,7 @@ pub(crate) enum Expression {
     Array {
         base_type: BaseType,
         /// arrays always contain at least 1 item
-        items: Vec<Expression>, // TODO(stefano): flatten into a Vec<ExpressionIndex>
+        items: Vec<Self>, // TODO(stefano): flatten into a Vec<ExpressionIndex>
     },
 
     Parenthesis {
@@ -859,7 +859,11 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
 
         parser.scope();
 
-        return if parser.errors.len() == 0 { Ok(parser.ast) } else { Err(parser.errors) };
+        return if parser.errors.len() == 0 {
+            Ok(parser.ast)
+        } else {
+            Err(parser.errors)
+        };
     }
 }
 

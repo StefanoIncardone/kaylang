@@ -1151,7 +1151,11 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
             });
         }
 
-        let result = if tokenizer.errors.len() == 0 { Ok(tokenizer.tokens) } else { Err(tokenizer.errors) };
+        let result = if tokenizer.errors.len() == 0 {
+            Ok(tokenizer.tokens)
+        } else {
+            Err(tokenizer.errors)
+        };
         return TokenizedCode { result, src: SrcCode { src_file, lines: tokenizer.lines } };
     }
 }

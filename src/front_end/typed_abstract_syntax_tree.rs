@@ -1382,7 +1382,11 @@ impl<'st, 'tokens: 'st, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'st, 't
             }
         }
 
-        return if parser.errors.len() == 0 { Ok(parser.tast) } else { Err(parser.errors) };
+        return if parser.errors.len() == 0 {
+            Ok(parser.tast)
+        } else {
+            Err(parser.errors)
+        };
     }
 
     fn any(&mut self, node: &st::Node<'code>) -> Result<ParsedNode<'code>, Msg<ErrorKind>> {
@@ -1950,9 +1954,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 if let Some(typ) = expected_type {
                     expected_array_items_type = Type::Base(typ.base_typ());
                     self.expect_expression_type(
-                        first_item.expression,
-                        &expected_array_items_type,
-                        &parsed_first_item,
+                        first_item.expression, &expected_array_items_type, &parsed_first_item,
                     )?;
                 }
                 let expected_array_items_type_hint = Some(&expected_array_items_type);

@@ -20,7 +20,6 @@ pub(crate) struct Index32<T>(pub(crate) uoffset32, core::marker::PhantomData<T>)
 
 #[expect(clippy::missing_trait_methods)]
 impl<T> Clone for Index32<T> {
-    #[expect(clippy::non_canonical_clone_impl, reason = "false positive due to return")]
     fn clone(&self) -> Self {
         return *self;
     }

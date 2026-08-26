@@ -376,7 +376,7 @@ impl core::fmt::Debug for ArrayItemSeparator {
 #[expect(clippy::missing_trait_methods)]
 impl core::hash::Hash for ArrayItemSeparator {
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-        let separator_bytes_ptr = unsafe { &raw const self.some as *const u8 };
+        let separator_bytes_ptr = &raw const self.some as *const u8;
         let separator_bytes =
             unsafe { core::slice::from_raw_parts(separator_bytes_ptr, size_of::<uoffset32>()) };
         state.write(separator_bytes);
@@ -995,7 +995,11 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'c
             }
         }
 
-        return if parser.errors.len() == 0 { Ok(parser.syntax_tree) } else { Err(parser.errors) };
+        return if parser.errors.len() == 0 {
+            Ok(parser.syntax_tree)
+        } else {
+            Err(parser.errors)
+        };
     }
 
     fn any(&mut self, token: Token<'code>) -> Result<ParsedNode<'code>, ()> {

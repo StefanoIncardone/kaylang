@@ -1,6 +1,6 @@
 [package]
 name = "kaylang"
-rust-version = "1.89.0"
+rust-version = "1.98.0"
 version = "0.6.4"
 edition = "2024"
 authors = ["Stefano Incardone"]
@@ -166,3 +166,6 @@ collapsible_else_if = "allow"
 collapsible_if = "allow"
 
 disallowed_names = "allow" # why is this even a lint?
+inline_trait_bounds = "allow"
+
+doc_paragraphs_missing_punctuation = "allow"

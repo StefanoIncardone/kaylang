@@ -43,12 +43,16 @@ impl<'path> SrcFile<'path> {
     pub fn load(path: &'path Path) -> Result<Self, Error<'path>> {
         let mut file = match File::open(path) {
             Ok(file) => file,
-            Err(err) => return Err(Error { path, kind: ErrorKind::Io(err) }),
+            Err(err) => {
+                return Err(Error { path, kind: ErrorKind::Io(err) });
+            },
         };
 
         let file_metadata = match file.metadata() {
             Ok(file_metadata) => file_metadata,
-            Err(err) => return Err(Error { path, kind: ErrorKind::Io(err) }),
+            Err(err) => {
+                return Err(Error { path, kind: ErrorKind::Io(err) });
+            },
         };
 
         if !file_metadata.is_file() {
@@ -64,7 +68,9 @@ impl<'path> SrcFile<'path> {
         let mut code = String::new();
         let bytes_read = match file.read_to_string(&mut code) {
             Ok(bytes_read) => bytes_read as uoffset32,
-            Err(err) => return Err(Error { path, kind: ErrorKind::Io(err) }),
+            Err(err) => {
+                return Err(Error { path, kind: ErrorKind::Io(err) });
+            },
         };
 
         if bytes_read != file_len {
