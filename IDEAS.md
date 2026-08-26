@@ -1977,7 +1977,7 @@ let i64_or_i64_error: i64 | err: i64;
 type i64_or_i64_error = i64 | err: i64;
 ```
 
-## 0.6.5 - casts
+## 0.7.0 - casts
 
 ability to define/overload the casting operator for specific types.
 types with explicit conversions can be bit-casted to other types when possible
@@ -3148,7 +3148,7 @@ loop_0_end:
  %line 116 "0001.asm"
 ```
 
-## 0.6.5 - More escape characters
+## 0.7.0 - More escape characters
 
 ```kay
 ## enclosed in parentheses to avoid confusions such as "...\cNULL..." where \cNULL are two
@@ -3298,19 +3298,32 @@ let success: bool = new_foo(..., foo&, bar&, ..., baz&, foobar&);
 
 ```
 
-## 0.7.0 - Mandatory type annotations
+## 0.7.0 - type inference
 
 ```kay
-let i = 12; ## could raise an error
-let i: i64 = 21; ## would need an explicit type
-
-## could also enable type inference only for literals where its really obvious
-let i = 42; ## but what integer is this? i64? i32? u8? u16?
+## could enable type inference only for literals where its really obvious
 let i = "hello";
 let i: struct Foo = struct Foo(...); ## obvious case, so type inference would help
 let i = struct Foo(...);
 let i: struct Foo = (...); ## obvious case, so type inference would help
 
+## could introduce a keyword/symbol
+let i: auto = struct Foo(...);
+let i: auto = 42; ## Error: what is this? i64? i8? u16?
+let i: * = "foo"; ## could use a *
+let i: ? = "foo"; ## could use a ?
+```
+
+## 0.7.0 - typeof keyword
+
+```kay
+let i: i64 = 2;
+let j: typeof i = 42;
+```
+
+## 0.7.0 - Finer grained mutability
+
+```kay
 ## could allow for C-like fine grained mutability (following the east const philosofy, to better
 ## align with kay types definitions), basically making the values immutable/mutable, rather than the
 ## variables being immutable/mutable

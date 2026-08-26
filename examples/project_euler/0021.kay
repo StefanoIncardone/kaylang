@@ -11,15 +11,15 @@ QUESTION:
 Evaluate the sum of all the amicable numbers under 10000.
 *#
 
-let MAX = 10000;
-var sum_of_amicable_numbers = 0;
+let MAX: i64 = 10000;
+var sum_of_amicable_numbers: i64 = 0;
 
-var number = 1;
+var number: i64 = 1;
 loop number < MAX {
-    var sum_of_divisor = 0;
-    var number_copy = number;
+    var sum_of_divisor: i64 = 0;
+    var number_copy: i64 = number;
 
-    var divisor = 1;
+    var divisor: i64 = 1;
     loop divisor <= number_copy / 2 {
         if number_copy % divisor == 0 {
             sum_of_divisor += divisor;
@@ -27,8 +27,8 @@ loop number < MAX {
         divisor += 1;
     }
 
-    var second_sum_of_divisors = 0;
-    var second_number = sum_of_divisor;
+    var second_sum_of_divisors: i64 = 0;
+    var second_number: i64 = sum_of_divisor;
 
     divisor = 1;
     loop divisor <= second_number / 2 {

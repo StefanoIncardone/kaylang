@@ -185,7 +185,7 @@ expression                = or_expression;
 
 (* statements *)
 type = identifier, ["[", expression, "]"];
-variable_declaration       = ("let" | "var"), identifier, [":", type], "=", expression, ";";
+variable_declaration       = ("let" | "var"), identifier, ":", type, "=", expression, ";";
 variable_binary_assignment = expression, operator_binary_assignment, expression, ";";
 variable_prefix_assignment = operator_prefix_assignment, expression, ";";
 variable_assignment        = variable_binary_assignment | variable_prefix_assignment;

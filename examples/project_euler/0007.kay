@@ -6,11 +6,11 @@ QUESTION:
 What is the 10001st prime number?
 *#
 
-var current_prime = 0;
+var current_prime: i64 = 0;
 
-var number = 2;
+var number: i64 = 2;
 loop current_prime < 10001 {
-    var is_prime = true;
+    var is_prime: bool = true;
     if number == 2 || number == 3 {
         ## pass
     }
@@ -18,7 +18,7 @@ loop current_prime < 10001 {
         is_prime = false;
     }
     else {
-        var divisor = 5;
+        var divisor: i64 = 5;
         loop divisor ** 2 <= number {
             if number % divisor == 0 || number % (divisor + 2) == 0 {
                 is_prime = false;

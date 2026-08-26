@@ -10,11 +10,11 @@ Find the difference between the sum of the squares of the first one hundred natu
 the square of the sum.
 *#
 
-let NUMBERS_COUNT = 100;
-let t0 = NUMBERS_COUNT * (NUMBERS_COUNT + 1);
-let sum_of_squares = t0 * (NUMBERS_COUNT * 2 + 1) / 6;
-let t1 = t0 / 2;
-let square_of_sum = t1 * t1;
+let NUMBERS_COUNT: i64 = 100;
+let t0: i64 = NUMBERS_COUNT * (NUMBERS_COUNT + 1);
+let sum_of_squares: i64 = t0 * (NUMBERS_COUNT * 2 + 1) / 6;
+let t1: i64 = t0 / 2;
+let square_of_sum: i64 = t1 * t1;
 
 print "expected: "; println 25164150;
 print "actual:   "; println square_of_sum - sum_of_squares;

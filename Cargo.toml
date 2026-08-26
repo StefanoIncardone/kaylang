@@ -163,5 +163,6 @@ get_last_with_len = "allow"
 get_first = "allow"
 else_if_without_else = "allow"
 collapsible_else_if = "allow"
+collapsible_if = "allow"
 
 disallowed_names = "allow" # why is this even a lint?

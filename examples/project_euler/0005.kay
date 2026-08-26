@@ -8,11 +8,11 @@ What is the smallest positive number that is evenly divisible (divisible with no
 of the numbers from 1 to 20?
 *#
 
-let HIGH_DIVISOR = 20;
+let HIGH_DIVISOR: i64 = 20;
 
-var number = 1;
+var number: i64 = 1;
 loop true {
-    var divisor = 2;
+    var divisor: i64 = 2;
     loop divisor <= HIGH_DIVISOR && number % divisor == 0 {
         divisor += 1;
     }

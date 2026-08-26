@@ -12,14 +12,14 @@ QUESTION:
 Find the sum of all the numbers that can be written as the sum of fifth powers of their digits.
 *#
 
-let DIGITS_COUNT = 5;
-let MAX_DIGIT_NUMBER = 10 ** (DIGITS_COUNT + 1);
+let DIGITS_COUNT: i64 = 5;
+let MAX_DIGIT_NUMBER: i64 = 10 ** (DIGITS_COUNT + 1);
 
-var digit_power_sum = 0;
-var number = 2;
+var digit_power_sum: i64 = 0;
+var number: i64 = 2;
 loop number <= MAX_DIGIT_NUMBER {
-    var current_digit_power_sum = 0;
-    var number_copy = number;
+    var current_digit_power_sum: i64 = 0;
+    var number_copy: i64 = number;
     loop number_copy > 0 {
         current_digit_power_sum += (number_copy % 10) ** DIGITS_COUNT;
         number_copy /= 10;

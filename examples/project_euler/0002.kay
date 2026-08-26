@@ -8,16 +8,16 @@ By considering the terms in the Fibonacci sequence whose values do not exceed fo
 the sum of the even-valued terms.
 *#
 
-let FOUR_MILLIONS = 4000000;
+let FOUR_MILLIONS: i64 = 4000000;
 
-var fib_previous = 0;
-var fib_current = 1;
+var fib_previous: i64 = 0;
+var fib_current: i64 = 1;
 
-var evens_sum = 0;
+var evens_sum: i64 = 0;
 loop fib_current < FOUR_MILLIONS {
     evens_sum += (fib_current % 2 == 0) * fib_current;
 
-    let fib_next = fib_previous + fib_current;
+    let fib_next: i64 = fib_previous + fib_current;
     fib_previous = fib_current;
     fib_current = fib_next;
 }

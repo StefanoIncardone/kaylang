@@ -2596,7 +2596,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             type_name_column,
             array_dimensions_start,
             array_dimensions_len,
-            ..
         }: &st::TypeAnnotation<'code>,
     ) -> Result<Type, Msg<ErrorKind>> {
         let type_name_text = self.tokens.text[*type_name];
@@ -2708,7 +2707,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         &mut self,
         variable_definition: st::VariableDefinitionIndex<'code>,
     ) -> Result<VariableDefinitionIndex<'code>, Msg<ErrorKind>> {
-        let st::VariableDefinition { name, name_column, type_annotation, initial_value } =
+        let st::VariableDefinition { name, name_column, type_annotation, expression: initial_value, .. } =
             &self.syntax_tree.variable_definitions[variable_definition];
 
         let name_text = self.tokens.text[*name];
@@ -2729,32 +2728,25 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             });
         }
 
-        let Some(st::InitialValue { expression, .. }) = initial_value else {
-            let Some(_) = type_annotation else {
-                return Err(Msg {
-                    severity: MsgSeverity::Error,
-                    kind: ErrorKind::CannotInferTypeOfVariable,
-                    col: *name_column,
-                    pointers_count: name_text.len() as uoffset32,
-                });
-            };
-            return Err(Msg {
-                severity: MsgSeverity::Error,
-                kind: ErrorKind::VariablesMustBeInitialized,
-                col: *name_column,
-                pointers_count: name_text.len() as uoffset32,
-            });
-        };
+        // let Some(st::InitialValue { expression, .. }) = initial_value else {
+        //     let Some(_) = type_annotation else {
+        //         return Err(Msg {
+        //             severity: MsgSeverity::Error,
+        //             kind: ErrorKind::CannotInferTypeOfVariable,
+        //             col: *name_column,
+        //             pointers_count: name_text.len() as uoffset32,
+        //         });
+        //     };
+        //     return Err(Msg {
+        //         severity: MsgSeverity::Error,
+        //         kind: ErrorKind::VariablesMustBeInitialized,
+        //         col: *name_column,
+        //         pointers_count: name_text.len() as uoffset32,
+        //     });
+        // };
 
-        let (parsed_expression, expression_type) =
-            if let Some(type_annotation_inner) = type_annotation {
-                let expression_type = self.parse_type_annotation(type_annotation_inner)?;
-                (self.expression(*expression, Some(&expression_type))?, expression_type)
-            } else {
-                let parsed_expression = self.expression(*expression, None)?;
-                let expression_type = parsed_expression.typ(&self.tast);
-                (parsed_expression, expression_type)
-            };
+        let expression_type = self.parse_type_annotation(type_annotation)?;
+        let parsed_expression = self.expression(*initial_value, Some(&expression_type))?;
 
         let variable = VariableDefinition {
             name: *name,

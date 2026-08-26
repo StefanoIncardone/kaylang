@@ -28,10 +28,10 @@ What is the greatest product of four adjacent numbers in the same direction
 (up, down, left, right, or diagonally) in the 20 x 20 grid?
 *#
 
-let AMOUNT_OF_ADJACENT_NUMBERS = 4;
-let COLUMNS = 20;
-let ROWS = 20;
-let numbers = [
+let AMOUNT_OF_ADJACENT_NUMBERS: i64 = 4;
+let COLUMNS: i64 = 20;
+let ROWS: i64 = 20;
+let numbers: i64[400] = [
     08; 02; 22; 97; 38; 15; 00; 40; 00; 75; 04; 05; 07; 78; 52; 12; 50; 77; 91; 08;
     49; 49; 99; 40; 17; 81; 18; 57; 60; 87; 17; 40; 98; 43; 69; 48; 04; 56; 62; 00;
     81; 49; 31; 73; 55; 79; 14; 29; 93; 71; 40; 67; 53; 88; 30; 03; 49; 13; 36; 65;
@@ -54,9 +54,9 @@ let numbers = [
     01; 70; 54; 71; 83; 51; 54; 69; 16; 92; 33; 48; 61; 43; 52; 01; 89; 19; 67; 48;
 ];
 
-var max_product = 0;
-var row = 0;
-var col = 0;
+var max_product: i64 = 0;
+var row: i64 = 0;
+var col: i64 = 0;
 
 ## println "horizontal products";
 loop row < ROWS {
@@ -64,13 +64,13 @@ loop row < ROWS {
     loop col <= COLUMNS - AMOUNT_OF_ADJACENT_NUMBERS {
         ## print "row: "; print row; print ", col: "; print col; print " -> \t";
 
-        let first_element_index = row * ROWS + col;
-        let number_0 = numbers[first_element_index];
-        let number_1 = numbers[first_element_index + 1];
-        let number_2 = numbers[first_element_index + 2];
-        let number_3 = numbers[first_element_index + 3];
+        let first_element_index: i64 = row * ROWS + col;
+        let number_0: i64 = numbers[first_element_index];
+        let number_1: i64 = numbers[first_element_index + 1];
+        let number_2: i64 = numbers[first_element_index + 2];
+        let number_3: i64 = numbers[first_element_index + 3];
 
-        let product = number_0 * number_1 * number_2 * number_3;
+        let product: i64 = number_0 * number_1 * number_2 * number_3;
         ## print number_0; print "\t * "; print number_1; print "\t * "; print number_2; print "\t * "; print number_3; print "\t = "; print product;
 
         if product > max_product {
@@ -94,12 +94,12 @@ loop col < COLUMNS {
     loop row <= ROWS - AMOUNT_OF_ADJACENT_NUMBERS {
         ## print "row: "; print row; print ", col: "; print col; print " -> \t";
 
-        let number_0 = numbers[row * ROWS + col];
-        let number_1 = numbers[(row + 1) * ROWS + col];
-        let number_2 = numbers[(row + 2) * ROWS + col];
-        let number_3 = numbers[(row + 3) * ROWS + col];
+        let number_0: i64 = numbers[row * ROWS + col];
+        let number_1: i64 = numbers[(row + 1) * ROWS + col];
+        let number_2: i64 = numbers[(row + 2) * ROWS + col];
+        let number_3: i64 = numbers[(row + 3) * ROWS + col];
 
-        let product = number_0 * number_1 * number_2 * number_3;
+        let product: i64 = number_0 * number_1 * number_2 * number_3;
         ## print number_0; print "\t * "; print number_1; print "\t * "; print number_2; print "\t * "; print number_3; print "\t = "; print product;
 
         if product > max_product {
@@ -123,12 +123,12 @@ loop row <= ROWS - AMOUNT_OF_ADJACENT_NUMBERS {
     loop col <= COLUMNS - AMOUNT_OF_ADJACENT_NUMBERS {
         ## print "row: "; print row; print ", col: "; print col; print " -> \t";
 
-        let number_0 = numbers[row * ROWS + col];
-        let number_1 = numbers[(row + 1) * ROWS + (col + 1)];
-        let number_2 = numbers[(row + 2) * ROWS + (col + 2)];
-        let number_3 = numbers[(row + 3) * ROWS + (col + 3)];
+        let number_0: i64 = numbers[row * ROWS + col];
+        let number_1: i64 = numbers[(row + 1) * ROWS + (col + 1)];
+        let number_2: i64 = numbers[(row + 2) * ROWS + (col + 2)];
+        let number_3: i64 = numbers[(row + 3) * ROWS + (col + 3)];
 
-        let product = number_0 * number_1 * number_2 * number_3;
+        let product: i64 = number_0 * number_1 * number_2 * number_3;
         ## print number_0; print "\t * "; print number_1; print "\t * "; print number_2; print "\t * "; print number_3; print "\t = "; print product;
 
         if product > max_product {
@@ -152,12 +152,12 @@ loop row <= ROWS - AMOUNT_OF_ADJACENT_NUMBERS {
     loop col < COLUMNS {
         ## print "row: "; print row; print ", col: "; print col; print " -> \t";
 
-        let number_0 = numbers[row * ROWS + col];
-        let number_1 = numbers[(row + 1) * ROWS + (col - 1)];
-        let number_2 = numbers[(row + 2) * ROWS + (col - 2)];
-        let number_3 = numbers[(row + 3) * ROWS + (col - 3)];
+        let number_0: i64 = numbers[row * ROWS + col];
+        let number_1: i64 = numbers[(row + 1) * ROWS + (col - 1)];
+        let number_2: i64 = numbers[(row + 2) * ROWS + (col - 2)];
+        let number_3: i64 = numbers[(row + 3) * ROWS + (col - 3)];
 
-        let product = number_0 * number_1 * number_2 * number_3;
+        let product: i64 = number_0 * number_1 * number_2 * number_3;
         ## print number_0; print "\t * "; print number_1; print "\t * "; print number_2; print "\t * "; print number_3; print "\t = "; print product;
 
         if product > max_product {

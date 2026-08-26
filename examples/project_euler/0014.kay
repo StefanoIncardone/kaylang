@@ -13,12 +13,12 @@ Which starting number, under one million, produces the longest chain?
 Note: Once the chain starts the terms are allowed to go above one million.
 *#
 
-var max_chain_length = 1;
-var number = 2;
-var number_at_max_chain_length = number;
+var max_chain_length: i64 = 1;
+var number: i64 = 2;
+var number_at_max_chain_length: i64 = number;
 loop number < 1000000 {
-    var chain_length = 1;
-    var number_copy = number;
+    var chain_length: i64 = 1;
+    var number_copy: i64 = number;
     loop number_copy > 1 {
         if number_copy % 2 == 0 {
             number_copy /= 2;

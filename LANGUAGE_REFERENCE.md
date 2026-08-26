@@ -202,42 +202,42 @@ rules:
         - underscores
     - identifier strings:
         - any number of ASCII characters
-3. value:
-    - type annotation: `:` followed by the type of the variable
-    - variable value: `=` followed by the value we wish the variable to hold
-    - both type annotation and variable value
+3. type annotation:
+    - `:` followed by the type of the variable
+4. value:
+    - `=` followed by the value we wish the variable to hold
 
 So following the specified rules here are a few examples on how to create variables:
 
 ```kay
-## 1. mutability class
-let kay = "kay"; ## immutable variable named `kay` with value "kay"
+let ## 1. mutability class
+kay ## 2. variable name
+: str ## 3. type annotation
+= "kay"; ## 4. value
+
+let kay: str = "kay"; ## immutable variable named `kay` with value "kay"
 kay = "let's go!"; ## Error: cannot mutate immutable variable
 
-var one = 1; ## mutable variable named `one` with value 1
+var one: i64 = 1; ## mutable variable named `one` with value 1
 one = 2; ## `one` will from now on contain the value 2
 
 ## 2.0 variable names
-let kay_lets_go = "kay, let's go!"; ## can contain underscores
-let two_plus_2 = "two + 2"; ## can contain numbers
-let 2plus2 = 2 + 2; ## Error: not a valid name, cannot start with a number
-let longlonglonglonglonglonglonglonglonglonglonglonglonglonglonglong; ## Error: over the limit of 63 characters
+let kay_lets_go: str = "kay, let's go!"; ## can contain underscores
+let two_plus_2: str = "two + 2"; ## can contain numbers
+let 2plus2: i64 = 2 + 2; ## Error: not a valid name, cannot start with a number
+let longlonglonglonglonglonglonglonglonglonglonglonglonglonglonglong: i64 = 42; ## Error: over the limit of 63 characters
 
 ## 2.1 identifier strings
-let `2 + 2` = 2 + 2; ## identifier strings can contain any ASCII characters, functionally equivalent to strings without escapes
-let `longlonglonglonglonglonglonglonglonglonglonglonglonglonglonglong`; ## Error: over the limit of 63 characters
+let `2 + 2`: i64 = 2 + 2; ## identifier strings can contain any ASCII characters, functionally equivalent to strings without escapes
+let `longlonglonglonglonglonglonglonglonglonglonglonglonglonglonglong`: i64 = 42; ## Error: over the limit of 63 characters
 
-## 3. optional type annotations
-let inferred = 42; ## the type will be inferred as `i64` by the expression to the right of the `=` sign
-let explicit: i64 = 42; ## with the type annotation the type is specified to be `i64
+## 3. type annotations
+let inferred = 42; ## Error: for readability the type must always be specified
+let explicit: i64 = 42; ## with the type annotation the type is specified to be `i64`
 let mismatched: i64 = "42"; ## Error: annotated type differs from actual value, expected `i64` but got `str`
 
-## 4. mandatory variable values
+## 4. variable values
 let missing_initial_value: i64; ## Error: missing initial value
-
-## since all variables must hold a concrete type, there needs to be specified either a type annotation
-## or an initial value to be able to determine the type of the variable
-let cannot_infer_type; ## Error: missing either type annotation or initial value to determine the type of the variable
 ```
 
 ## Expressions
@@ -246,15 +246,15 @@ let cannot_infer_type; ## Error: missing either type annotation or initial value
 > Here are some usefull definitions to keep in mind
 >
 > ```kay
-> let I64_MIN = -9223372036854775808;
-> let I64_MAX = 9223372036854775807;
+> let I64_MIN: i64 = -9223372036854775808;
+> let I64_MAX: i64 = 9223372036854775807;
 > ```
 
 >[!NOTE]
 > Some operators support `*op*=` variations (i.e.: `+=`, `-=`, ...)
 >
 > ```kay
-> var twentyone = 9;
+> var twentyone: i64 = 9;
 > twentyone += 10; ## equivalent to "twentyone = twentyone + 10;"
 > ```
 
@@ -395,9 +395,9 @@ Expressions follow this order of operations (precedence from highest to lowest):
 The only way to print values is using the temporary `print` or `println` keywords:
 
 ``` kay
-var ten = 5 * 2;
-let nine = 3 ** 2;
-let lucky = ten + nine;
+var ten: i64 = 5 * 2;
+let nine: i64 = 3 ** 2;
+let lucky: i64 = ten + nine;
 
 println lucky;
 print 42;
@@ -414,15 +414,15 @@ They are enclosed by `{` and `}`, and contain a series of statements, where vari
 accessible in the scope they were defined in:
 
 ```kay
-let ten = 10;
+let ten: i64 = 10;
 print "ten = "; println ten;
 
 {
-    let nine = 9;
+    let nine: i64 = 9;
     print "nine = "; println nine;
 
     {
-        let twentyone = nine + ten;
+        let twentyone: i64 = nine + ten;
         print "twentyone = "; println twentyone;
 
         print "nine in the inner scope = "; println nine;
@@ -444,7 +444,7 @@ Executes a block of code based on a condition
 - if statement:
 
     ```kay
-    let lucky = 42;
+    let lucky: i64 = 42;
     if lucky == 19 {
         println "well done!";
     }
@@ -453,7 +453,7 @@ Executes a block of code based on a condition
 - if-else statement:
 
     ```kay
-    let lucky = 42;
+    let lucky: i64 = 42;
     if lucky == 19 {
         println "well done!";
     }
@@ -465,7 +465,7 @@ Executes a block of code based on a condition
 - if, else-if, else statement:
 
     ```kay
-    let lucky = 42;
+    let lucky: i64 = 42;
     if lucky == 19 {
         println "well done!";
     }
@@ -482,7 +482,7 @@ Executes a block of code based on a condition
 Executes a block until a condition is not satisfied
 
 ```kay
-var i = 0;
+var i: i64 = 0;
 loop i < 10 {
     println i;
     i += 1;
@@ -494,13 +494,13 @@ loop i < 10 {
 C-style do-while loop can be used to let the body/statement of the loop run at least once:
 
 ```kay
-var i = 0;
+var i: i64 = 0;
 loop false {
     i += 1;
 }
 println i; ## will print 0 since the increment inside the loop was never executed
 
-var j = 0;
+var j: i64 = 0;
 do loop false {
     j += 1;
 }
@@ -512,7 +512,7 @@ println j; ## will print 1 since the increment inside the loop was executed at l
 They can be used to alter the normal flow of the loop:
 
 ```kay
-var i = 0;
+var i: i64 = 0;
 loop i < 10 {
     ## Warning: this will never reach the increment statement, thus creating an infinite loop
     if i == 3 {

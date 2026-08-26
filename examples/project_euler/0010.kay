@@ -6,10 +6,10 @@ QUESTION:
 Find the sum of all the primes below two million.
 *#
 
-var sum = 0;
-var number = 1;
+var sum: i64 = 0;
+var number: i64 = 1;
 loop number < 2000000 {
-    var is_prime = true;
+    var is_prime: bool = true;
     if number == 2 || number == 3 {
         ;
     }
@@ -17,7 +17,7 @@ loop number < 2000000 {
         is_prime = false;
     }
     else {
-        var divisor = 5;
+        var divisor: i64 = 5;
         loop divisor ** 2 <= number {
             if number % divisor == 0 || number % (divisor + 2) == 0 {
                 is_prime = false;

@@ -6,13 +6,13 @@ QUESTION:
 What is the largest prime factor of the number 600851475143?
 *#
 
-let TARGET_NUMBER = 600851475143;
-var largest_prime = 0;
+let TARGET_NUMBER: i64 = 600851475143;
+var largest_prime: i64 = 0;
 
-var factor = 1;
+var factor: i64 = 1;
 loop factor ** 2 <= TARGET_NUMBER {
     if TARGET_NUMBER % factor == 0 {
-        var is_prime = true;
+        var is_prime: bool = true;
         if factor == 2 || factor == 3 {
             ## pass
         }
@@ -20,7 +20,7 @@ loop factor ** 2 <= TARGET_NUMBER {
             is_prime = false;
         }
         else {
-            var divisor = 5;
+            var divisor: i64 = 5;
             loop divisor ** 2 <= factor {
                 if factor % divisor == 0 || factor % (divisor + 2) == 0 {
                     is_prime = false;

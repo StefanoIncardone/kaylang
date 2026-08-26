@@ -1,3 +1,5 @@
+// TODO(stefano): improve usage consistency of NonZero<uoffset32>
+
 use super::{
     src_file::{DisplayPosition, SrcCode},
     tokenizer::{Op, TextIndex, Token, TokenIndex, TokenKind, Tokens},
@@ -402,23 +404,17 @@ pub(crate) type ArrayDimensionIndex<'code> = Index32<ArrayDimension<'code>>;
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct ArrayDimension<'code> {
     pub(crate) open_square_bracket_column: uoffset32,
+    // TODO(stefano): implement automatic inferring of array length
     pub(crate) dimension_expression: ExpressionIndex<'code>,
     pub(crate) close_square_bracket_column: uoffset32,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct TypeAnnotation<'code> {
-    pub(crate) colon_column: NonZero<uoffset32>,
     pub(crate) type_name: TextIndex<'code>,
     pub(crate) type_name_column: uoffset32,
     pub(crate) array_dimensions_start: ArrayDimensionIndex<'code>,
     pub(crate) array_dimensions_len: uoffset32,
-}
-
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub(crate) struct InitialValue<'code> {
-    pub(crate) equals_column: NonZero<uoffset32>,
-    pub(crate) expression: ExpressionIndex<'code>,
 }
 
 pub(crate) type VariableDefinitionIndex<'code> = Index32<VariableDefinition<'code>>;
@@ -427,8 +423,12 @@ pub(crate) type VariableDefinitionIndex<'code> = Index32<VariableDefinition<'cod
 pub(crate) struct VariableDefinition<'code> {
     pub(crate) name: TextIndex<'code>,
     pub(crate) name_column: uoffset32,
-    pub(crate) type_annotation: Option<TypeAnnotation<'code>>,
-    pub(crate) initial_value: Option<InitialValue<'code>>,
+
+    pub(crate) colon_column: NonZero<uoffset32>,
+    pub(crate) type_annotation: TypeAnnotation<'code>,
+
+    pub(crate) equals_column: NonZero<uoffset32>,
+    pub(crate) expression: ExpressionIndex<'code>,
 }
 
 pub(crate) type NodeIndex<'code> = Index32<Node<'code>>;
@@ -882,60 +882,56 @@ impl SyntaxTreeDisplay<'_, '_, '_> {
         variable_definition_index: VariableDefinitionIndex<'_>,
         indent: usize,
     ) -> core::fmt::Result {
-        let VariableDefinition { name, name_column, type_annotation, initial_value } =
-            &self.syntax_tree.variable_definitions[variable_definition_index];
+        let VariableDefinition {
+            name,
+            name_column,
+
+            colon_column,
+            type_annotation: TypeAnnotation {
+                type_name,
+                type_name_column,
+                array_dimensions_start,
+                array_dimensions_len,
+            },
+
+            equals_column,
+            expression
+        } = &self.syntax_tree.variable_definitions[variable_definition_index];
+
         let name_str = self.tokens.text[*name];
         writeln!(f, "{:>indent$}Name: {name_column} = {name_str}", "")?;
+        writeln!(f, "{:>indent$}Colon: {colon_column} = :", "")?;
+        writeln!(f, "{:>indent$}TypeAnnotation", "")?;
 
-        if let Some(TypeAnnotation {
-            colon_column,
-            type_name,
-            type_name_column,
-            array_dimensions_start,
-            array_dimensions_len,
-        }) = type_annotation
-        {
-            let annotation_indent = indent + Self::INDENT_INCREMENT;
-            writeln!(f, "{:>indent$}TypeAnnotation", "")?;
-            writeln!(f, "{:>annotation_indent$}Colon: {colon_column} = :", "")?;
 
-            let type_name_str = self.tokens.text[*type_name];
+        let annotation_indent = indent + Self::INDENT_INCREMENT;
+        let type_name_str = self.tokens.text[*type_name];
+        writeln!(
+            f,
+            "{:>annotation_indent$}TypeName: {type_name_column} = {type_name_str}",
+            ""
+        )?;
+
+        let dimension_indent = annotation_indent + Self::INDENT_INCREMENT;
+        let array_dimensions_end = array_dimensions_start.0 + array_dimensions_len;
+        let array_dimensions = &self.syntax_tree.array_dimensions
+            [array_dimensions_start.0 as usize..array_dimensions_end as usize];
+        for ArrayDimension { open_square_bracket_column, dimension_expression, close_square_bracket_column } in array_dimensions {
             writeln!(
                 f,
-                "{:>annotation_indent$}TypeName: {type_name_column} = {type_name_str}",
+                "{:>annotation_indent$}OpenSquareBracket: {open_square_bracket_column} = [",
                 ""
             )?;
-
-            let dimension_indent = annotation_indent + Self::INDENT_INCREMENT;
-            let array_dimensions_end = array_dimensions_start.0 + array_dimensions_len;
-            let array_dimensions = &self.syntax_tree.array_dimensions
-                [array_dimensions_start.0 as usize..array_dimensions_end as usize];
-            for ArrayDimension {
-                open_square_bracket_column,
-                dimension_expression,
-                close_square_bracket_column,
-            } in array_dimensions
-            {
-                writeln!(
-                    f,
-                    "{:>annotation_indent$}OpenSquareBracket: {open_square_bracket_column} = [",
-                    ""
-                )?;
-                self.info_expression(f, *dimension_expression, dimension_indent)?;
-                writeln!(
-                    f,
-                    "{:>annotation_indent$}CloseSquareBracket: {close_square_bracket_column} = ]",
-                    ""
-                )?;
-            }
+            self.info_expression(f, *dimension_expression, dimension_indent)?;
+            writeln!(
+                f,
+                "{:>annotation_indent$}CloseSquareBracket: {close_square_bracket_column} = ]",
+                ""
+            )?;
         }
 
-        return if let Some(InitialValue { equals_column, expression }) = initial_value {
-            writeln!(f, "{:>indent$}Equals: {equals_column} = =", "")?;
-            self.info_expression(f, *expression, indent)
-        } else {
-            Ok(())
-        };
+        writeln!(f, "{:>indent$}Equals: {equals_column} = =", "")?;
+        return self.info_expression(f, *expression, indent);
     }
 }
 
@@ -2178,6 +2174,103 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 }
 
 impl<'code> Parser<'_, '_, 'code, '_> {
+    fn type_annotation(&mut self) -> Result<TypeAnnotation<'code>, ()> {
+        let type_name_token = self.next_expected_token(Expected::TypeName)?;
+        let type_name = match type_name_token.kind {
+            TokenKind::Identifier(name) | TokenKind::IdentifierStr(name) => name,
+            TokenKind::OpenRoundBracket
+            | TokenKind::CloseRoundBracket
+            | TokenKind::OpenSquareBracket
+            | TokenKind::CloseSquareBracket
+            | TokenKind::OpenCurlyBracket
+            | TokenKind::CloseCurlyBracket
+            | TokenKind::Colon
+            | TokenKind::SemiColon
+            | TokenKind::Comma
+            | TokenKind::Op(_)
+            | TokenKind::False
+            | TokenKind::True
+            | TokenKind::DecimalInteger(_)
+            | TokenKind::DecimalIntegerPrefix(_)
+            | TokenKind::BinaryInteger(_)
+            | TokenKind::OctalInteger(_)
+            | TokenKind::HexadecimalInteger(_)
+            | TokenKind::Ascii(_, _)
+            | TokenKind::Str(_)
+            | TokenKind::RawStr(_) => {
+                self.errors.push(Msg {
+                    severity: MsgSeverity::Error,
+                    kind: ErrorKind::ExpectedTypeName,
+                    col: type_name_token.col,
+                    pointers_count: type_name_token.kind.display_len(self.tokens),
+                });
+                return Err(());
+            },
+            TokenKind::Let
+            | TokenKind::Var
+            | TokenKind::Print
+            | TokenKind::PrintLn
+            | TokenKind::Eprint
+            | TokenKind::EprintLn
+            | TokenKind::Do
+            | TokenKind::If
+            | TokenKind::Else
+            | TokenKind::Loop
+            | TokenKind::Break
+            | TokenKind::Continue => {
+                self.errors.push(Msg {
+                    severity: MsgSeverity::Error,
+                    kind: ErrorKind::KeywordInTypeName,
+                    col: type_name_token.col,
+                    pointers_count: type_name_token.kind.display_len(self.tokens),
+                });
+                return Err(());
+            },
+            TokenKind::Unexpected(_)
+            | TokenKind::LineComment(_)
+            | TokenKind::BlockComment(_) => self.should_have_been_skipped(type_name_token),
+        };
+
+        let array_dimensions_start = ArrayDimensionIndex::new(self.syntax_tree.array_dimensions.len());
+        while let Some(Peeked {
+            token: Token { kind: TokenKind::OpenSquareBracket, col: open_square_bracket_column },
+            index: open_square_bracket_token_index,
+        }) = self.peek_next_token() {
+            self.token_index = open_square_bracket_token_index;
+
+            let dimension_expression_token = self.next_expected_token(Expected::Expression)?;
+            let dimension_expression = self.expression(dimension_expression_token)?;
+
+            let Some(Peeked {
+                token: Token { kind: TokenKind::CloseSquareBracket, col: close_square_bracket_column },
+                index: close_square_bracket_token_index,
+            }) = self.peek_next_token()
+            else {
+                self.errors.push(Msg {
+                    severity: MsgSeverity::Error,
+                    kind: ErrorKind::MissingCloseSquareBracketInArrayType,
+                    col: dimension_expression_token.col,
+                    pointers_count: dimension_expression_token.kind.display_len(self.tokens),
+                });
+                return Err(());
+            };
+            self.token_index = close_square_bracket_token_index;
+
+            self.syntax_tree.array_dimensions.push(ArrayDimension {
+                open_square_bracket_column,
+                dimension_expression,
+                close_square_bracket_column,
+            });
+        }
+
+        return Ok(TypeAnnotation {
+            type_name,
+            type_name_column: type_name_token.col,
+            array_dimensions_start,
+            array_dimensions_len: self.syntax_tree.array_dimensions.len() as uoffset32 - array_dimensions_start.0,
+        });
+    }
+
     fn variable_definition(
         &mut self,
         mutability_token: Token<'code>,
@@ -2238,149 +2331,54 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             },
         };
 
-        let type_annotation = 'type_annotation: {
-            let after_variable_name_token_index = self.token_index;
-            let after_variable_name_token =
-                self.next_expected_token(Expected::ColonOrEqualsOrSemicolon)?;
-            let TokenKind::Colon = after_variable_name_token.kind else {
-                self.token_index = after_variable_name_token_index;
-                break 'type_annotation None;
-            };
-
-            let type_name_token = self.next_expected_token(Expected::TypeName)?;
-            let type_name = match type_name_token.kind {
-                TokenKind::Identifier(name) | TokenKind::IdentifierStr(name) => name,
-                TokenKind::OpenRoundBracket
-                | TokenKind::CloseRoundBracket
-                | TokenKind::OpenSquareBracket
-                | TokenKind::CloseSquareBracket
-                | TokenKind::OpenCurlyBracket
-                | TokenKind::CloseCurlyBracket
-                | TokenKind::Colon
-                | TokenKind::SemiColon
-                | TokenKind::Comma
-                | TokenKind::Op(_)
-                | TokenKind::False
-                | TokenKind::True
-                | TokenKind::DecimalInteger(_)
-                | TokenKind::DecimalIntegerPrefix(_)
-                | TokenKind::BinaryInteger(_)
-                | TokenKind::OctalInteger(_)
-                | TokenKind::HexadecimalInteger(_)
-                | TokenKind::Ascii(_, _)
-                | TokenKind::Str(_)
-                | TokenKind::RawStr(_) => {
-                    self.errors.push(Msg {
-                        severity: MsgSeverity::Error,
-                        kind: ErrorKind::ExpectedTypeName,
-                        col: after_variable_name_token.col,
-                        pointers_count: after_variable_name_token.kind.display_len(self.tokens),
-                    });
-                    return Err(());
-                },
-                TokenKind::Let
-                | TokenKind::Var
-                | TokenKind::Print
-                | TokenKind::PrintLn
-                | TokenKind::Eprint
-                | TokenKind::EprintLn
-                | TokenKind::Do
-                | TokenKind::If
-                | TokenKind::Else
-                | TokenKind::Loop
-                | TokenKind::Break
-                | TokenKind::Continue => {
-                    self.errors.push(Msg {
-                        severity: MsgSeverity::Error,
-                        kind: ErrorKind::KeywordInTypeName,
-                        col: after_variable_name_token.col,
-                        pointers_count: after_variable_name_token.kind.display_len(self.tokens),
-                    });
-                    return Err(());
-                },
-                TokenKind::Unexpected(_)
-                | TokenKind::LineComment(_)
-                | TokenKind::BlockComment(_) => {
-                    self.should_have_been_skipped(after_variable_name_token)
-                },
-            };
-
-            let array_dimensions_start =
-                ArrayDimensionIndex::new(self.syntax_tree.array_dimensions.len());
-            while let Some(Peeked {
-                token: Token { kind: TokenKind::OpenSquareBracket, col: open_square_bracket_column },
-                index: open_square_bracket_token_index,
-            }) = self.peek_next_token()
-            {
-                self.token_index = open_square_bracket_token_index;
-
-                let dimension_expression_token = self.next_expected_token(Expected::Expression)?;
-                let dimension_expression = self.expression(dimension_expression_token)?;
-
-                let Some(Peeked {
-                    token:
-                        Token { kind: TokenKind::CloseSquareBracket, col: close_square_bracket_column },
-                    index: close_square_bracket_token_index,
-                }) = self.peek_next_token()
-                else {
-                    self.errors.push(Msg {
-                        severity: MsgSeverity::Error,
-                        kind: ErrorKind::MissingCloseSquareBracketInArrayType,
-                        col: dimension_expression_token.col,
-                        pointers_count: dimension_expression_token.kind.display_len(self.tokens),
-                    });
-                    return Err(());
-                };
-                self.token_index = close_square_bracket_token_index;
-
-                self.syntax_tree.array_dimensions.push(ArrayDimension {
-                    open_square_bracket_column,
-                    dimension_expression,
-                    close_square_bracket_column,
-                });
-            }
-
-            let Some(colon_column) = NonZero::new(after_variable_name_token.col) else {
-                unreachable!("valid `:` should have non-zero column");
-            };
-
-            Some(TypeAnnotation {
-                colon_column,
-                type_name,
-                type_name_column: type_name_token.col,
-                array_dimensions_start,
-                array_dimensions_len: self.syntax_tree.array_dimensions.len() as uoffset32
-                    - array_dimensions_start.0,
-            })
+        let column_token_index = self.token_index;
+        let column_token = self.next_expected_token(Expected::Colon)?;
+        let TokenKind::Colon = column_token.kind else {
+            self.token_index = column_token_index;
+            self.errors.push(Msg {
+                severity: MsgSeverity::Error,
+                kind: ErrorKind::MissingTypeAnnotation,
+                col: variable_name_token.col,
+                pointers_count: variable_name_token.kind.display_len(self.tokens),
+            });
+            return Err(());
         };
 
-        let equals_or_semicolon_token = self.next_expected_token(Expected::EqualsOrSemicolon)?;
-        return match equals_or_semicolon_token.kind {
-            TokenKind::SemiColon => Ok((
-                VariableDefinition {
-                    name: variable_name,
-                    name_column: variable_name_token.col,
-                    type_annotation,
-                    initial_value: None,
-                },
-                equals_or_semicolon_token.col,
-            )),
+        let type_annotation = self.type_annotation()?;
+
+        let equals_token = self.next_expected_token(Expected::Equals)?;
+        return match equals_token.kind {
+            TokenKind::SemiColon => {
+                self.errors.push(Msg {
+                    severity: MsgSeverity::Error,
+                    kind: ErrorKind::MissingTypeAnnotation,
+                    col: variable_name_token.col,
+                    pointers_count: variable_name_token.kind.display_len(self.tokens) as uoffset32,
+                });
+                Err(())
+            },
             TokenKind::Op(Op::Equals) => {
-                let start_of_initial_value_token =
-                    self.next_expected_token(Expected::Expression)?;
-                let expression = self.expression(start_of_initial_value_token)?;
+                let start_of_expression_token = self.next_expected_token(Expected::Expression)?;
+                let expression = self.expression(start_of_expression_token)?;
                 let semicolon_column = self.semicolon()?;
 
-                let Some(equals_column) = NonZero::new(equals_or_semicolon_token.col) else {
+                let Some(equals_column) = NonZero::new(equals_token.col) else {
                     unreachable!("valid `=` should have non-zero column");
                 };
 
+                let Some(colon_column) = NonZero::new(column_token.col) else {
+                    unreachable!("valid `:` should have non-zero column");
+                };
                 Ok((
                     VariableDefinition {
                         name: variable_name,
                         name_column: variable_name_token.col,
+
+                        colon_column,
                         type_annotation,
-                        initial_value: Some(InitialValue { equals_column, expression }),
+
+                        equals_column,
+                        expression,
                     },
                     semicolon_column,
                 ))
@@ -2417,28 +2415,17 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             | TokenKind::Else
             | TokenKind::Loop
             | TokenKind::Break
-            | TokenKind::Continue => match type_annotation {
-                None => {
-                    self.errors.push(Msg {
-                        severity: MsgSeverity::Error,
-                        kind: ErrorKind::ExpectedEqualsOrSemicolonAfterVariableName,
-                        col: variable_name_token.col,
-                        pointers_count: variable_name_token.kind.display_len(self.tokens),
-                    });
-                    Err(())
-                },
-                Some(_) => {
-                    self.errors.push(Msg {
-                        severity: MsgSeverity::Error,
-                        kind: ErrorKind::ExpectedEqualsOrSemicolonAfterTypeAnnotation,
-                        col: equals_or_semicolon_token.col,
-                        pointers_count: equals_or_semicolon_token.kind.display_len(self.tokens),
-                    });
-                    Err(())
-                },
+            | TokenKind::Continue => {
+                self.errors.push(Msg {
+                    severity: MsgSeverity::Error,
+                    kind: ErrorKind::MissingSemicolon,
+                    col: equals_token.col,
+                    pointers_count: equals_token.kind.display_len(self.tokens),
+                });
+                Err(())
             },
             TokenKind::Unexpected(_) | TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {
-                self.should_have_been_skipped(equals_or_semicolon_token)
+                self.should_have_been_skipped(equals_token)
             },
         };
     }
@@ -2629,8 +2616,8 @@ pub enum Expected {
     Semicolon,
     VariableName,
     TypeName,
-    EqualsOrSemicolon,
-    ColonOrEqualsOrSemicolon,
+    Equals,
+    Colon,
     OpenCurlyBracket,
     OpenCurlyBracketOrIf,
     LoopStatement,
@@ -2649,8 +2636,8 @@ impl Display for Expected {
             Self::Semicolon => write!(f, "';'"),
             Self::VariableName => write!(f, "variable name"),
             Self::TypeName => write!(f, "type name"),
-            Self::EqualsOrSemicolon => write!(f, "'=' or ';'"),
-            Self::ColonOrEqualsOrSemicolon => write!(f, "':', '=' or ';'"),
+            Self::Equals => write!(f, "':'"),
+            Self::Colon => write!(f, "':'"),
             Self::OpenCurlyBracket => write!(f, "'{{'"),
             Self::OpenCurlyBracketOrIf => write!(f, "'{{' or 'if'"),
             Self::LoopStatement => write!(f, "loop statement"),
@@ -2662,6 +2649,7 @@ impl Display for Expected {
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum ErrorKind {
     PrematureEndOfFile(Expected),
+    Expected(Expected),
     MissingSemicolon,
     StrayColon,
     StrayComma,
@@ -2680,6 +2668,10 @@ pub enum ErrorKind {
     // variables
     ExpectedVariableName,
     KeywordInVariableName,
+
+    // IDEA(stefano): this error states '... after here' but points to the start of the token, it would be
+        // better if the error message pointed to the end of the token instead
+    MissingTypeAnnotation,
     ExpectedTypeName,
     KeywordInTypeName,
     MissingCloseSquareBracketInArrayType,
@@ -2706,6 +2698,10 @@ impl IntoMsgInfo for ErrorKind {
         let (error_message, error_cause_message) = match self {
             Self::PrematureEndOfFile(expected) => (
                 "premature end of file".into(),
+                format!("expected {expected} after here").into(),
+            ),
+            Self::Expected(expected) => (
+                "Missing token".into(),
                 format!("expected {expected} after here").into(),
             ),
             Self::MissingSemicolon => (
@@ -2770,9 +2766,13 @@ impl IntoMsgInfo for ErrorKind {
                 "invalid variable name".into(),
                 "cannot be a keyword, if you meant to reference a variable with this name, try wrapping this in `".into(),
             ),
+            Self::MissingTypeAnnotation => (
+                "invalid variable definition".into(),
+                "expected type annotation after here to set the type of the variable".into(),
+            ),
             Self::ExpectedTypeName => (
                 "invalid type annotation".into(),
-                "expected type name after here".into(),
+                "must be a type name".into(),
             ),
             Self::KeywordInTypeName => (
                 "invalid type name".into(),

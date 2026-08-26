@@ -17,19 +17,19 @@ QUESTION:
 What is the value of the first triangle number to have over five hundred divisors?
 *#
 
-let TARGET_FACTOR_COUNT = 500;
+let TARGET_FACTOR_COUNT: i64 = 500;
 
-var triangle_number = 0;
-var number = 1;
-var total_factor_count = 1;
+var triangle_number: i64 = 0;
+var number: i64 = 1;
+var total_factor_count: i64 = 1;
 loop total_factor_count <= TARGET_FACTOR_COUNT {
     total_factor_count = 1;
 
     triangle_number += number;
-    var triangle_number_copy = triangle_number;
+    var triangle_number_copy: i64 = triangle_number;
 
-    var prime_factor_count = 0;
-    var prime_factor = 2;
+    var prime_factor_count: i64 = 0;
+    var prime_factor: i64 = 2;
     do loop prime_factor <= triangle_number_copy {
         if triangle_number_copy % prime_factor == 0 {
             triangle_number_copy /= prime_factor;
@@ -40,7 +40,7 @@ loop total_factor_count <= TARGET_FACTOR_COUNT {
         total_factor_count *= prime_factor_count + 1;
         prime_factor_count = 0;
 
-        var is_not_prime = true;
+        var is_not_prime: bool = true;
         loop is_not_prime {
             is_not_prime = false;
             prime_factor += 1;
@@ -52,7 +52,7 @@ loop total_factor_count <= TARGET_FACTOR_COUNT {
                 continue;
             }
             else {
-                var divisor = 5;
+                var divisor: i64 = 5;
                 loop divisor ** 2 <= prime_factor {
                     if prime_factor % divisor == 0 || prime_factor % (divisor + 2) == 0 {
                         is_not_prime = true;

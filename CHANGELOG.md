@@ -18,7 +18,17 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 - feature: lack of windows/unix path normalization in log messages
 - bug: incorrect error message pointers when line contains "invisible" characters such as tabs
-- but: empty cli arguments are not properly checked and skipped
+- bug: empty cli arguments are not properly checked and skipped
+
+## 0.7.0 -
+
+### Changed
+
+#### Language
+
+##### Changed
+
+- Made type annotations mandatory
 
 ## 0.6.4 - 2026-08-13
 

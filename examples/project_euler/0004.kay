@@ -7,20 +7,20 @@ QUESTION:
 Find the largest palindrome made from the product of two 3-digit numbers.
 *#
 
-let MAX_DIGITS = 3;
-let MIN_NUMBER = 10 ** (MAX_DIGITS - 1);
-let MAX_NUMBER = 10 ** MAX_DIGITS - 1;
+let MAX_DIGITS: i64 = 3;
+let MIN_NUMBER: i64 = 10 ** (MAX_DIGITS - 1);
+let MAX_NUMBER: i64 = 10 ** MAX_DIGITS - 1;
 
-var max_palindrome = 100 * 100;
+var max_palindrome: i64 = 100 * 100;
 
-var lhs = MAX_NUMBER;
+var lhs: i64 = MAX_NUMBER;
 loop lhs > MIN_NUMBER && max_palindrome <= lhs * MAX_NUMBER {
-    var rhs = MAX_NUMBER;
+    var rhs: i64 = MAX_NUMBER;
     loop rhs > MIN_NUMBER {
-        var target = lhs * rhs;
-        var reversed_target = 0;
+        var target: i64 = lhs * rhs;
+        var reversed_target: i64 = 0;
 
-        var target_copy = target;
+        var target_copy: i64 = target;
         loop target_copy > 0 {
             reversed_target = 10 * reversed_target + target_copy % 10;
             target_copy /= 10;
