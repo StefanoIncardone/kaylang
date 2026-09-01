@@ -11,10 +11,10 @@ pub mod error;
 pub mod front_end;
 
 use back_to_front::{
-    cli::{Arg, FlagPrefix, FlagSeparator, Mask, bits, mask},
+    cli::{Arg, FlagPrefix, FlagSeparator, Mask, bits, mask, AnsiFg, AnsiBg, AnsiFlag},
     uoffset32,
 };
-use color::{AnsiFlag, Bg, Colored, Fg, ansi_flag};
+use color::{Colored, ansi_flag};
 use core::fmt::{Display, Write as _};
 use error::MsgWithCauseUnderText;
 use std::{io::IsTerminal, path::Path, time::Instant};
@@ -48,8 +48,8 @@ macro_rules! messages {
 }
 
 // main compilation steps (displayed when verbosity level is normal or verbose)
-const STEP_FG: Fg = Fg::LightGreen;
-const STEP_BG: Bg = Bg::Default;
+const STEP_FG: AnsiFg = AnsiFg::LightGreen;
+const STEP_BG: AnsiBg = AnsiBg::Default;
 const STEP_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
 const STEP_INDENT: usize = 0;
 messages!(
@@ -62,8 +62,8 @@ messages!(
 );
 
 // sub compilation steps (displayed when verbosity lever is verbose)
-const SUBSTEP_FG: Fg = Fg::LightBlue;
-const SUBSTEP_BG: Bg = Bg::Default;
+const SUBSTEP_FG: AnsiFg = AnsiFg::LightBlue;
+const SUBSTEP_BG: AnsiBg = AnsiBg::Default;
 const SUBSTEP_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
 const SUBSTEP_INDENT: usize = STEP_INDENT + 4;
 messages!(
@@ -81,12 +81,12 @@ messages!(
 );
 
 // errors
-const ERR_FG: Fg = Fg::LightRed;
-const ERR_BG: Bg = Bg::Default;
+const ERR_FG: AnsiFg = AnsiFg::LightRed;
+const ERR_BG: AnsiBg = AnsiBg::Default;
 const ERR_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
 
-const BAR_FG: Fg = Fg::LightBlue;
-const BAR_BG: Bg = Bg::Default;
+const BAR_FG: AnsiFg = AnsiFg::LightBlue;
+const BAR_BG: AnsiBg = AnsiBg::Default;
 const BAR_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
 
 pub(crate) const ERROR: &str = "Error";
@@ -143,8 +143,8 @@ impl Logger {
     pub fn done(self, text: &dyn Display, output: Option<&Path>, padding: usize) {
         let elapsed_time = Colored {
             text: &format!("{:.06}s", self.start.elapsed().as_secs_f32()),
-            fg: Fg::White,
-            bg: Bg::Default,
+            fg: AnsiFg::White,
+            bg: AnsiBg::Default,
             flags: AnsiFlag::Default as u8,
         };
 
@@ -581,8 +581,8 @@ impl Display for Version {
     #[expect(non_upper_case_globals)]
     #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        const fg: Fg = Fg::White;
-        const bg: Bg = Bg::Default;
+        const fg: AnsiFg = AnsiFg::White;
+        const bg: AnsiBg = AnsiBg::Default;
         const flags: ansi_flag = AnsiFlag::Bold as ansi_flag;
         self.color.set(&std::io::stdout());
         return write!(f,
@@ -617,10 +617,10 @@ impl Display for Help<'_> {
     #[expect(non_upper_case_globals)]
     #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        const fg_value:  Fg = Fg::White;
-        const fg_option: Fg = Fg::LightGreen;
-        const fg_flag:   Fg = Fg::Blue;
-        const bg:        Bg = Bg::Default;
+        const fg_value:  AnsiFg = AnsiFg::White;
+        const fg_option: AnsiFg = AnsiFg::LightGreen;
+        const fg_flag:   AnsiFg = AnsiFg::Blue;
+        const bg:        AnsiBg = AnsiBg::Default;
         const flags_value:  ansi_flag = AnsiFlag::Bold as ansi_flag;
         const flags_option: ansi_flag = AnsiFlag::Bold as ansi_flag;
         const flags_flag:   ansi_flag = AnsiFlag::Bold as ansi_flag;

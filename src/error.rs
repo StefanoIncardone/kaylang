@@ -1,6 +1,6 @@
 use crate::{
     AT, BAR, CAUSE,
-    color::{AnsiFlag, Bg, Colored, Fg, ansi_flag},
+    color::{Colored, ansi_flag},
     front_end::{
         MsgSeverity,
         tokenizer::{ascii, utf32},
@@ -9,7 +9,7 @@ use crate::{
 use core::fmt::Display;
 use std::path::Path;
 
-use back_to_front::uoffset32;
+use back_to_front::{cli::{AnsiBg, AnsiFg, AnsiFlag}, uoffset32};
 use unicode_width::UnicodeWidthChar as _;
 
 // IDEA(stefano): move to back-to-front
@@ -114,8 +114,8 @@ impl Display for MsgWithCauseUnderText<'_, '_, '_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let error_message = Colored {
             text: self.message,
-            fg: Fg::White,
-            bg: Bg::Default,
+            fg: AnsiFg::White,
+            bg: AnsiBg::Default,
             flags: AnsiFlag::Bold as ansi_flag,
         };
 
@@ -126,8 +126,8 @@ impl Display for MsgWithCauseUnderText<'_, '_, '_, '_> {
                 pointers_count = self.pointers_count as usize,
                 cause = self.cause
             ),
-            fg: Fg::LightRed,
-            bg: Bg::Default,
+            fg: AnsiFg::LightRed,
+            bg: AnsiBg::Default,
             flags: AnsiFlag::Bold as ansi_flag,
         };
 
@@ -165,26 +165,26 @@ impl Display for MsgWithCauseUnderTextWithLocation<'_, '_, '_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let error_message = Colored {
             text: &self.message,
-            fg: Fg::White,
-            bg: Bg::Default,
+            fg: AnsiFg::White,
+            bg: AnsiBg::Default,
             flags: AnsiFlag::Bold as ansi_flag,
         };
 
         let line_number_text = self.line.to_string();
         let line_number = Colored {
             text: &line_number_text,
-            fg: Fg::LightBlue,
-            bg: Bg::Default,
+            fg: AnsiFg::LightBlue,
+            bg: AnsiBg::Default,
             flags: AnsiFlag::Bold as ansi_flag,
         };
 
         let line_number_padding = line_number_text.len() + 1 + BAR.text.len();
 
         let fg = match self.severity {
-            MsgSeverity::Error | MsgSeverity::NonTerminalError => Fg::LightRed,
-            MsgSeverity::Warning => Fg::LightYellow,
+            MsgSeverity::Error | MsgSeverity::NonTerminalError => AnsiFg::LightRed,
+            MsgSeverity::Warning => AnsiFg::LightYellow,
         };
-        let bg = Bg::Default;
+        let bg = AnsiBg::Default;
         let flags = AnsiFlag::Bold as ansi_flag;
 
         let pointers_and_cause = Colored {

@@ -5,7 +5,6 @@ version = 4
 [[package]]
 name = "back-to-front"
 version = "0.1.2-dev"
-source = "git+https://github.com/StefanoIncardone/back-to-front?rev=8721354010223d1e35cca4bef919ef977a982e74#8721354010223d1e35cca4bef919ef977a982e74"
 
 [[package]]
 name = "kaylang"
