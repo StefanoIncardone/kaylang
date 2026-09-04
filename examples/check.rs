@@ -1,7 +1,7 @@
 #![expect(clippy::print_stderr, reason = "it's a cli tool")]
 
 use kaylang::{
-    CHECKING, Color, DONE, Logger,
+    Color,
     front_end::{
         ast::Parser,
         src_file::SrcFile,
@@ -12,14 +12,12 @@ use std::{path::Path, process::ExitCode};
 
 fn main() -> ExitCode {
     // controls how error messages should be colored
-    Color::Auto.set(&std::io::stderr());
+    let color = Color::Auto;
+    color.set(&std::io::stderr());
 
     // cargo sets the working directory to where the `cargo` command was run.
     // so we assume this example is run from the root of the crate
     let src_path = Path::new("examples/fizzbuzz.kay");
-
-    let execution_step = Logger::new();
-    Logger::info(&CHECKING, src_path);
 
     let src_file = match SrcFile::load(src_path) {
         Ok(src_file) => src_file,
@@ -52,6 +50,5 @@ fn main() -> ExitCode {
         },
     };
 
-    execution_step.step(&DONE, None);
     return ExitCode::SUCCESS;
 }

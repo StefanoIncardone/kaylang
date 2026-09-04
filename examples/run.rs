@@ -1,16 +1,16 @@
 #![expect(clippy::print_stderr, reason = "it's a cli tool")]
 
 use kaylang::{
-    ASSEMBLING, ASSEMBLING_ERROR, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE,
-    COULD_NOT_RUN_LINKER, COULD_NOT_WRITE_COMPILED_CODE, Color, DONE, GENERATING_ASM, LINKING, LINKING_ERROR,
-    LOADING_SOURCE, Logger, PARSING_AST, RUNNING, SUBSTEP_DONE, TOKENIZATION,
-    back_end::{Artifacts, compiler::Compiler},
-    error::MsgSimple,
-    front_end::{
+    Color, Logger, Verbosity, code_generation::{Artifacts, Platform, nasm::compiler_ast::Compiler}, error::MsgSimple, front_end::{
         ast::Parser,
         src_file::SrcFile,
         tokenizer::{TokenizedCode, Tokenizer},
     },
+};
+use kaylang::{
+    ASSEMBLING, ASSEMBLING_ERROR, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE,
+    COULD_NOT_RUN_LINKER, COULD_NOT_WRITE_COMPILED_CODE, DONE, GENERATING_ASM, LINKING, LINKING_ERROR,
+    LOADING_SOURCE, PARSING_AST, RUNNING, SUBSTEP_DONE, TOKENIZATION,
 };
 use std::{
     path::Path,
@@ -19,22 +19,29 @@ use std::{
 
 fn main() -> ExitCode {
     // controls how error messages should be colored
-    Color::Auto.set(&std::io::stderr());
+    let color = Color::Auto;
+    color.set(&std::io::stderr());
+
+    // controls how much information about compilation steps are reported to the user
+    let verbosity = Verbosity::Verbose;
+
+    // control the platform to target for code generation
+    let platform = Platform::Auto;
 
     // cargo sets the working directory to where the `cargo` command was run.
     // so we assume this example is run from the root of the crate
     let src_path = Path::new("examples/fizzbuzz.kay");
-    let out_path = Path::new("examples/out");
+    let out_path = Path::new("out");
 
     let execution_step = Logger::new();
 
-    Logger::info(&CHECKING, src_path);
+    Logger::info(&CHECKING, src_path, verbosity);
     let checking_sub_step = Logger::new();
 
     let src_file = {
-        let loading_source_sub_step = Logger::new();
+        let logger = Logger::new();
         let source_loading_result = SrcFile::load(src_path);
-        loading_source_sub_step.sub_step(&LOADING_SOURCE, None);
+        logger.sub_step(&LOADING_SOURCE, None, verbosity);
         match source_loading_result {
             Ok(src_file) => src_file,
             Err(err) => {
@@ -45,9 +52,9 @@ fn main() -> ExitCode {
     };
 
     let (src, tokens) = {
-        let tokenization_sub_step = Logger::new();
+        let logger = Logger::new();
         let TokenizedCode { result, src } = Tokenizer::tokenize(&src_file);
-        tokenization_sub_step.sub_step(&TOKENIZATION, None);
+        logger.sub_step(&TOKENIZATION, None, verbosity);
         match result {
             Ok(tokens) => (src, tokens),
             Err(errors) => {
@@ -60,9 +67,9 @@ fn main() -> ExitCode {
     };
 
     let ast = {
-        let building_ast_sub_step = Logger::new();
+        let logger = Logger::new();
         let building_ast_result = Parser::parse(&src, &tokens);
-        building_ast_sub_step.sub_step(&PARSING_AST, None);
+        logger.sub_step(&PARSING_AST, None, verbosity);
         match building_ast_result {
             Ok(ast) => ast,
             Err(errors) => {
@@ -74,9 +81,10 @@ fn main() -> ExitCode {
         }
     };
 
-    checking_sub_step.sub_step(&SUBSTEP_DONE, None);
+    checking_sub_step.sub_step(&SUBSTEP_DONE, None, verbosity);
 
-    let artifacts = match Artifacts::new(src_path, out_path) {
+    let extensions = platform.extensions();
+    let artifacts = match Artifacts::new(src_path, out_path, &extensions) {
         Ok(artifacts) => artifacts,
         Err(err) => {
             eprintln!("{err}");
@@ -84,13 +92,13 @@ fn main() -> ExitCode {
         },
     };
 
-    Logger::info(&COMPILING, src_path);
+    Logger::info(&COMPILING, src_path, verbosity);
     let compilation_sub_step = Logger::new();
 
     let _compiler_result: () = {
-        let generating_asm_sub_step = Logger::new();
+        let logger = Logger::new();
         let compiled_code = Compiler::compile(&src, &ast);
-        generating_asm_sub_step.sub_step(&GENERATING_ASM, Some(&artifacts.asm_path));
+        logger.sub_step(&GENERATING_ASM, Some(&artifacts.asm_path), verbosity);
         if let Err(err) = std::fs::write(&artifacts.asm_path, compiled_code) {
             let error = MsgSimple { kind: &COULD_NOT_WRITE_COMPILED_CODE, message: &err };
             eprintln!("{error}");
@@ -99,10 +107,10 @@ fn main() -> ExitCode {
     };
 
     let _assembler_status: () = {
-        let assembling_sub_step = Logger::new();
-        let mut assembler_command = artifacts.assembler();
+        let logger = Logger::new();
+        let mut assembler_command = platform.assembler(&artifacts);
         let assembler_result = assembler_command.output();
-        assembling_sub_step.sub_step(&ASSEMBLING, Some(&artifacts.obj_path));
+        logger.sub_step(&ASSEMBLING, Some(&artifacts.obj_path), verbosity);
         match assembler_result {
             Ok(output) => {
                 if !output.status.success() {
@@ -126,10 +134,10 @@ fn main() -> ExitCode {
     };
 
     let _linker_status: () = {
-        let linking_sub_step = Logger::new();
-        let mut linker_command = artifacts.linker();
+        let logger = Logger::new();
+        let mut linker_command = platform.linker(&artifacts);
         let linker_result = linker_command.output();
-        linking_sub_step.sub_step(&LINKING, Some(&artifacts.exe_path));
+        logger.sub_step(&LINKING, Some(&artifacts.exe_path), verbosity);
         match linker_result {
             Ok(output) => {
                 if !output.status.success() {
@@ -150,11 +158,11 @@ fn main() -> ExitCode {
         }
     };
 
-    compilation_sub_step.sub_step(&SUBSTEP_DONE, None);
-    execution_step.step(&DONE, None);
+    compilation_sub_step.sub_step(&SUBSTEP_DONE, None, verbosity);
+    execution_step.step(&DONE, None, verbosity);
 
     let exe_path = Path::new(".").join(&artifacts.exe_path);
-    Logger::info(&RUNNING, &exe_path);
+    Logger::info(&RUNNING, &exe_path, verbosity);
 
     let mut run_command = Command::new(exe_path);
     match run_command.status() {

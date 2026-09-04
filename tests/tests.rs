@@ -2,16 +2,17 @@
 #![expect(clippy::panic, clippy::panic_in_result_fn, clippy::print_stderr)]
 
 use kaylang::{
-    ASSEMBLING_ERROR, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE,
-    COULD_NOT_RUN_LINKER, COULD_NOT_WRITE_COMPILED_CODE, Color, DONE, LINKING_ERROR, Logger, RUNNING,
-    back_end::{Artifacts, compiler::Compiler},
-    front_end::{
+    Color, Logger, Verbosity, code_generation::{Artifacts, Platform, nasm::compiler_ast::Compiler}, front_end::{
         ast::Parser,
         src_file::SrcFile,
         syntax_tree as st,
         tokenizer::{TokenizedCode, Tokenizer},
         typed_abstract_syntax_tree as tast,
     },
+};
+use kaylang::{
+    ASSEMBLING_ERROR, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE,
+    COULD_NOT_RUN_LINKER, COULD_NOT_WRITE_COMPILED_CODE, DONE, LINKING_ERROR, RUNNING,
 };
 use std::{
     path::Path,
@@ -22,7 +23,6 @@ use std::{
 fn check_project_euler() -> Result<(), ExitCode> {
     let color = Color::Auto;
     color.set(&std::io::stderr());
-    color.set(&std::io::stdout());
 
     let project_euler_path = "examples/project_euler";
     let src_files = match std::fs::read_dir(project_euler_path) {
@@ -55,7 +55,6 @@ fn check_project_euler() -> Result<(), ExitCode> {
 fn run_project_euler() -> Result<(), ExitCode> {
     let color = Color::Auto;
     color.set(&std::io::stderr());
-    color.set(&std::io::stdout());
 
     let out_path = Path::new("out");
     let project_euler_path = "examples/project_euler";
@@ -87,10 +86,6 @@ fn run_project_euler() -> Result<(), ExitCode> {
 
 #[test]
 fn run_escape_characters() -> Result<(), ExitCode> {
-    let color = Color::Auto;
-    color.set(&std::io::stderr());
-    color.set(&std::io::stdout());
-
     let out_path = Path::new("out");
     let src_path = Path::new("tests/escape_characters.kay");
     return run(src_path, out_path);
@@ -98,8 +93,13 @@ fn run_escape_characters() -> Result<(), ExitCode> {
 
 #[expect(clippy::single_call_fn)]
 fn check(src_path: &Path) -> Result<(), ExitCode> {
+    let color = Color::Auto;
+    color.set(&std::io::stderr());
+
+    let verbosity = Verbosity::Normal;
+
     let execution_step = Logger::new();
-    Logger::info(&CHECKING, src_path);
+    Logger::info(&CHECKING, src_path, verbosity);
 
     let src_file = match SrcFile::load(src_path) {
         Ok(src_file) => src_file,
@@ -157,13 +157,18 @@ fn check(src_path: &Path) -> Result<(), ExitCode> {
         },
     };
 
-    execution_step.step(&DONE, None);
+    execution_step.step(&DONE, None, verbosity);
     return Ok(());
 }
 
 fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
+    let color = Color::Auto;
+    color.set(&std::io::stderr());
+
+    let verbosity = Verbosity::Normal;
+
     let execution_step = Logger::new();
-    Logger::info(&CHECKING, src_path);
+    Logger::info(&CHECKING, src_path, verbosity);
 
     let src_file = match SrcFile::load(src_path) {
         Ok(src_file) => src_file,
@@ -221,9 +226,11 @@ fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
         },
     };
 
-    Logger::info(&COMPILING, src_path);
+    Logger::info(&COMPILING, src_path, verbosity);
+    let platform = Platform::Auto;
 
-    let artifacts = match Artifacts::new(src_path, out_path) {
+    let extensions = platform.extensions();
+    let artifacts = match Artifacts::new(src_path, out_path, &extensions) {
         Ok(new_artifacts) => new_artifacts,
         Err(err) => {
             eprintln!("{err}");
@@ -237,7 +244,7 @@ fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
         return Err(ExitCode::FAILURE);
     }
 
-    let _assembler_status: () = match artifacts.assembler().output() {
+    let _assembler_status: () = match platform.assembler(&artifacts).output() {
         Ok(output) => {
             if !output.status.success() {
                 let stderr_out = String::from_utf8_lossy(&output.stderr);
@@ -254,7 +261,7 @@ fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
         },
     };
 
-    let _linker_status: () = match artifacts.linker().output() {
+    let _linker_status: () = match platform.linker(&artifacts).output() {
         Ok(output) => {
             if !output.status.success() {
                 let stderr_out = String::from_utf8_lossy(&output.stderr);
@@ -271,11 +278,11 @@ fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
         },
     };
 
-    execution_step.step(&DONE, None);
+    execution_step.step(&DONE, None, verbosity);
 
     let running_step = Logger::new();
     let exe_path = Path::new(".").join(&artifacts.exe_path);
-    Logger::info(&RUNNING, &exe_path);
+    Logger::info(&RUNNING, &exe_path, verbosity);
 
     let mut run_command = Command::new(exe_path);
     let run_result = match run_command.output() {
@@ -285,7 +292,7 @@ fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
             return Err(ExitCode::FAILURE);
         },
     };
-    running_step.step(&DONE, None);
+    running_step.step(&DONE, None, verbosity);
 
     let stdout = unsafe { String::from_utf8_unchecked(run_result.stdout) };
     let stderr = unsafe { String::from_utf8_unchecked(run_result.stderr) };

@@ -7,6 +7,7 @@ compile_error!("can only compile for 64bit machines for now");
 
 pub mod back_end;
 pub mod color;
+pub mod code_generation;
 pub mod error;
 pub mod front_end;
 
@@ -53,8 +54,7 @@ const STEP_BG: AnsiBg = AnsiBg::Default;
 const STEP_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
 const STEP_INDENT: usize = 0;
 messages!(
-    // TODO(stefano): change to const when upgrading rust version
-    static STEP_PADDING: usize = max_text_len;
+    const STEP_PADDING: usize = max_text_len;
     pub CHECKING  = "Checking",  STEP_FG, STEP_BG, STEP_FLAGS;
     pub COMPILING = "Compiling", STEP_FG, STEP_BG, STEP_FLAGS;
     pub RUNNING   = "Running",   STEP_FG, STEP_BG, STEP_FLAGS;
@@ -67,13 +67,13 @@ const SUBSTEP_BG: AnsiBg = AnsiBg::Default;
 const SUBSTEP_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
 const SUBSTEP_INDENT: usize = STEP_INDENT + 4;
 messages!(
-    // TODO(stefano): change to const when upgrading rust version
-    static SUBSTEP_PADDING: usize = max_text_len;
+    const SUBSTEP_PADDING: usize = max_text_len;
     pub LOADING_SOURCE      = "Loading Source",      SUBSTEP_FG, SUBSTEP_BG, SUBSTEP_FLAGS;
     pub TOKENIZATION        = "Tokenizing",          SUBSTEP_FG, SUBSTEP_BG, SUBSTEP_FLAGS;
     pub PARSING_SYNTAX_TREE = "Parsing Syntax Tree", SUBSTEP_FG, SUBSTEP_BG, SUBSTEP_FLAGS;
     pub TYPE_CHECKING       = "Type-checking",       SUBSTEP_FG, SUBSTEP_BG, SUBSTEP_FLAGS;
     pub PARSING_AST         = "Parsing Ast",         SUBSTEP_FG, SUBSTEP_BG, SUBSTEP_FLAGS;
+    pub GENERATING_IR       = "Generating ir",       SUBSTEP_FG, SUBSTEP_BG, SUBSTEP_FLAGS;
     pub GENERATING_ASM      = "Generating asm",      SUBSTEP_FG, SUBSTEP_BG, SUBSTEP_FLAGS;
     pub ASSEMBLING          = "Assembling",          SUBSTEP_FG, SUBSTEP_BG, SUBSTEP_FLAGS;
     pub LINKING             = "Linking",             SUBSTEP_FG, SUBSTEP_BG, SUBSTEP_FLAGS;
@@ -128,14 +128,13 @@ impl Default for Logger {
 #[expect(clippy::print_stderr, reason = "it's a logger")]
 impl Logger {
     #[inline]
-    pub fn info(text: &dyn Display, path: &Path) {
-        eprintln!("{spaces:STEP_INDENT$}{text:>STEP_PADDING$}: {path}", spaces = "", path = path.display());
-    }
-
-    #[inline]
-    pub fn info_with_verbosity(text: &dyn Display, path: &Path, verbosity: Verbosity) {
+    pub fn info(text: &dyn Display, path: &Path, verbosity: Verbosity) {
         if let Verbosity::Normal | Verbosity::Verbose = verbosity {
-            Self::info(text, path);
+            eprintln!(
+                "{spaces:STEP_INDENT$}{text:>STEP_PADDING$}: {path}",
+                spaces = "",
+                path = path.display(),
+            );
         }
     }
 
@@ -155,25 +154,15 @@ impl Logger {
         }
     }
 
-    #[inline(always)]
-    pub fn step(self, text: &dyn Display, output: Option<&Path>) {
-        self.done(text, output, STEP_INDENT + STEP_PADDING);
-    }
-
     #[inline]
-    pub fn step_with_verbosity(self, text: &dyn Display, output: Option<&Path>, verbosity: Verbosity) {
+    pub fn step(self, text: &dyn Display, output: Option<&Path>, verbosity: Verbosity) {
         if let Verbosity::Normal | Verbosity::Verbose = verbosity {
             self.done(text, output, STEP_INDENT + STEP_PADDING);
         }
     }
 
-    #[inline(always)]
-    pub fn sub_step(self, text: &dyn Display, output: Option<&Path>) {
-        self.done(text, output, SUBSTEP_INDENT + SUBSTEP_PADDING);
-    }
-
     #[inline]
-    pub fn sub_step_with_verbosity(self, text: &dyn Display, output: Option<&Path>, verbosity: Verbosity) {
+    pub fn sub_step(self, text: &dyn Display, output: Option<&Path>, verbosity: Verbosity) {
         if let Verbosity::Verbose = verbosity {
             self.done(text, output, SUBSTEP_INDENT + SUBSTEP_PADDING);
         }
@@ -260,18 +249,19 @@ impl Display for Color {
 }
 
 impl Color {
+    // IDEA(stefano): have it return the printing function instead
     #[inline]
     pub fn set<I: IsTerminal>(self, sink: &I) {
         #[rustfmt::skip]
         return match self {
-            Self::Auto   => Self::set_color_auto(sink),
-            Self::Always => Self::set_color_always(),
-            Self::Never  => Self::set_color_never(),
+            Self::Auto   => Self::set_auto(sink),
+            Self::Always => Self::set_always(),
+            Self::Never  => Self::set_never(),
         };
     }
 
     #[inline(always)]
-    pub fn set_color_auto<S: IsTerminal>(sink: &S) {
+    pub fn set_auto<S: IsTerminal>(sink: &S) {
         use crate::color::{print, print_color, print_no_color};
         unsafe {
             print = if sink.is_terminal() {
@@ -283,7 +273,7 @@ impl Color {
     }
 
     #[inline(always)]
-    pub const fn set_color_always() {
+    pub const fn set_always() {
         use crate::color::{print, print_color};
         unsafe {
             print = print_color;
@@ -291,7 +281,7 @@ impl Color {
     }
 
     #[inline(always)]
-    pub const fn set_color_never() {
+    pub const fn set_never() {
         use crate::color::{print, print_no_color};
         unsafe {
             print = print_no_color;
@@ -573,9 +563,7 @@ pub enum Command<'args> {
 
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
 #[repr(transparent)]
-pub struct Version {
-    pub color: Color,
-}
+pub struct Version;
 
 impl Display for Version {
     #[expect(non_upper_case_globals)]
@@ -584,7 +572,6 @@ impl Display for Version {
         const fg: AnsiFg = AnsiFg::White;
         const bg: AnsiBg = AnsiBg::Default;
         const flags: ansi_flag = AnsiFlag::Bold as ansi_flag;
-        self.color.set(&std::io::stdout());
         return write!(f,
             "Kaylang compiler, version {VERSION}",
             VERSION = Colored { text: env!("CARGO_PKG_VERSION"), fg, bg, flags },
@@ -594,7 +581,6 @@ impl Display for Version {
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Help<'exe> {
-    pub color: Color,
     pub executable_name: &'exe Path,
 }
 
@@ -609,7 +595,7 @@ impl Help<'_> {
 impl Default for Help<'_> {
     #[inline]
     fn default() -> Self {
-        return Self { color: Color::Auto, executable_name: Self::default_executable_name() };
+        return Self { executable_name: Self::default_executable_name() };
     }
 }
 
@@ -684,7 +670,7 @@ impl Display for Help<'_> {
             equals = FlagSeparator::Equals,
             colon  = FlagSeparator::Colon,
 
-            Version         = Version { color: self.color },
+            Version         = Version,
             executable_name = self.executable_name.display(),
             Usage           = Colored { text: "Usage",           fg: fg_value,  bg, flags: flags_value },
             Arguments       = Colored { text: "Arguments",       fg: fg_value , bg, flags: flags_value },

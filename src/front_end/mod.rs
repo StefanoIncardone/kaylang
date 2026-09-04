@@ -3,7 +3,6 @@ pub mod src_file;
 pub mod syntax_tree;
 pub mod tokenizer;
 pub mod typed_abstract_syntax_tree;
-// pub mod ir;
 
 use self::src_file::{DisplayPosition, SrcCode};
 use crate::{ERROR, error::MsgWithCauseUnderTextWithLocation};
@@ -20,6 +19,7 @@ pub(crate) struct Index32<T>(pub(crate) uoffset32, core::marker::PhantomData<T>)
 
 #[expect(clippy::missing_trait_methods)]
 impl<T> Clone for Index32<T> {
+    #[inline(always)]
     fn clone(&self) -> Self {
         return *self;
     }

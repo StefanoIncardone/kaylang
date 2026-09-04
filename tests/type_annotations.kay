@@ -1,0 +1,8 @@
+let _0: i64 = 42;
+## let _1 = 42; ## Error: missing type annotation
+## let _2: str = 42; ## Error: mismatched types
+let _3: * = 42;
+let _4: typeof 42 = 42;
+
+let _5: i64[2] = [1; 2];
+let _5: i64[*] = [1; 2];

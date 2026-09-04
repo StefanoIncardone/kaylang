@@ -815,6 +815,9 @@ impl BooleanBinaryAssignmentOp {
 
 pub(crate) type ExpressionIndex<'code> = Index32<Expression<'code>>;
 pub(crate) type ArrayItemsIndex<'code> = Index32<Expression<'code>>;
+pub(crate) type ScopeIndex<'code> = Index32<Scope<'code>>;
+pub(crate) type VariableDefinitionIndex<'code> = Index32<VariableDefinition<'code>>;
+pub(crate) type NodeIndex<'code> = Index32<Node<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Expression<'code> {
@@ -921,8 +924,6 @@ impl Expression<'_> {
     }
 }
 
-pub(crate) type ScopeIndex<'code> = Index32<Scope<'code>>;
-
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct Scope<'code> {
     pub(crate) parent: ScopeIndex<'code>,
@@ -930,8 +931,6 @@ pub(crate) struct Scope<'code> {
     pub(crate) let_variables: Vec<VariableDefinitionIndex<'code>>,
     pub(crate) var_variables: Vec<VariableDefinitionIndex<'code>>,
 }
-
-pub(crate) type VariableDefinitionIndex<'code> = Index32<VariableDefinition<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct VariableDefinition<'code> {
@@ -941,7 +940,6 @@ pub(crate) struct VariableDefinition<'code> {
     pub(crate) value: ExpressionIndex<'code>,
 }
 
-pub(crate) type NodeIndex<'code> = Index32<Node<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Node<'code> {
@@ -1024,23 +1022,31 @@ enum ParsedNode<'code> {
     ScopeEnd,
 }
 
-pub(crate) type ArrayItem<'code> = ExpressionIndex<'code>;
-
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct TypedSyntaxTree<'st, 'tokens: 'st, 'code: 'tokens> {
     pub(crate) nodes: Vec<Node<'code>>,
 
     pub(crate) expressions: Vec<Expression<'code>>,
-    pub(crate) array_items: Vec<ArrayItem<'code>>,
+    pub(crate) array_items: Vec<ExpressionIndex<'code>>,
     pub(crate) variables: Vec<VariableDefinition<'code>>,
 
     _syntax_tree: PhantomData<&'st SyntaxTree<'tokens, 'code>>,
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct TypedSyntaxTreeDisplay<'tast, 'st: 'tast, 'tokens: 'st, 'code: 'tokens> {
-    pub(crate) typed_syntax_tree: &'tast TypedSyntaxTree<'st, 'tokens, 'code>,
-    pub(crate) tokens: &'tokens Tokens<'code>,
+impl<'code> TypedSyntaxTree<'_, '_, 'code> {
+    #[inline]
+    fn new_expression(&mut self, expression: Expression<'code>) -> ExpressionIndex<'code> {
+        let index = ExpressionIndex::new(self.expressions.len());
+        self.expressions.push(expression);
+        return index;
+    }
+
+    #[inline]
+    fn new_variable(&mut self, variable: VariableDefinition<'code>) -> VariableDefinitionIndex<'code> {
+        let index = VariableDefinitionIndex::new(self.variables.len());
+        self.variables.push(variable);
+        return index;
+    }
 }
 
 impl<'tokens> TypedSyntaxTree<'_, 'tokens, '_> {
@@ -1048,275 +1054,6 @@ impl<'tokens> TypedSyntaxTree<'_, 'tokens, '_> {
     #[inline(always)]
     pub const fn display(&self, tokens: &'tokens Tokens<'_>) -> TypedSyntaxTreeDisplay<'_, '_, 'tokens, '_> {
         return TypedSyntaxTreeDisplay { typed_syntax_tree: self, tokens };
-    }
-}
-
-impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
-    const INDENT_INCREMENT: usize = 2;
-
-    fn info_if(
-        &self,
-        f: &mut core::fmt::Formatter<'_>,
-        node_index: &mut NodeIndex<'_>,
-        indent: usize,
-        condition: ExpressionIndex<'_>,
-    ) -> core::fmt::Result {
-        writeln!(f, "{:>indent$}If = if", "")?;
-        let if_indent = indent + Self::INDENT_INCREMENT;
-        self.info_expression(f, condition, if_indent)?;
-        return self.info_node(f, node_index, if_indent);
-    }
-
-    fn info_node(
-        &self,
-        f: &mut core::fmt::Formatter<'_>,
-        node_index: &mut NodeIndex<'_>,
-        indent: usize,
-    ) -> core::fmt::Result {
-        let node = &self.typed_syntax_tree.nodes[*node_index];
-        node_index.0 += 1;
-
-        #[rustfmt::skip]
-        return match node {
-            Node::Expression(expression) => {
-                self.info_expression(f, *expression, indent)
-            }
-            Node::Assignment { target, new_value, operator } => {
-                writeln!(f, "{:>indent$}Assignment", "")?;
-                let assignment_indent = indent + Self::INDENT_INCREMENT;
-                self.info_expression(f, *target, assignment_indent)?;
-                writeln!(f, "{:>assignment_indent$}AssignmentOp = {operator}", "")?;
-                self.info_expression(f, *new_value, assignment_indent)
-            }
-            Node::BinaryAssignment { target, operator, new_value, .. } => {
-                writeln!(f, "{:>indent$}AssignmentExpression", "")?;
-                let assignment_indent = indent + Self::INDENT_INCREMENT;
-                self.info_expression(f, *target, assignment_indent)?;
-                writeln!(f, "{:>assignment_indent$}BinaryAssignmentOp = {operator}", "")?;
-                self.info_expression(f, *new_value, assignment_indent)
-            }
-            Node::BooleanAssignmentExpression { target, operator, new_value, .. } => {
-                writeln!(f, "{:>indent$}BooleanAssignmentExpression", "")?;
-                let assignment_indent = indent + Self::INDENT_INCREMENT;
-                self.info_expression(f, *target, assignment_indent)?;
-                writeln!(f, "{:>assignment_indent$}BooleanBinaryAssignmentOp = {operator}", "")?;
-                self.info_expression(f, *new_value, assignment_indent)
-            }
-            Node::PrefixAssignmentExpression { target, operator, .. } => {
-                writeln!(f, "{:>indent$}Assignment", "")?;
-                let assignment_indent = indent + Self::INDENT_INCREMENT;
-                self.info_expression(f, *target, assignment_indent)?;
-                writeln!(f, "{:>assignment_indent$}PrefixAssignmentOp = {operator}", "")
-            }
-            Node::BooleanPrefixAssignment { target, operator, .. } => {
-                writeln!(f, "{:>indent$}Assignment", "")?;
-                let assignment_indent = indent + Self::INDENT_INCREMENT;
-                self.info_expression(f, *target, assignment_indent)?;
-                writeln!(f, "{:>assignment_indent$}BooleanPrefixAssignmentOp = {operator}", "")
-            }
-
-            Node::Print { argument } => {
-                writeln!(f, "{:>indent$}Print = print", "")?;
-                let argument_indent = indent + Self::INDENT_INCREMENT;
-                self.info_expression(f, *argument, argument_indent)
-            }
-            Node::Println { argument } => {
-                writeln!(f, "{:>indent$}Println = println", "")?;
-                let argument_indent = indent + Self::INDENT_INCREMENT;
-                self.info_expression(f, *argument, argument_indent)
-            }
-            Node::PrintlnNoArg => {
-                writeln!(f, "{:>indent$}Println = println", "")
-            }
-            Node::Eprint { argument } => {
-                writeln!(f, "{:>indent$}Eprint = eprint", "")?;
-                let argument_indent = indent + Self::INDENT_INCREMENT;
-                self.info_expression(f, *argument, argument_indent)
-            }
-            Node::Eprintln { argument } => {
-                writeln!(f, "{:>indent$}Eprintln = eprintln", "")?;
-                let argument_indent = indent + Self::INDENT_INCREMENT;
-                self.info_expression(f, *argument, argument_indent)
-            }
-            Node::EprintlnNoArg => {
-                writeln!(f, "{:>indent$}Eprintln = eprintln", "")
-            }
-
-            Node::LetVariableDefinition { variable } => {
-                writeln!(f, "{:>indent$}VariableDefinition = let", "")?;
-                let definition_indent = indent + Self::INDENT_INCREMENT;
-                self.info_variable(f, *variable, definition_indent)
-            }
-            Node::VarVariableDefinition { variable } => {
-                writeln!(f, "{:>indent$}VariableDefinition = var", "")?;
-                let definition_indent = indent + Self::INDENT_INCREMENT;
-                self.info_variable(f, *variable, definition_indent)
-            }
-
-            Node::Scope { raw_nodes_in_scope_count } => {
-                writeln!(f, "{:>indent$}Scope", "")?;
-                let scope_indent = indent + Self::INDENT_INCREMENT;
-                let after_end_scope_node_index = node_index.0 + raw_nodes_in_scope_count;
-                while node_index.0 < after_end_scope_node_index {
-                    self.info_node(f, node_index, scope_indent)?;
-                }
-                Ok(())
-            }
-
-            Node::If { condition } => {
-                self.info_if(f, node_index, indent, *condition)
-            }
-            Node::ElseIf { condition } => {
-                writeln!(f, "{:>indent$}Else = else", "")?;
-                self.info_if(f, node_index, indent, *condition)
-            }
-            Node::Else => {
-                writeln!(f, "{:>indent$}Else = else", "")?;
-                let else_indent = indent + Self::INDENT_INCREMENT;
-                self.info_node(f, node_index, else_indent)
-            }
-
-            Node::Loop { condition } => {
-                writeln!(f, "{:>indent$}Loop = loop", "")?;
-                let loop_indent = indent + Self::INDENT_INCREMENT;
-                self.info_expression(f, *condition, loop_indent)?;
-                self.info_node(f, node_index, loop_indent)
-            }
-            Node::DoLoop { condition } => {
-                writeln!(f, "{:>indent$}Do = do", "")?;
-                writeln!(f, "{:>indent$}Loop = loop", "")?;
-                let loop_indent = indent + Self::INDENT_INCREMENT;
-                self.info_expression(f, *condition, loop_indent)?;
-                self.info_node(f, node_index, loop_indent)
-            }
-            Node::Break => {
-                writeln!(f, "{:>indent$}Break = break", "")
-            }
-            Node::Continue => {
-                writeln!(f, "{:>indent$}Continue = continue", "")
-            }
-        };
-    }
-
-    fn info_expression(
-        &self,
-        f: &mut core::fmt::Formatter<'_>,
-        expression_index: ExpressionIndex<'_>,
-        indent: usize,
-    ) -> core::fmt::Result {
-        let expression = &self.typed_syntax_tree.expressions[expression_index];
-
-        #[rustfmt::skip]
-        return match expression {
-            Expression::False { .. } => writeln!(f, "{:>indent$}False = false", ""),
-            Expression::True { .. } => writeln!(f, "{:>indent$}True = true", ""),
-            Expression::I64 { value, .. } => {
-                writeln!(f, "{:>indent$}I64 = {value}", "")
-            }
-            Expression::Ascii { character, .. } => {
-                writeln!(f, "{:>indent$}Ascii = {character}", "")
-            }
-            Expression::Str { literal, .. } => {
-                let literal_str = self.tokens.text[*literal];
-                writeln!(f, "{:>indent$}Str = {literal_str}", "")
-            }
-            Expression::Variable { variable, .. } => {
-                let variable_definition = &self.typed_syntax_tree.variables[*variable];
-                let identifier_str = self.tokens.text[variable_definition.name];
-                writeln!(f, "{:>indent$}Identifier = {identifier_str}", "")
-            }
-            Expression::Array { items_start, items_len, .. } => {
-                let expression_indent = indent + Self::INDENT_INCREMENT;
-                writeln!(f, "{:>indent$}Array", "")?;
-
-                let items_indent = expression_indent + Self::INDENT_INCREMENT;
-                let items_end = items_start.0 as usize + *items_len as usize;
-                let items = &self.typed_syntax_tree.array_items[items_start.0 as usize..items_end];
-                for item_expression in items {
-                    self.info_expression(f, *item_expression, items_indent)?;
-                }
-                Ok(())
-            }
-
-            Expression::Prefix { operator, right_operand, .. } => {
-                let expression_indent = indent + Self::INDENT_INCREMENT;
-                writeln!(f, "{:>indent$}PrefixExpression", "")?;
-                writeln!(f, "{:>expression_indent$}PrefixOp = {operator}", "")?;
-                self.info_expression(f, *right_operand, expression_indent)
-            }
-            Expression::BooleanPrefix { operator, right_operand, .. } => {
-                let expression_indent = indent + Self::INDENT_INCREMENT;
-                writeln!(f, "{:>indent$}BooleanPrefixExpression", "")?;
-                writeln!(f, "{:>expression_indent$}BooleanPrefixOp = {operator}", "")?;
-                self.info_expression(f, *right_operand, expression_indent)
-            }
-            Expression::Binary { left_operand, operator, right_operand, .. } => {
-                let expression_indent = indent + Self::INDENT_INCREMENT;
-                writeln!(f, "{:>indent$}BinaryExpression", "")?;
-                self.info_expression(f, *left_operand, expression_indent)?;
-                writeln!(f, "{:>expression_indent$}BinaryOp = {operator}", "")?;
-                self.info_expression(f, *right_operand, expression_indent)
-            }
-            Expression::BooleanBinary { left_operand, operator, right_operand, .. } => {
-                let expression_indent = indent + Self::INDENT_INCREMENT;
-                writeln!(f, "{:>indent$}BooleanBinaryExpression", "")?;
-                self.info_expression(f, *left_operand, expression_indent)?;
-                writeln!(f, "{:>expression_indent$}BooleanBinaryOp = {operator}", "")?;
-                self.info_expression(f, *right_operand, expression_indent)
-            }
-            Expression::Comparison { left_operand, operator, right_operand, .. } => {
-                let expression_indent = indent + Self::INDENT_INCREMENT;
-                writeln!(f, "{:>indent$}Comparison", "")?;
-                self.info_expression(f, *left_operand, expression_indent)?;
-                writeln!(f, "{:>expression_indent$}ComparisonOp = {operator}", "")?;
-                self.info_expression(f, *right_operand, expression_indent)
-            }
-            Expression::BooleanComparison { left_operand, operator, right_operand, .. } => {
-                let expression_indent = indent + Self::INDENT_INCREMENT;
-                writeln!(f, "{:>indent$}BooleanComparison", "")?;
-                self.info_expression(f, *left_operand, expression_indent)?;
-                writeln!(f, "{:>expression_indent$}BooleanComparisonOp = {operator}", "")?;
-                self.info_expression(f, *right_operand, expression_indent)
-            }
-
-            Expression::Index {
-                indexed_expression,
-                index_expression,
-                ..
-            } => {
-                let expression_indent = indent + Self::INDENT_INCREMENT;
-                writeln!(f, "{:indent$}IndexExpression", "")?;
-                self.info_expression(f, *indexed_expression, expression_indent)?;
-                self.info_expression(f, *index_expression, expression_indent)
-            }
-        };
-    }
-
-    fn info_variable(
-        &self,
-        f: &mut core::fmt::Formatter<'_>,
-        variable_index: VariableDefinitionIndex<'_>,
-        indent: usize,
-    ) -> core::fmt::Result {
-        let VariableDefinition { name, value, typ } = &self.typed_syntax_tree.variables[variable_index];
-        let name_str = self.tokens.text[*name];
-        writeln!(f, "{:>indent$}Name = {name_str}", "")?;
-        writeln!(f, "{:>indent$}Type = {typ}", "")?;
-        writeln!(f, "{:>indent$}InitialValue", "")?;
-
-        let initial_value_indent = indent + Self::INDENT_INCREMENT;
-        return self.info_expression(f, *value, initial_value_indent);
-    }
-}
-
-impl Display for TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let mut node_index = NodeIndex::new(0);
-        while (node_index.0 as usize) < self.typed_syntax_tree.nodes.len() {
-            self.info_node(f, &mut node_index, 0)?;
-        }
-
-        return Ok(());
     }
 }
 
@@ -1329,7 +1066,7 @@ pub struct Parser<'st, 'tokens: 'st, 'src: 'tokens, 'code: 'src, 'path: 'code> {
     node_index: st::NodeIndex<'code>,
     syntax_tree: &'st SyntaxTree<'tokens, 'code>,
 
-    temp_array_items: Vec<ArrayItem<'code>>,
+    temp_array_items: Vec<ExpressionIndex<'code>>,
     tast: TypedSyntaxTree<'st, 'tokens, 'code>,
     scope: ScopeIndex<'code>,
     scopes: Vec<Scope<'code>>,
@@ -1549,6 +1286,7 @@ impl<'st, 'tokens: 'st, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'st, 't
         panic!("{error}\n");
     }
 
+    // REMOVE(stefano): could just ignore stray semicolons
     #[track_caller]
     fn stray_semicolon(&self, semicolon_colon: uoffset32) -> ! {
         self.invalid_node(
@@ -1589,15 +1327,6 @@ impl<'st, 'code: 'st> Parser<'st, '_, '_, 'code, '_> {
         }
 
         return None;
-    }
-}
-
-impl<'code> TypedSyntaxTree<'_, '_, 'code> {
-    #[inline]
-    fn new_expression(&mut self, expression: Expression<'code>) -> ExpressionIndex<'code> {
-        let index = ExpressionIndex::new(self.expressions.len());
-        self.expressions.push(expression);
-        return index;
     }
 }
 
@@ -2515,15 +2244,6 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
     }
 }
 
-impl<'code> TypedSyntaxTree<'_, '_, 'code> {
-    #[inline]
-    fn new_variable(&mut self, variable: VariableDefinition<'code>) -> VariableDefinitionIndex<'code> {
-        let index = VariableDefinitionIndex::new(self.variables.len());
-        self.variables.push(variable);
-        return index;
-    }
-}
-
 impl<'code> Parser<'_, '_, '_, 'code, '_> {
     // NOTE(stefano): "leaks" memory by parsing and storing expressions, but these expressions
     // should never be used
@@ -3115,6 +2835,281 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             });
         };
         return Ok(condition_expression);
+    }
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct TypedSyntaxTreeDisplay<'tast, 'st: 'tast, 'tokens: 'st, 'code: 'tokens> {
+    pub(crate) typed_syntax_tree: &'tast TypedSyntaxTree<'st, 'tokens, 'code>,
+    pub(crate) tokens: &'tokens Tokens<'code>,
+}
+
+impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
+    const INDENT_INCREMENT: usize = 2;
+
+    fn info_if(
+        &self,
+        f: &mut core::fmt::Formatter<'_>,
+        node_index: &mut NodeIndex<'_>,
+        indent: usize,
+        condition: ExpressionIndex<'_>,
+    ) -> core::fmt::Result {
+        writeln!(f, "{:>indent$}If = if", "")?;
+        let if_indent = indent + Self::INDENT_INCREMENT;
+        self.info_expression(f, condition, if_indent)?;
+        return self.info_node(f, node_index, if_indent);
+    }
+
+    fn info_node(
+        &self,
+        f: &mut core::fmt::Formatter<'_>,
+        node_index: &mut NodeIndex<'_>,
+        indent: usize,
+    ) -> core::fmt::Result {
+        let node = &self.typed_syntax_tree.nodes[*node_index];
+        node_index.0 += 1;
+
+        #[rustfmt::skip]
+        return match node {
+            Node::Expression(expression) => {
+                self.info_expression(f, *expression, indent)
+            }
+            Node::Assignment { target, new_value, operator } => {
+                writeln!(f, "{:>indent$}Assignment", "")?;
+                let assignment_indent = indent + Self::INDENT_INCREMENT;
+                self.info_expression(f, *target, assignment_indent)?;
+                writeln!(f, "{:>assignment_indent$}AssignmentOp = {operator}", "")?;
+                self.info_expression(f, *new_value, assignment_indent)
+            }
+            Node::BinaryAssignment { target, operator, new_value, .. } => {
+                writeln!(f, "{:>indent$}AssignmentExpression", "")?;
+                let assignment_indent = indent + Self::INDENT_INCREMENT;
+                self.info_expression(f, *target, assignment_indent)?;
+                writeln!(f, "{:>assignment_indent$}BinaryAssignmentOp = {operator}", "")?;
+                self.info_expression(f, *new_value, assignment_indent)
+            }
+            Node::BooleanAssignmentExpression { target, operator, new_value, .. } => {
+                writeln!(f, "{:>indent$}BooleanAssignmentExpression", "")?;
+                let assignment_indent = indent + Self::INDENT_INCREMENT;
+                self.info_expression(f, *target, assignment_indent)?;
+                writeln!(f, "{:>assignment_indent$}BooleanBinaryAssignmentOp = {operator}", "")?;
+                self.info_expression(f, *new_value, assignment_indent)
+            }
+            Node::PrefixAssignmentExpression { target, operator, .. } => {
+                writeln!(f, "{:>indent$}Assignment", "")?;
+                let assignment_indent = indent + Self::INDENT_INCREMENT;
+                self.info_expression(f, *target, assignment_indent)?;
+                writeln!(f, "{:>assignment_indent$}PrefixAssignmentOp = {operator}", "")
+            }
+            Node::BooleanPrefixAssignment { target, operator, .. } => {
+                writeln!(f, "{:>indent$}Assignment", "")?;
+                let assignment_indent = indent + Self::INDENT_INCREMENT;
+                self.info_expression(f, *target, assignment_indent)?;
+                writeln!(f, "{:>assignment_indent$}BooleanPrefixAssignmentOp = {operator}", "")
+            }
+
+            Node::Print { argument } => {
+                writeln!(f, "{:>indent$}Print = print", "")?;
+                let argument_indent = indent + Self::INDENT_INCREMENT;
+                self.info_expression(f, *argument, argument_indent)
+            }
+            Node::Println { argument } => {
+                writeln!(f, "{:>indent$}Println = println", "")?;
+                let argument_indent = indent + Self::INDENT_INCREMENT;
+                self.info_expression(f, *argument, argument_indent)
+            }
+            Node::PrintlnNoArg => {
+                writeln!(f, "{:>indent$}Println = println", "")
+            }
+            Node::Eprint { argument } => {
+                writeln!(f, "{:>indent$}Eprint = eprint", "")?;
+                let argument_indent = indent + Self::INDENT_INCREMENT;
+                self.info_expression(f, *argument, argument_indent)
+            }
+            Node::Eprintln { argument } => {
+                writeln!(f, "{:>indent$}Eprintln = eprintln", "")?;
+                let argument_indent = indent + Self::INDENT_INCREMENT;
+                self.info_expression(f, *argument, argument_indent)
+            }
+            Node::EprintlnNoArg => {
+                writeln!(f, "{:>indent$}Eprintln = eprintln", "")
+            }
+
+            Node::LetVariableDefinition { variable } => {
+                writeln!(f, "{:>indent$}VariableDefinition = let", "")?;
+                let definition_indent = indent + Self::INDENT_INCREMENT;
+                self.info_variable(f, *variable, definition_indent)
+            }
+            Node::VarVariableDefinition { variable } => {
+                writeln!(f, "{:>indent$}VariableDefinition = var", "")?;
+                let definition_indent = indent + Self::INDENT_INCREMENT;
+                self.info_variable(f, *variable, definition_indent)
+            }
+
+            Node::Scope { raw_nodes_in_scope_count } => {
+                writeln!(f, "{:>indent$}Scope", "")?;
+                let scope_indent = indent + Self::INDENT_INCREMENT;
+                let after_end_scope_node_index = node_index.0 + raw_nodes_in_scope_count;
+                while node_index.0 < after_end_scope_node_index {
+                    self.info_node(f, node_index, scope_indent)?;
+                }
+                Ok(())
+            }
+
+            Node::If { condition } => {
+                self.info_if(f, node_index, indent, *condition)
+            }
+            Node::ElseIf { condition } => {
+                writeln!(f, "{:>indent$}Else = else", "")?;
+                self.info_if(f, node_index, indent, *condition)
+            }
+            Node::Else => {
+                writeln!(f, "{:>indent$}Else = else", "")?;
+                let else_indent = indent + Self::INDENT_INCREMENT;
+                self.info_node(f, node_index, else_indent)
+            }
+
+            Node::Loop { condition } => {
+                writeln!(f, "{:>indent$}Loop = loop", "")?;
+                let loop_indent = indent + Self::INDENT_INCREMENT;
+                self.info_expression(f, *condition, loop_indent)?;
+                self.info_node(f, node_index, loop_indent)
+            }
+            Node::DoLoop { condition } => {
+                writeln!(f, "{:>indent$}Do = do", "")?;
+                writeln!(f, "{:>indent$}Loop = loop", "")?;
+                let loop_indent = indent + Self::INDENT_INCREMENT;
+                self.info_expression(f, *condition, loop_indent)?;
+                self.info_node(f, node_index, loop_indent)
+            }
+            Node::Break => {
+                writeln!(f, "{:>indent$}Break = break", "")
+            }
+            Node::Continue => {
+                writeln!(f, "{:>indent$}Continue = continue", "")
+            }
+        };
+    }
+
+    fn info_expression(
+        &self,
+        f: &mut core::fmt::Formatter<'_>,
+        expression_index: ExpressionIndex<'_>,
+        indent: usize,
+    ) -> core::fmt::Result {
+        let expression = &self.typed_syntax_tree.expressions[expression_index];
+
+        #[rustfmt::skip]
+        return match expression {
+            Expression::False { .. } => writeln!(f, "{:>indent$}False = false", ""),
+            Expression::True { .. } => writeln!(f, "{:>indent$}True = true", ""),
+            Expression::I64 { value, .. } => {
+                writeln!(f, "{:>indent$}I64 = {value}", "")
+            }
+            Expression::Ascii { character, .. } => {
+                writeln!(f, "{:>indent$}Ascii = {character}", "")
+            }
+            Expression::Str { literal, .. } => {
+                let literal_str = self.tokens.text[*literal];
+                writeln!(f, "{:>indent$}Str = {literal_str}", "")
+            }
+            Expression::Variable { variable, .. } => {
+                let variable_definition = &self.typed_syntax_tree.variables[*variable];
+                let identifier_str = self.tokens.text[variable_definition.name];
+                writeln!(f, "{:>indent$}Identifier = {identifier_str}", "")
+            }
+            Expression::Array { items_start, items_len, .. } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
+                writeln!(f, "{:>indent$}Array", "")?;
+
+                let items_indent = expression_indent + Self::INDENT_INCREMENT;
+                let items_end = items_start.0 as usize + *items_len as usize;
+                let items = &self.typed_syntax_tree.array_items[items_start.0 as usize..items_end];
+                for item_expression in items {
+                    self.info_expression(f, *item_expression, items_indent)?;
+                }
+                Ok(())
+            }
+
+            Expression::Prefix { operator, right_operand, .. } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
+                writeln!(f, "{:>indent$}PrefixExpression", "")?;
+                writeln!(f, "{:>expression_indent$}PrefixOp = {operator}", "")?;
+                self.info_expression(f, *right_operand, expression_indent)
+            }
+            Expression::BooleanPrefix { operator, right_operand, .. } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
+                writeln!(f, "{:>indent$}BooleanPrefixExpression", "")?;
+                writeln!(f, "{:>expression_indent$}BooleanPrefixOp = {operator}", "")?;
+                self.info_expression(f, *right_operand, expression_indent)
+            }
+            Expression::Binary { left_operand, operator, right_operand, .. } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
+                writeln!(f, "{:>indent$}BinaryExpression", "")?;
+                self.info_expression(f, *left_operand, expression_indent)?;
+                writeln!(f, "{:>expression_indent$}BinaryOp = {operator}", "")?;
+                self.info_expression(f, *right_operand, expression_indent)
+            }
+            Expression::BooleanBinary { left_operand, operator, right_operand, .. } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
+                writeln!(f, "{:>indent$}BooleanBinaryExpression", "")?;
+                self.info_expression(f, *left_operand, expression_indent)?;
+                writeln!(f, "{:>expression_indent$}BooleanBinaryOp = {operator}", "")?;
+                self.info_expression(f, *right_operand, expression_indent)
+            }
+            Expression::Comparison { left_operand, operator, right_operand, .. } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
+                writeln!(f, "{:>indent$}Comparison", "")?;
+                self.info_expression(f, *left_operand, expression_indent)?;
+                writeln!(f, "{:>expression_indent$}ComparisonOp = {operator}", "")?;
+                self.info_expression(f, *right_operand, expression_indent)
+            }
+            Expression::BooleanComparison { left_operand, operator, right_operand, .. } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
+                writeln!(f, "{:>indent$}BooleanComparison", "")?;
+                self.info_expression(f, *left_operand, expression_indent)?;
+                writeln!(f, "{:>expression_indent$}BooleanComparisonOp = {operator}", "")?;
+                self.info_expression(f, *right_operand, expression_indent)
+            }
+
+            Expression::Index {
+                indexed_expression,
+                index_expression,
+                ..
+            } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
+                writeln!(f, "{:indent$}IndexExpression", "")?;
+                self.info_expression(f, *indexed_expression, expression_indent)?;
+                self.info_expression(f, *index_expression, expression_indent)
+            }
+        };
+    }
+
+    fn info_variable(
+        &self,
+        f: &mut core::fmt::Formatter<'_>,
+        variable_index: VariableDefinitionIndex<'_>,
+        indent: usize,
+    ) -> core::fmt::Result {
+        let VariableDefinition { name, value, typ } = &self.typed_syntax_tree.variables[variable_index];
+        let name_str = self.tokens.text[*name];
+        writeln!(f, "{:>indent$}Name = {name_str}", "")?;
+        writeln!(f, "{:>indent$}Type = {typ}", "")?;
+        writeln!(f, "{:>indent$}InitialValue", "")?;
+
+        let initial_value_indent = indent + Self::INDENT_INCREMENT;
+        return self.info_expression(f, *value, initial_value_indent);
+    }
+}
+
+impl Display for TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mut node_index = NodeIndex::new(0);
+        while (node_index.0 as usize) < self.typed_syntax_tree.nodes.len() {
+            self.info_node(f, &mut node_index, 0)?;
+        }
+
+        return Ok(());
     }
 }
 

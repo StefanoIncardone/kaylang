@@ -565,376 +565,6 @@ impl<'code> SyntaxTree<'_, 'code> {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct SyntaxTreeDisplay<'syntax_tree, 'tokens: 'syntax_tree, 'code: 'tokens> {
-    pub(crate) syntax_tree: &'syntax_tree SyntaxTree<'tokens, 'code>,
-    pub(crate) tokens: &'tokens Tokens<'code>,
-}
-
-impl<'tokens> SyntaxTree<'tokens, '_> {
-    #[must_use]
-    #[inline(always)]
-    pub const fn display(&self, tokens: &'tokens Tokens<'_>) -> SyntaxTreeDisplay<'_, 'tokens, '_> {
-        return SyntaxTreeDisplay { syntax_tree: self, tokens };
-    }
-}
-
-impl SyntaxTreeDisplay<'_, '_, '_> {
-    const INDENT_INCREMENT: usize = 2;
-
-    #[inline(always)]
-    fn info_semicolon(
-        f: &mut core::fmt::Formatter<'_>,
-        indent: usize,
-        column: uoffset32,
-    ) -> core::fmt::Result {
-        return writeln!(f, "{:>indent$}Semicolon: {column} = ;", "");
-    }
-
-    fn info_if(
-        &self,
-        f: &mut core::fmt::Formatter<'_>,
-        node_index: &mut NodeIndex<'_>,
-        indent: usize,
-        if_column: uoffset32,
-        condition: ExpressionIndex<'_>,
-    ) -> core::fmt::Result {
-        writeln!(f, "{:>indent$}If: {if_column} = if", "")?;
-        let if_indent = indent + Self::INDENT_INCREMENT;
-        self.info_expression(f, condition, if_indent)?;
-        return self.info_node(f, node_index, if_indent);
-    }
-
-    fn info_node(
-        &self,
-        f: &mut core::fmt::Formatter<'_>,
-        node_index: &mut NodeIndex<'_>,
-        indent: usize,
-    ) -> core::fmt::Result {
-        let node = &self.syntax_tree.nodes[*node_index];
-        node_index.0 += 1;
-
-        #[rustfmt::skip]
-        return match node {
-            Node::Semicolon { column } => Self::info_semicolon(f, indent, *column),
-
-            Node::Expression { expression, semicolon_column } => {
-                self.info_expression(f, *expression, indent)?;
-                Self::info_semicolon(f, indent, *semicolon_column)
-            }
-
-            Node::Print { print_column, argument, semicolon_column } => {
-                writeln!(f, "{:>indent$}Print: {print_column} = print", "")?;
-                let argument_indent = indent + Self::INDENT_INCREMENT;
-                self.info_expression(f, *argument, argument_indent)?;
-                Self::info_semicolon(f, argument_indent, *semicolon_column)
-            }
-            Node::Println { println_column, argument, semicolon_column } => {
-                writeln!(f, "{:>indent$}Println: {println_column} = println", "")?;
-                let argument_indent = indent + Self::INDENT_INCREMENT;
-                self.info_expression(f, *argument, argument_indent)?;
-                Self::info_semicolon(f, argument_indent, *semicolon_column)
-            }
-            Node::PrintlnNoArg { println_column, semicolon_column } => {
-                writeln!(f, "{:>indent$}Println: {println_column} = println", "")?;
-                Self::info_semicolon(f, indent, *semicolon_column)
-            }
-            Node::Eprint { eprint_column, argument, semicolon_column } => {
-                writeln!(f, "{:>indent$}Eprint: {eprint_column} = eprint", "")?;
-                let argument_indent = indent + Self::INDENT_INCREMENT;
-                self.info_expression(f, *argument, argument_indent)?;
-                Self::info_semicolon(f, argument_indent, *semicolon_column)
-            }
-            Node::Eprintln { eprintln_column, argument, semicolon_column } => {
-                writeln!(f, "{:>indent$}Eprintln: {eprintln_column} = eprintln", "")?;
-                let argument_indent = indent + Self::INDENT_INCREMENT;
-                self.info_expression(f, *argument, argument_indent)?;
-                Self::info_semicolon(f, argument_indent, *semicolon_column)
-            }
-            Node::EprintlnNoArg { eprintln_column, semicolon_column } => {
-                writeln!(f, "{:>indent$}Eprintln: {eprintln_column} = eprintln", "")?;
-                Self::info_semicolon(f, indent, *semicolon_column)
-            }
-
-            Node::LetVariableDefinition { let_column, variable_definition, semicolon_column } => {
-                writeln!(f, "{:>indent$}VariableDefinition: {let_column} = let", "")?;
-                let definition_indent = indent + Self::INDENT_INCREMENT;
-                self.info_variable_definition(f, *variable_definition, definition_indent)?;
-                Self::info_semicolon(f, definition_indent, *semicolon_column)
-            }
-            Node::VarVariableDefinition { var_column, variable_definition, semicolon_column } => {
-                writeln!(f, "{:>indent$}VariableDefinition: {var_column} = var", "")?;
-                let definition_indent = indent + Self::INDENT_INCREMENT;
-                self.info_variable_definition(f, *variable_definition, definition_indent)?;
-                Self::info_semicolon(f, definition_indent, *semicolon_column)
-            }
-            Node::BinaryAssignment { target, operator, operator_column, new_value, semicolon_column } => {
-                writeln!(f, "{:>indent$}BinaryAssignment", "")?;
-                let assignment_indent = indent + Self::INDENT_INCREMENT;
-                self.info_expression(f, *target, assignment_indent)?;
-                writeln!(f, "{:>assignment_indent$}BinaryAssignmentOp: {operator_column} = {operator}", "")?;
-                self.info_expression(f, *new_value, assignment_indent)?;
-                Self::info_semicolon(f, assignment_indent, *semicolon_column)
-            }
-            Node::PrefixAssignment { operator, operator_column, target, semicolon_column } => {
-                writeln!(f, "{:>indent$}PrefixAssignment", "")?;
-                let assignment_indent = indent + Self::INDENT_INCREMENT;
-                writeln!(f, "{:>assignment_indent$}PrefixAssignmentOp: {operator_column} = {operator}", "")?;
-                self.info_expression(f, *target, assignment_indent)?;
-                Self::info_semicolon(f, assignment_indent, *semicolon_column)
-            }
-
-            Node::Scope { open_curly_bracket_column, raw_nodes_in_scope_count, close_curly_bracket_column } => {
-                writeln!(f, "{:>indent$}Scope", "")?;
-                let scope_indent = indent + Self::INDENT_INCREMENT;
-                writeln!(f, "{:>scope_indent$}OpenCurlyBracket: {open_curly_bracket_column} = {{", "")?;
-
-                let after_end_scope_node_index = node_index.0 + raw_nodes_in_scope_count;
-                while node_index.0 < after_end_scope_node_index {
-                    self.info_node(f, node_index, scope_indent)?;
-                }
-                writeln!(f, "{:>scope_indent$}CloseCurlyBracket: {close_curly_bracket_column} = }}", "")
-            }
-
-            Node::If { if_column, condition } => {
-                self.info_if(f, node_index, indent, *if_column, *condition)
-            }
-            Node::ElseIf { if_column, condition, else_column } => {
-                writeln!(f, "{:>indent$}Else: {else_column} = else", "")?;
-                self.info_if(f, node_index, indent, *if_column, *condition)
-            }
-            Node::Else { else_column } => {
-                writeln!(f, "{:>indent$}Else: {else_column} = else", "")?;
-                let else_indent = indent + Self::INDENT_INCREMENT;
-                self.info_node(f, node_index, else_indent)
-            }
-
-            Node::Loop { loop_column, condition } => {
-                writeln!(f, "{:>indent$}Loop: {loop_column} = loop", "")?;
-                let loop_indent = indent + Self::INDENT_INCREMENT;
-                self.info_expression(f, *condition, loop_indent)?;
-                self.info_node(f, node_index, loop_indent)
-            }
-            Node::DoLoop { do_column, loop_column, condition } => {
-                writeln!(f, "{:>indent$}Do: {do_column} = do", "")?;
-                writeln!(f, "{:>indent$}Loop: {loop_column} = loop", "")?;
-                let loop_indent = indent + Self::INDENT_INCREMENT;
-                self.info_expression(f, *condition, loop_indent)?;
-                self.info_node(f, node_index, loop_indent)
-            }
-            Node::Break { break_column, semicolon_column } => {
-                writeln!(f, "{:>indent$}Break: {break_column} = break", "")?;
-                Self::info_semicolon(f, indent, *semicolon_column)
-            }
-            Node::Continue { continue_column, semicolon_column } => {
-                writeln!(f, "{:>indent$}Continue: {continue_column} = continue", "")?;
-                Self::info_semicolon(f, indent, *semicolon_column)
-            }
-        };
-    }
-
-    fn info_expression(
-        &self,
-        f: &mut core::fmt::Formatter<'_>,
-        expression_index: ExpressionIndex<'_>,
-        indent: usize,
-    ) -> core::fmt::Result {
-        let expression = &self.syntax_tree.expressions[expression_index];
-
-        #[rustfmt::skip]
-        return match expression {
-            Expression::False { column } => writeln!(f, "{:>indent$}False: {column} = false", ""),
-            Expression::True { column } => writeln!(f, "{:>indent$}True: {column} = true", ""),
-            Expression::DecimalInteger { literal, column } => {
-                let literal_str = self.tokens.text[*literal];
-                writeln!(f, "{:>indent$}DecimalInteger: {column} = {literal_str}", "")
-            }
-            Expression::DecimalIntegerPrefix { literal, column } => {
-                let literal_str = self.tokens.text[*literal];
-                writeln!(f, "{:>indent$}DecimalIntegerPrefix: {column} = {literal_str}", "")
-            }
-            Expression::BinaryInteger { literal, column } => {
-                let literal_str = self.tokens.text[*literal];
-                writeln!(f, "{:>indent$}BinaryInteger: {column} = {literal_str}", "")
-            }
-            Expression::OctalInteger { literal, column } => {
-                let literal_str = self.tokens.text[*literal];
-                writeln!(f, "{:>indent$}OctalInteger: {column} = {literal_str}", "")
-            }
-            Expression::HexadecimalInteger { literal, column } => {
-                let literal_str = self.tokens.text[*literal];
-                writeln!(f, "{:>indent$}HexadecimalInteger: {column} = {literal_str}", "")
-            }
-            Expression::Ascii { literal, column, .. } => {
-                let literal_str = &self.tokens.text[*literal];
-                writeln!(f, "{:>indent$}Ascii: {column} = {literal_str}", "")
-            }
-            Expression::Str { literal, column } => {
-                let literal_str = &self.tokens.text[*literal];
-                writeln!(f, "{:>indent$}Str: {column} = {literal_str}", "")
-            }
-            Expression::RawStr { literal, column } => {
-                let literal_str = &self.tokens.text[*literal];
-                writeln!(f, "{:>indent$}RawStr: {column} = {literal_str}", "")
-            }
-            Expression::Identifier { identifier, column } => {
-                let identifier_str = self.tokens.text[*identifier];
-                writeln!(f, "{:>indent$}Identifier: {column} = {identifier_str}", "")
-            }
-            Expression::IdentifierStr { identifier, column } => {
-                let identifier_str = self.tokens.text[*identifier];
-                writeln!(f, "{:>indent$}IdentifierStr: {column} = {identifier_str}", "")
-            }
-            Expression::Array {
-                open_square_bracket_column,
-                items_start,
-                items_len,
-                close_square_bracket_column
-            } => {
-                let expression_indent = indent + Self::INDENT_INCREMENT;
-                writeln!(f, "{:>indent$}Array", "")?;
-                writeln!(f, "{:>expression_indent$}OpenSquareBracket: {open_square_bracket_column} = [", "")?;
-
-                let items_indent = expression_indent + Self::INDENT_INCREMENT;
-                let items_end = items_start.0 + items_len;
-                let items = &self.syntax_tree.array_items[items_start.0 as usize..items_end as usize];
-                for ArrayItem { expression: item_expression, separator } in items {
-                    self.info_expression(f, *item_expression, items_indent)?;
-
-                    let column = unsafe { separator.some };
-                    writeln!(f, "{:>items_indent$}Semicolon: {column} = ;", "")?;
-                }
-
-                writeln!(f, "{:>expression_indent$}CloseSquareBracket: {close_square_bracket_column} = ]", "")
-            }
-            Expression::ArrayTrailingItem {
-                open_square_bracket_column,
-                items_start,
-                items_len,
-                close_square_bracket_column
-            } => {
-                let expression_indent = indent + Self::INDENT_INCREMENT;
-                writeln!(f, "{:>indent$}Array", "")?;
-                writeln!(f, "{:>expression_indent$}OpenSquareBracket: {open_square_bracket_column} = [", "")?;
-
-                let items_indent = expression_indent + Self::INDENT_INCREMENT;
-                let items_end = items_start.0 + items_len;
-                let items = &self.syntax_tree.array_items[items_start.0 as usize..items_end as usize];
-                let mut items_iter = items.iter();
-                let Some(last_item) = items_iter.next_back() else {
-                    unreachable!();
-                };
-                for ArrayItem { expression: item_expression, separator } in items_iter {
-                    self.info_expression(f, *item_expression, items_indent)?;
-
-                    let column = unsafe { separator.some };
-                    writeln!(f, "{:>items_indent$}Semicolon: {column} = ;", "")?;
-                }
-
-                self.info_expression(f, last_item.expression, items_indent)?;
-                writeln!(f, "{:>expression_indent$}CloseSquareBracket: {close_square_bracket_column} = ]", "")
-            }
-
-            Expression::Prefix { operator, operator_column, right_operand } => {
-                let expression_indent = indent + Self::INDENT_INCREMENT;
-                writeln!(f, "{:>indent$}PrefixExpression", "")?;
-                writeln!(f, "{:>expression_indent$}PrefixOp: {operator_column} = {operator}", "")?;
-                self.info_expression(f, *right_operand, expression_indent)
-            }
-            Expression::Binary { left_operand, operator, operator_column, right_operand } => {
-                let expression_indent = indent + Self::INDENT_INCREMENT;
-                writeln!(f, "{:>indent$}BinaryExpression", "")?;
-                self.info_expression(f, *left_operand, expression_indent)?;
-                writeln!(f, "{:>expression_indent$}BinaryOp: {operator_column} = {operator}", "")?;
-                self.info_expression(f, *right_operand, expression_indent)
-            }
-
-            Expression::Parenthesis {
-                open_round_bracket_column,
-                inner_expression,
-                close_round_bracket_column
-            } => {
-                let expression_indent = indent + Self::INDENT_INCREMENT;
-                writeln!(f, "{:indent$}ParenthesisExpression", "")?;
-                writeln!(f, "{:>expression_indent$}OpenRoundBracket: {open_round_bracket_column} = (", "")?;
-                self.info_expression(f, *inner_expression, expression_indent)?;
-                writeln!(f, "{:>expression_indent$}CloseRoundBracket: {close_round_bracket_column} = )", "")
-            }
-
-            Expression::Index {
-                indexed_expression,
-                open_square_bracket_column,
-                index_expression,
-                close_square_bracket_column
-            } => {
-                let expression_indent = indent + Self::INDENT_INCREMENT;
-                writeln!(f, "{:indent$}IndexExpression", "")?;
-                self.info_expression(f, *indexed_expression, expression_indent)?;
-                writeln!(f, "{:>expression_indent$}OpenSquareBracket: {open_square_bracket_column} = [", "")?;
-                self.info_expression(f, *index_expression, expression_indent)?;
-                writeln!(f, "{:>expression_indent$}CloseSquareBracket: {close_square_bracket_column} = ]", "")
-            }
-        };
-    }
-
-    fn info_variable_definition(
-        &self,
-        f: &mut core::fmt::Formatter<'_>,
-        variable_definition_index: VariableDefinitionIndex<'_>,
-        indent: usize,
-    ) -> core::fmt::Result {
-        let VariableDefinition {
-            name,
-            name_column,
-
-            colon_column,
-            type_annotation:
-                TypeAnnotation { type_name, type_name_column, array_dimensions_start, array_dimensions_len },
-
-            equals_column,
-            expression,
-        } = &self.syntax_tree.variable_definitions[variable_definition_index];
-
-        let name_str = self.tokens.text[*name];
-        writeln!(f, "{:>indent$}Name: {name_column} = {name_str}", "")?;
-        writeln!(f, "{:>indent$}Colon: {colon_column} = :", "")?;
-        writeln!(f, "{:>indent$}TypeAnnotation", "")?;
-
-        let annotation_indent = indent + Self::INDENT_INCREMENT;
-        let type_name_str = self.tokens.text[*type_name];
-        writeln!(f, "{:>annotation_indent$}TypeName: {type_name_column} = {type_name_str}", "")?;
-
-        let dimension_indent = annotation_indent + Self::INDENT_INCREMENT;
-        let array_dimensions_end = array_dimensions_start.0 + array_dimensions_len;
-        let array_dimensions = &self.syntax_tree.array_dimensions
-            [array_dimensions_start.0 as usize..array_dimensions_end as usize];
-        for ArrayDimension {
-            open_square_bracket_column,
-            dimension_expression,
-            close_square_bracket_column,
-        } in array_dimensions
-        {
-            writeln!(f, "{:>annotation_indent$}OpenSquareBracket: {open_square_bracket_column} = [", "")?;
-            self.info_expression(f, *dimension_expression, dimension_indent)?;
-            writeln!(f, "{:>annotation_indent$}CloseSquareBracket: {close_square_bracket_column} = ]", "")?;
-        }
-
-        writeln!(f, "{:>indent$}Equals: {equals_column} = =", "")?;
-        return self.info_expression(f, *expression, indent);
-    }
-}
-
-impl Display for SyntaxTreeDisplay<'_, '_, '_> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let mut node_index = NodeIndex::new(0);
-        while (node_index.0 as usize) < self.syntax_tree.nodes.len() {
-            self.info_node(f, &mut node_index, 0)?;
-        }
-
-        return Ok(());
-    }
-}
-
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Parser<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> {
     src: &'src SrcCode<'code, 'path>,
     errors: Vec<Msg<ErrorKind>>,
@@ -2537,6 +2167,376 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             unreachable!();
         };
         return Ok(ParsedNode::ScopeEnd);
+    }
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct SyntaxTreeDisplay<'syntax_tree, 'tokens: 'syntax_tree, 'code: 'tokens> {
+    pub(crate) syntax_tree: &'syntax_tree SyntaxTree<'tokens, 'code>,
+    pub(crate) tokens: &'tokens Tokens<'code>,
+}
+
+impl<'tokens> SyntaxTree<'tokens, '_> {
+    #[must_use]
+    #[inline(always)]
+    pub const fn display(&self, tokens: &'tokens Tokens<'_>) -> SyntaxTreeDisplay<'_, 'tokens, '_> {
+        return SyntaxTreeDisplay { syntax_tree: self, tokens };
+    }
+}
+
+impl SyntaxTreeDisplay<'_, '_, '_> {
+    const INDENT_INCREMENT: usize = 2;
+
+    #[inline(always)]
+    fn info_semicolon(
+        f: &mut core::fmt::Formatter<'_>,
+        indent: usize,
+        column: uoffset32,
+    ) -> core::fmt::Result {
+        return writeln!(f, "{:>indent$}Semicolon: {column} = ;", "");
+    }
+
+    fn info_if(
+        &self,
+        f: &mut core::fmt::Formatter<'_>,
+        node_index: &mut NodeIndex<'_>,
+        indent: usize,
+        if_column: uoffset32,
+        condition: ExpressionIndex<'_>,
+    ) -> core::fmt::Result {
+        writeln!(f, "{:>indent$}If: {if_column} = if", "")?;
+        let if_indent = indent + Self::INDENT_INCREMENT;
+        self.info_expression(f, condition, if_indent)?;
+        return self.info_node(f, node_index, if_indent);
+    }
+
+    fn info_node(
+        &self,
+        f: &mut core::fmt::Formatter<'_>,
+        node_index: &mut NodeIndex<'_>,
+        indent: usize,
+    ) -> core::fmt::Result {
+        let node = &self.syntax_tree.nodes[*node_index];
+        node_index.0 += 1;
+
+        #[rustfmt::skip]
+        return match node {
+            Node::Semicolon { column } => Self::info_semicolon(f, indent, *column),
+
+            Node::Expression { expression, semicolon_column } => {
+                self.info_expression(f, *expression, indent)?;
+                Self::info_semicolon(f, indent, *semicolon_column)
+            }
+
+            Node::Print { print_column, argument, semicolon_column } => {
+                writeln!(f, "{:>indent$}Print: {print_column} = print", "")?;
+                let argument_indent = indent + Self::INDENT_INCREMENT;
+                self.info_expression(f, *argument, argument_indent)?;
+                Self::info_semicolon(f, argument_indent, *semicolon_column)
+            }
+            Node::Println { println_column, argument, semicolon_column } => {
+                writeln!(f, "{:>indent$}Println: {println_column} = println", "")?;
+                let argument_indent = indent + Self::INDENT_INCREMENT;
+                self.info_expression(f, *argument, argument_indent)?;
+                Self::info_semicolon(f, argument_indent, *semicolon_column)
+            }
+            Node::PrintlnNoArg { println_column, semicolon_column } => {
+                writeln!(f, "{:>indent$}Println: {println_column} = println", "")?;
+                Self::info_semicolon(f, indent, *semicolon_column)
+            }
+            Node::Eprint { eprint_column, argument, semicolon_column } => {
+                writeln!(f, "{:>indent$}Eprint: {eprint_column} = eprint", "")?;
+                let argument_indent = indent + Self::INDENT_INCREMENT;
+                self.info_expression(f, *argument, argument_indent)?;
+                Self::info_semicolon(f, argument_indent, *semicolon_column)
+            }
+            Node::Eprintln { eprintln_column, argument, semicolon_column } => {
+                writeln!(f, "{:>indent$}Eprintln: {eprintln_column} = eprintln", "")?;
+                let argument_indent = indent + Self::INDENT_INCREMENT;
+                self.info_expression(f, *argument, argument_indent)?;
+                Self::info_semicolon(f, argument_indent, *semicolon_column)
+            }
+            Node::EprintlnNoArg { eprintln_column, semicolon_column } => {
+                writeln!(f, "{:>indent$}Eprintln: {eprintln_column} = eprintln", "")?;
+                Self::info_semicolon(f, indent, *semicolon_column)
+            }
+
+            Node::LetVariableDefinition { let_column, variable_definition, semicolon_column } => {
+                writeln!(f, "{:>indent$}VariableDefinition: {let_column} = let", "")?;
+                let definition_indent = indent + Self::INDENT_INCREMENT;
+                self.info_variable_definition(f, *variable_definition, definition_indent)?;
+                Self::info_semicolon(f, definition_indent, *semicolon_column)
+            }
+            Node::VarVariableDefinition { var_column, variable_definition, semicolon_column } => {
+                writeln!(f, "{:>indent$}VariableDefinition: {var_column} = var", "")?;
+                let definition_indent = indent + Self::INDENT_INCREMENT;
+                self.info_variable_definition(f, *variable_definition, definition_indent)?;
+                Self::info_semicolon(f, definition_indent, *semicolon_column)
+            }
+            Node::BinaryAssignment { target, operator, operator_column, new_value, semicolon_column } => {
+                writeln!(f, "{:>indent$}BinaryAssignment", "")?;
+                let assignment_indent = indent + Self::INDENT_INCREMENT;
+                self.info_expression(f, *target, assignment_indent)?;
+                writeln!(f, "{:>assignment_indent$}BinaryAssignmentOp: {operator_column} = {operator}", "")?;
+                self.info_expression(f, *new_value, assignment_indent)?;
+                Self::info_semicolon(f, assignment_indent, *semicolon_column)
+            }
+            Node::PrefixAssignment { operator, operator_column, target, semicolon_column } => {
+                writeln!(f, "{:>indent$}PrefixAssignment", "")?;
+                let assignment_indent = indent + Self::INDENT_INCREMENT;
+                writeln!(f, "{:>assignment_indent$}PrefixAssignmentOp: {operator_column} = {operator}", "")?;
+                self.info_expression(f, *target, assignment_indent)?;
+                Self::info_semicolon(f, assignment_indent, *semicolon_column)
+            }
+
+            Node::Scope { open_curly_bracket_column, raw_nodes_in_scope_count, close_curly_bracket_column } => {
+                writeln!(f, "{:>indent$}Scope", "")?;
+                let scope_indent = indent + Self::INDENT_INCREMENT;
+                writeln!(f, "{:>scope_indent$}OpenCurlyBracket: {open_curly_bracket_column} = {{", "")?;
+
+                let after_end_scope_node_index = node_index.0 + raw_nodes_in_scope_count;
+                while node_index.0 < after_end_scope_node_index {
+                    self.info_node(f, node_index, scope_indent)?;
+                }
+                writeln!(f, "{:>scope_indent$}CloseCurlyBracket: {close_curly_bracket_column} = }}", "")
+            }
+
+            Node::If { if_column, condition } => {
+                self.info_if(f, node_index, indent, *if_column, *condition)
+            }
+            Node::ElseIf { if_column, condition, else_column } => {
+                writeln!(f, "{:>indent$}Else: {else_column} = else", "")?;
+                self.info_if(f, node_index, indent, *if_column, *condition)
+            }
+            Node::Else { else_column } => {
+                writeln!(f, "{:>indent$}Else: {else_column} = else", "")?;
+                let else_indent = indent + Self::INDENT_INCREMENT;
+                self.info_node(f, node_index, else_indent)
+            }
+
+            Node::Loop { loop_column, condition } => {
+                writeln!(f, "{:>indent$}Loop: {loop_column} = loop", "")?;
+                let loop_indent = indent + Self::INDENT_INCREMENT;
+                self.info_expression(f, *condition, loop_indent)?;
+                self.info_node(f, node_index, loop_indent)
+            }
+            Node::DoLoop { do_column, loop_column, condition } => {
+                writeln!(f, "{:>indent$}Do: {do_column} = do", "")?;
+                writeln!(f, "{:>indent$}Loop: {loop_column} = loop", "")?;
+                let loop_indent = indent + Self::INDENT_INCREMENT;
+                self.info_expression(f, *condition, loop_indent)?;
+                self.info_node(f, node_index, loop_indent)
+            }
+            Node::Break { break_column, semicolon_column } => {
+                writeln!(f, "{:>indent$}Break: {break_column} = break", "")?;
+                Self::info_semicolon(f, indent, *semicolon_column)
+            }
+            Node::Continue { continue_column, semicolon_column } => {
+                writeln!(f, "{:>indent$}Continue: {continue_column} = continue", "")?;
+                Self::info_semicolon(f, indent, *semicolon_column)
+            }
+        };
+    }
+
+    fn info_expression(
+        &self,
+        f: &mut core::fmt::Formatter<'_>,
+        expression_index: ExpressionIndex<'_>,
+        indent: usize,
+    ) -> core::fmt::Result {
+        let expression = &self.syntax_tree.expressions[expression_index];
+
+        #[rustfmt::skip]
+        return match expression {
+            Expression::False { column } => writeln!(f, "{:>indent$}False: {column} = false", ""),
+            Expression::True { column } => writeln!(f, "{:>indent$}True: {column} = true", ""),
+            Expression::DecimalInteger { literal, column } => {
+                let literal_str = self.tokens.text[*literal];
+                writeln!(f, "{:>indent$}DecimalInteger: {column} = {literal_str}", "")
+            }
+            Expression::DecimalIntegerPrefix { literal, column } => {
+                let literal_str = self.tokens.text[*literal];
+                writeln!(f, "{:>indent$}DecimalIntegerPrefix: {column} = {literal_str}", "")
+            }
+            Expression::BinaryInteger { literal, column } => {
+                let literal_str = self.tokens.text[*literal];
+                writeln!(f, "{:>indent$}BinaryInteger: {column} = {literal_str}", "")
+            }
+            Expression::OctalInteger { literal, column } => {
+                let literal_str = self.tokens.text[*literal];
+                writeln!(f, "{:>indent$}OctalInteger: {column} = {literal_str}", "")
+            }
+            Expression::HexadecimalInteger { literal, column } => {
+                let literal_str = self.tokens.text[*literal];
+                writeln!(f, "{:>indent$}HexadecimalInteger: {column} = {literal_str}", "")
+            }
+            Expression::Ascii { literal, column, .. } => {
+                let literal_str = &self.tokens.text[*literal];
+                writeln!(f, "{:>indent$}Ascii: {column} = {literal_str}", "")
+            }
+            Expression::Str { literal, column } => {
+                let literal_str = &self.tokens.text[*literal];
+                writeln!(f, "{:>indent$}Str: {column} = {literal_str}", "")
+            }
+            Expression::RawStr { literal, column } => {
+                let literal_str = &self.tokens.text[*literal];
+                writeln!(f, "{:>indent$}RawStr: {column} = {literal_str}", "")
+            }
+            Expression::Identifier { identifier, column } => {
+                let identifier_str = self.tokens.text[*identifier];
+                writeln!(f, "{:>indent$}Identifier: {column} = {identifier_str}", "")
+            }
+            Expression::IdentifierStr { identifier, column } => {
+                let identifier_str = self.tokens.text[*identifier];
+                writeln!(f, "{:>indent$}IdentifierStr: {column} = {identifier_str}", "")
+            }
+            Expression::Array {
+                open_square_bracket_column,
+                items_start,
+                items_len,
+                close_square_bracket_column
+            } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
+                writeln!(f, "{:>indent$}Array", "")?;
+                writeln!(f, "{:>expression_indent$}OpenSquareBracket: {open_square_bracket_column} = [", "")?;
+
+                let items_indent = expression_indent + Self::INDENT_INCREMENT;
+                let items_end = items_start.0 + items_len;
+                let items = &self.syntax_tree.array_items[items_start.0 as usize..items_end as usize];
+                for ArrayItem { expression: item_expression, separator } in items {
+                    self.info_expression(f, *item_expression, items_indent)?;
+
+                    let column = unsafe { separator.some };
+                    writeln!(f, "{:>items_indent$}Semicolon: {column} = ;", "")?;
+                }
+
+                writeln!(f, "{:>expression_indent$}CloseSquareBracket: {close_square_bracket_column} = ]", "")
+            }
+            Expression::ArrayTrailingItem {
+                open_square_bracket_column,
+                items_start,
+                items_len,
+                close_square_bracket_column
+            } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
+                writeln!(f, "{:>indent$}Array", "")?;
+                writeln!(f, "{:>expression_indent$}OpenSquareBracket: {open_square_bracket_column} = [", "")?;
+
+                let items_indent = expression_indent + Self::INDENT_INCREMENT;
+                let items_end = items_start.0 + items_len;
+                let items = &self.syntax_tree.array_items[items_start.0 as usize..items_end as usize];
+                let mut items_iter = items.iter();
+                let Some(last_item) = items_iter.next_back() else {
+                    unreachable!();
+                };
+                for ArrayItem { expression: item_expression, separator } in items_iter {
+                    self.info_expression(f, *item_expression, items_indent)?;
+
+                    let column = unsafe { separator.some };
+                    writeln!(f, "{:>items_indent$}Semicolon: {column} = ;", "")?;
+                }
+
+                self.info_expression(f, last_item.expression, items_indent)?;
+                writeln!(f, "{:>expression_indent$}CloseSquareBracket: {close_square_bracket_column} = ]", "")
+            }
+
+            Expression::Prefix { operator, operator_column, right_operand } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
+                writeln!(f, "{:>indent$}PrefixExpression", "")?;
+                writeln!(f, "{:>expression_indent$}PrefixOp: {operator_column} = {operator}", "")?;
+                self.info_expression(f, *right_operand, expression_indent)
+            }
+            Expression::Binary { left_operand, operator, operator_column, right_operand } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
+                writeln!(f, "{:>indent$}BinaryExpression", "")?;
+                self.info_expression(f, *left_operand, expression_indent)?;
+                writeln!(f, "{:>expression_indent$}BinaryOp: {operator_column} = {operator}", "")?;
+                self.info_expression(f, *right_operand, expression_indent)
+            }
+
+            Expression::Parenthesis {
+                open_round_bracket_column,
+                inner_expression,
+                close_round_bracket_column
+            } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
+                writeln!(f, "{:indent$}ParenthesisExpression", "")?;
+                writeln!(f, "{:>expression_indent$}OpenRoundBracket: {open_round_bracket_column} = (", "")?;
+                self.info_expression(f, *inner_expression, expression_indent)?;
+                writeln!(f, "{:>expression_indent$}CloseRoundBracket: {close_round_bracket_column} = )", "")
+            }
+
+            Expression::Index {
+                indexed_expression,
+                open_square_bracket_column,
+                index_expression,
+                close_square_bracket_column
+            } => {
+                let expression_indent = indent + Self::INDENT_INCREMENT;
+                writeln!(f, "{:indent$}IndexExpression", "")?;
+                self.info_expression(f, *indexed_expression, expression_indent)?;
+                writeln!(f, "{:>expression_indent$}OpenSquareBracket: {open_square_bracket_column} = [", "")?;
+                self.info_expression(f, *index_expression, expression_indent)?;
+                writeln!(f, "{:>expression_indent$}CloseSquareBracket: {close_square_bracket_column} = ]", "")
+            }
+        };
+    }
+
+    fn info_variable_definition(
+        &self,
+        f: &mut core::fmt::Formatter<'_>,
+        variable_definition_index: VariableDefinitionIndex<'_>,
+        indent: usize,
+    ) -> core::fmt::Result {
+        let VariableDefinition {
+            name,
+            name_column,
+
+            colon_column,
+            type_annotation:
+                TypeAnnotation { type_name, type_name_column, array_dimensions_start, array_dimensions_len },
+
+            equals_column,
+            expression,
+        } = &self.syntax_tree.variable_definitions[variable_definition_index];
+
+        let name_str = self.tokens.text[*name];
+        writeln!(f, "{:>indent$}Name: {name_column} = {name_str}", "")?;
+        writeln!(f, "{:>indent$}Colon: {colon_column} = :", "")?;
+        writeln!(f, "{:>indent$}TypeAnnotation", "")?;
+
+        let annotation_indent = indent + Self::INDENT_INCREMENT;
+        let type_name_str = self.tokens.text[*type_name];
+        writeln!(f, "{:>annotation_indent$}TypeName: {type_name_column} = {type_name_str}", "")?;
+
+        let dimension_indent = annotation_indent + Self::INDENT_INCREMENT;
+        let array_dimensions_end = array_dimensions_start.0 + array_dimensions_len;
+        let array_dimensions = &self.syntax_tree.array_dimensions
+            [array_dimensions_start.0 as usize..array_dimensions_end as usize];
+        for ArrayDimension {
+            open_square_bracket_column,
+            dimension_expression,
+            close_square_bracket_column,
+        } in array_dimensions
+        {
+            writeln!(f, "{:>annotation_indent$}OpenSquareBracket: {open_square_bracket_column} = [", "")?;
+            self.info_expression(f, *dimension_expression, dimension_indent)?;
+            writeln!(f, "{:>annotation_indent$}CloseSquareBracket: {close_square_bracket_column} = ]", "")?;
+        }
+
+        writeln!(f, "{:>indent$}Equals: {equals_column} = =", "")?;
+        return self.info_expression(f, *expression, indent);
+    }
+}
+
+impl Display for SyntaxTreeDisplay<'_, '_, '_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mut node_index = NodeIndex::new(0);
+        while (node_index.0 as usize) < self.syntax_tree.nodes.len() {
+            self.info_node(f, &mut node_index, 0)?;
+        }
+
+        return Ok(());
     }
 }
 

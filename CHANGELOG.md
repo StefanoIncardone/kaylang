@@ -22,13 +22,17 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 ## 0.7.0 -
 
-### Changed
+### Language
 
-#### Language
-
-##### Changed
+#### Changed
 
 - Made type annotations mandatory
+
+### Compiler
+
+#### Changed
+
+- Started implementing platforms and compilation targets
 
 ## 0.6.4 - 2026-08-13
 

@@ -1,11 +1,11 @@
 use core::{fmt::Display, marker::PhantomData};
-use back_to_front::offset32;
+use back_to_front::uoffset32;
 use crate::front_end::{
-    src_file::SrcCode, tokenizer::{ascii, TextIndex, Tokens}, typed_abstract_syntax_tree::{self as tast, TypedSyntaxTree}, SliceIndexPtr
+    Index32, src_file::SrcCode, tokenizer::{TextIndex, Tokens, ascii}, typed_abstract_syntax_tree::{self as tast, TypedSyntaxTree},
 };
 
-pub(crate) type ExpressionIndex<'code> = SliceIndexPtr<Expression<'code>>;
-pub(crate) type OperandIndex<'code> = SliceIndexPtr<Operand<'code>>;
+pub(crate) type ExpressionIndex<'code> = Index32<Expression<'code>>;
+pub(crate) type OperandIndex<'code> = Index32<Operand<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Operand<'code> {
@@ -77,8 +77,8 @@ pub(crate) enum Expression<'code> {
     // }
 }
 
-pub(crate) type NameIndex = SliceIndexPtr<String>;
-pub(crate) type VariableDefinitionIndex<'code> = SliceIndexPtr<VariableDefinition<'code>>;
+pub(crate) type NameIndex = Index32<String>;
+pub(crate) type VariableDefinitionIndex<'code> = Index32<VariableDefinition<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct VariableDefinition<'code> {
@@ -87,8 +87,8 @@ pub(crate) struct VariableDefinition<'code> {
     pub(crate) value: ExpressionIndex<'code>,
 }
 
-pub(crate) type NodeIndex<'code> = SliceIndexPtr<Node<'code>>;
-pub(crate) type LabelIndex = SliceIndexPtr<String>;
+pub(crate) type NodeIndex<'code> = Index32<Node<'code>>;
+pub(crate) type LabelIndex = Index32<String>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Node<'code> {
@@ -135,6 +135,7 @@ pub(crate) enum Node<'code> {
     // Break { label: LabelIndex },
 }
 
+#[must_use]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Ir<'tast, 'st: 'tast, 'tokens: 'st, 'code: 'tokens> {
     pub(crate) nodes: Vec<Node<'code>>,
@@ -515,7 +516,7 @@ struct Peeked<'tast, 'code: 'tast> {
 impl<'tast, 'code: 'tast> Parser<'tast, '_, '_, '_, 'code, '_> {
     fn peek_next_node(&self) -> Option<Peeked<'tast, 'code>> {
         let next_node = self.node_index.get(&self.tast.nodes)?;
-        let peeked_node_index_index = tast::NodeIndex::new_offset32(self.node_index.0 + 1);
+        let peeked_node_index_index = tast::NodeIndex::new_uoffset32(self.node_index.0 + 1);
         return Some(Peeked { node: next_node, index: peeked_node_index_index });
     }
 }

@@ -11,6 +11,7 @@ fn main() {
         None => Help::default_executable_name(),
     };
 
-    let help = Help { color: Color::Auto, executable_name };
+    Color::Auto.set(&std::io::stdout());
+    let help = Help { executable_name };
     println!("{help}");
 }

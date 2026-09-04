@@ -476,6 +476,7 @@ pub struct Tokenizer<'code> {
 }
 
 impl<'code, 'path: 'code> Tokenizer<'code> {
+    // IDEA(stefano): make into an iterator
     pub fn tokenize(src_file: &'code SrcFile<'path>) -> TokenizedCode<'code, 'path> {
         #[repr(C)]
         union BackPatch<'code> {

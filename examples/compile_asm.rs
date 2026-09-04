@@ -1,23 +1,37 @@
 #![expect(clippy::print_stderr, reason = "it's a cli tool")]
 
 use kaylang::{
-    ASSEMBLING, ASSEMBLING_ERROR, COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_LINKER, Color, DONE,
-    LINKING, LINKING_ERROR, Logger, SUBSTEP_DONE, back_end::Artifacts, error::MsgSimple,
+    error::MsgSimple,
+    Logger,
+    code_generation::{ Platform, Artifacts },
+    Verbosity,
+    Color,
+};
+use kaylang::{
+    ASSEMBLING, ASSEMBLING_ERROR, COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_LINKER, DONE, LINKING, LINKING_ERROR, SUBSTEP_DONE,
 };
 use std::{path::Path, process::ExitCode};
 
 fn main() -> ExitCode {
     // controls how error messages should be colored
-    Color::Auto.set(&std::io::stderr());
+    let color = Color::Auto;
+    color.set(&std::io::stderr());
+
+    // controls how much information about compilation steps are reported to the user
+    let verbosity = Verbosity::Verbose;
+
+    // control the platform to target for code generation
+    let platform = Platform::Auto;
 
     // cargo sets the working directory to where the `cargo` command was run.
     // so we assume this example is run from the root of the crate
     let src_path = Path::new("examples/fizzbuzz.asm");
-    let out_path = Path::new("examples/out");
+    let out_path = Path::new("out");
 
     let execution_step = Logger::new();
 
-    let artifacts = match Artifacts::new(src_path, out_path) {
+    let extensions = platform.extensions();
+    let artifacts = match Artifacts::new(src_path, out_path, &extensions) {
         Ok(new_artifacts) => new_artifacts,
         Err(err) => {
             eprintln!("{err}");
@@ -25,14 +39,14 @@ fn main() -> ExitCode {
         },
     };
 
-    Logger::info(&COMPILING, src_path);
+    Logger::info(&COMPILING, src_path, verbosity);
     let compilation_sub_step = Logger::new();
 
     let _assembler_status: () = {
-        let assembling_sub_step = Logger::new();
-        let mut assembler_command = artifacts.assembler();
+        let logger = Logger::new();
+        let mut assembler_command = platform.assembler(&artifacts);
         let assembler_result = assembler_command.output();
-        assembling_sub_step.sub_step(&ASSEMBLING, Some(&artifacts.obj_path));
+        logger.sub_step(&ASSEMBLING, Some(&artifacts.obj_path), verbosity);
         match assembler_result {
             Ok(output) => {
                 if !output.status.success() {
@@ -56,10 +70,10 @@ fn main() -> ExitCode {
     };
 
     let _linker_status: () = {
-        let linking_sub_step = Logger::new();
-        let mut linker_command = artifacts.linker();
+        let logger = Logger::new();
+        let mut linker_command = platform.linker(&artifacts);
         let linker_result = linker_command.output();
-        linking_sub_step.sub_step(&LINKING, Some(&artifacts.exe_path));
+        logger.sub_step(&LINKING, Some(&artifacts.exe_path), verbosity);
         match linker_result {
             Ok(output) => {
                 if !output.status.success() {
@@ -80,8 +94,8 @@ fn main() -> ExitCode {
         }
     };
 
-    compilation_sub_step.sub_step(&SUBSTEP_DONE, None);
-    execution_step.step(&DONE, None);
+    compilation_sub_step.sub_step(&SUBSTEP_DONE, None, verbosity);
+    execution_step.step(&DONE, None, verbosity);
 
     return ExitCode::SUCCESS;
 }

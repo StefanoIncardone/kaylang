@@ -11,29 +11,29 @@ pub type ansi_code = u8;
 // IDEA(stefano): make more "pure" by selecting the printing mode each time
 #[expect(non_upper_case_globals, reason = "alias to a function")]
 pub(super) static mut print: fn(
+    f: &mut core::fmt::Formatter<'_>,
     text: &dyn Display,
     fg: AnsiFg,
     bg: AnsiBg,
     flags: ansi_flag,
-    f: &mut core::fmt::Formatter<'_>,
 ) -> core::fmt::Result = print_color;
 
 pub(super) fn print_no_color(
+    f: &mut core::fmt::Formatter<'_>,
     text: &dyn Display,
     _: AnsiFg,
     _: AnsiBg,
     _: ansi_flag,
-    f: &mut core::fmt::Formatter<'_>,
 ) -> core::fmt::Result {
     return text.fmt(f);
 }
 
 pub(super) fn print_color(
+    f: &mut core::fmt::Formatter<'_>,
     text: &dyn Display,
     fg: AnsiFg,
     bg: AnsiBg,
     flags: ansi_flag,
-    f: &mut core::fmt::Formatter<'_>,
 ) -> core::fmt::Result {
     const CODES_LEN: usize = 24;
     const CODES_START_INDEX: usize = CODES_LEN - 2; // skipping the last m
@@ -128,6 +128,6 @@ pub struct Colored<'text, Text: Display + ?Sized> {
 
 impl<Text: Display + ?Sized> Display for Colored<'_, Text> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        return unsafe { print(&self.text, self.fg, self.bg, self.flags, f) };
+        return unsafe { print(f, &self.text, self.fg, self.bg, self.flags) };
     }
 }

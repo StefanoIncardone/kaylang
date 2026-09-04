@@ -15,6 +15,7 @@ license = "MIT"
 [dependencies]
 unicode-width = "0.2.2"
 unicode-segmentation = "1.13.3"
+cfg-if = "1.0.4"
 
 [dependencies.back-to-front]
 # For publishing
@@ -66,8 +67,8 @@ restriction = { level = "warn", priority = -1 }
 cargo = { level = "warn", priority = -1 }
 
 # still not convinced on the benefits of either approaches
-self_named_module_files = "allow"
-mod_module_files = "warn"
+self_named_module_files = "warn"
+mod_module_files = "allow"
 
 module_name_repetitions = "allow" # unrealiable
 struct_field_names = "allow" # unreliable

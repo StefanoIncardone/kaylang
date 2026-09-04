@@ -1,6 +1,9 @@
-use back_to_front::back_end::x86_64::reg::Reg64;
+use back_to_front::x86_64::Reg64;
 
-use crate::{front_end::src_file::SrcCode, ir::ir::{Expression, ExpressionIndex, Ir, Node, Operand, OperandIndex, VariableDefinitionIndex}};
+use crate::{
+    front_end::src_file::SrcCode,
+    back_end::ir::{Expression, ExpressionIndex, Ir, Node, Operand, OperandIndex, VariableDefinitionIndex}
+};
 
 use core::fmt::Write as _;
 
@@ -67,7 +70,7 @@ impl<'ir, 'tast: 'ir, 'st: 'tast, 'src: 'tast, 'tokens: 'src, 'code: 'src, 'path
     Compiler<'ir, 'tast, 'st, 'src, 'tokens, 'code, 'path> {
     #[must_use]
     pub fn compile(src: &'src SrcCode<'code, 'path>, ir: &'ir Ir<'tast, 'st, 'tokens, 'code>) -> String {
-        use crate::back_end::asm::{
+        use crate::code_generation::nasm::asm::{
             ASCII_ARRAY_DEBUG_EPRINT_ASM, ASCII_ARRAY_DEBUG_PRINT_ASM, ASCII_EPRINT_ASM,
             ASCII_PRINT_ASM, ASSERT_ARRAY_INDEX_IN_RANGE_ASM, ASSERT_STR_INDEX_IN_RANGE_ASM,
             BOOL_ARRAY_DEBUG_EPRINT_ASM, BOOL_ARRAY_DEBUG_PRINT_ASM, BOOL_EPRINT_ASM,

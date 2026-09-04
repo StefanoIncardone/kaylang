@@ -3,6 +3,8 @@
 use kaylang::{Color, Version};
 
 fn main() {
-    let version = Version { color: Color::Auto };
+    Color::Auto.set(&std::io::stderr());
+
+    let version = Version;
     println!("{version}");
 }
