@@ -62,8 +62,8 @@ machines and combination of components.
 
 ## Syntax specification
 
-See the [language reference](LANGUAGE_REFERENCE.md) and the the
-[language syntax specification](SYNTAX.ebnf)
+See the [language reference](docs/LANGUAGE_REFERENCE.md) and the the
+[language syntax specification](docs/SYNTAX.ebnf)
 
 ## Syntax highlighting
 
