@@ -2,7 +2,7 @@
 //! This file is also an example of how it's possible to create cli tools based on this compiler
 
 use kaylang::{
-    Args, ArgsParser, Command, Help, Language, Logger, Verbosity, Version, back_end::ir, code_generation::{Artifacts, Platform, nasm::compiler_ast::Compiler }, error::MsgSimple, front_end::{
+    Args, ArgsParser, Command, Help, Language, Logger, Version, back_end::ir, code_generation::{Artifacts, Platform, nasm::compiler_ast::Compiler }, error::MsgSimple, front_end::{
         ast::Parser,
         src_file::SrcFile,
         syntax_tree,
@@ -44,36 +44,35 @@ fn main() -> ExitCode {
         }
     };
 
-    if let Command::Help = command {
-        color.set(&std::io::stdout());
-        let help = Help { executable_name };
-        println!("{help}");
-        return ExitCode::SUCCESS;
-    }
+    let (src_path, verbosity, language) = match &command {
+        Command::Help => {
+            color.set(&std::io::stdout());
+            let help = Help { executable_name };
+            println!("{help}");
+            return ExitCode::SUCCESS;
+        }
+        Command::Version => {
+            color.set(&std::io::stdout());
+            let version = Version;
+            println!("{version}");
+            return ExitCode::SUCCESS;
+        },
 
-    if let Command::Version = command {
-        color.set(&std::io::stdout());
-        let version = Version;
-        println!("{version}");
-        return ExitCode::SUCCESS;
-    }
+        Command::Check { src_path, verbosity } => (src_path, *verbosity, Language::Kay),
+
+        Command::Compile { src_path, verbosity, language, .. }
+        | Command::Run { src_path, verbosity, language, .. } => (src_path, *verbosity, *language),
+
+    };
 
     color.set(&std::io::stderr());
 
-    let language: Language;
-    let verbosity: Verbosity;
     let platform = Platform::Auto;
     let artifacts: Artifacts;
     let compilation_sub_step: Logger;
 
     let execution_step = Logger::new();
-    if let Command::Check { src_path, verbosity: verbosity_ref }
-    | Command::Compile { src_path, verbosity: verbosity_ref, language: Language::Kay, .. }
-    | Command::Run { src_path, verbosity: verbosity_ref, language: Language::Kay, .. } = &command
-    {
-        language = Language::Kay;
-        verbosity = *verbosity_ref;
-
+    if let Language::Kay = language {
         Logger::info(&CHECKING, src_path, verbosity);
         let checking_sub_step = Logger::new();
 
@@ -160,12 +159,12 @@ fn main() -> ExitCode {
         Logger::info(&COMPILING, src_path, verbosity);
         compilation_sub_step = Logger::new();
 
-        let _ir = {
-            let logger = Logger::new();
-            let ir = ir::Parser::parse(&src, &tokens, &tast);
-            logger.sub_step(&GENERATING_IR, None, verbosity);
-            ir
-        };
+        // let _ir = {
+        //     let logger = Logger::new();
+        //     let ir = ir::Parser::parse(&src, &tokens, &tast);
+        //     logger.sub_step(&GENERATING_IR, None, verbosity);
+        //     ir
+        // };
 
         let extensions = platform.extensions();
         artifacts = match Artifacts::new(src_path, out_path, &extensions) {
@@ -187,14 +186,9 @@ fn main() -> ExitCode {
             }
         };
     } else {
-        let (Command::Compile { language: language_ref, src_path, out_path, verbosity: verbosity_ref }
-        | Command::Run { language: language_ref, src_path, out_path, verbosity: verbosity_ref }) = &command
-        else {
+        let (Command::Compile { out_path, .. } | Command::Run { out_path, .. }) = &command else {
             unreachable!()
         };
-
-        language = *language_ref;
-        verbosity = *verbosity_ref;
 
         Logger::info(&COMPILING, src_path, verbosity);
         compilation_sub_step = Logger::new();
@@ -211,8 +205,16 @@ fn main() -> ExitCode {
 
     if let Language::Kay | Language::Asm = language {
         let _assembler_status: () = {
+            let assembly_src_path = match language {
+                // using the freshly generated assembly file
+                Language::Kay => &artifacts.asm_path,
+                // using the assembly file specified at the command line
+                Language::Asm => *src_path,
+                Language::Obj => unreachable!(),
+            };
+
             let logger = Logger::new();
-            let mut assembler_command = platform.assembler(&artifacts);
+            let mut assembler_command = platform.assembler(assembly_src_path, &artifacts.obj_path);
             let assembler_result = assembler_command.output();
             logger.sub_step(&ASSEMBLING, Some(&artifacts.obj_path), verbosity);
             match assembler_result {
@@ -239,8 +241,15 @@ fn main() -> ExitCode {
     }
 
     let _linker_status: () = {
+        let obj_src_path = match language {
+            // using the freshly generated object file
+            Language::Kay | Language::Asm => &artifacts.obj_path,
+            // using the assembly file specified at the command line
+            Language::Obj => *src_path,
+        };
+
         let logger = Logger::new();
-        let mut linker_command = platform.linker(&artifacts);
+        let mut linker_command = platform.linker(obj_src_path, &artifacts.exe_path);
         let linker_result = linker_command.output();
         logger.sub_step(&LINKING, Some(&artifacts.exe_path), verbosity);
         match linker_result {

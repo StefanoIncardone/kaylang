@@ -59,41 +59,42 @@ impl Platform {
 
     #[must_use]
     #[inline]
-    pub fn assembler(self, artifacts: &Artifacts) -> Command {
+    pub fn assembler(self, src_path: &Path, out_path: &Path) -> Command {
         return match self {
             Self::Auto => {
                 cfg_if! {
                     if #[cfg(target_os = "linux")] {
-                        Self::Linux.assembler(artifacts)
+                        Self::Linux.assembler(src_path, out_path)
                     }
                     else {
                         compile_error!("only linux is supported for now");
                     }
                 }
             }
-            Self::Linux => nasm_assembler(artifacts),
+            Self::Linux => nasm_assembler(src_path, out_path),
         };
     }
 
     #[must_use]
     #[inline]
-    pub fn linker(self, artifacts: &Artifacts) -> Command {
+    pub fn linker(self, src_path: &Path, out_path: &Path) -> Command {
         return match self {
             Self::Auto => {
                 cfg_if! {
                     if #[cfg(target_os = "linux")] {
-                        Self::Linux.linker(artifacts)
+                        Self::Linux.linker(src_path, out_path)
                     }
                     else {
                         compile_error!("only linux is supported for now");
                     }
                 }
             }
-            Self::Linux => ld_linker(artifacts),
+            Self::Linux => ld_linker(src_path, out_path),
         };
     }
 }
 
+// IDEA(stefano): provide a struct that contains the input paths to the assembler and linker commands
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Artifacts {
     pub asm_path: PathBuf,
@@ -102,8 +103,6 @@ pub struct Artifacts {
 }
 
 impl Artifacts {
-    // BUG(stefano): running `run-asm tests/test.kay -o=out` works accidentally because
-    // `out/test.asm` exists, `run-asm` should directly use `tests/test.kay`
     // IDEA(stefano): extract Command::Check/Compile/Run args to structs and have them calculate
     // the relevant paths
     #[expect(clippy::missing_errors_doc)]
@@ -146,7 +145,7 @@ impl Artifacts {
 }
 
 #[must_use]
-pub fn nasm_assembler(artifacts: &Artifacts) -> Command {
+pub fn nasm_assembler(src_path: &Path, out_path: &Path) -> Command {
     let mut assembler_command = Command::new("nasm");
     _ = assembler_command
         .arg("-felf64")
@@ -154,19 +153,19 @@ pub fn nasm_assembler(artifacts: &Artifacts) -> Command {
         .arg("-Werror")
         .arg("-Wall")
         .arg("-W-error=reloc")
-        .arg(artifacts.asm_path.as_os_str())
+        .arg(src_path)
         .arg("-o")
-        .arg(artifacts.obj_path.as_os_str());
+        .arg(out_path);
     return assembler_command;
 }
 
 #[must_use]
-pub fn ld_linker(artifacts: &Artifacts) -> Command {
+pub fn ld_linker(src_path: &Path, out_path: &Path) -> Command {
     let mut linker_command = Command::new("ld");
     _ = linker_command
-        .arg(artifacts.obj_path.as_os_str())
+        .arg(src_path)
         .arg("-o")
-        .arg(artifacts.exe_path.as_os_str());
+        .arg(out_path);
     return linker_command;
 }
 

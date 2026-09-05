@@ -3,6 +3,11 @@
 >[!WARNING]
 > no feature is final, modifications can happen at any moment
 
+## 0.7.0 - Mechanism for turning off flags
+
+- turn on: `--flag`, `-f`
+- turn off: `-/flag`/`---flag`/`/--flag`/`--/flag` (or with `\` instead)
+
 ## ?.?.? - Compiler directives and Documentation comments
 
 - i like the `#` for compiler directives instead of say `@`:
@@ -138,7 +143,7 @@ loop i < 10 {
                 break:break_label;
             }
             if other_condition {
-                continue:continue_label;
+                break:continue_label;
             }
         }
 

@@ -244,7 +244,7 @@ fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
         return Err(ExitCode::FAILURE);
     }
 
-    let _assembler_status: () = match platform.assembler(&artifacts).output() {
+    let _assembler_status: () = match platform.assembler(&artifacts.asm_path, &artifacts.obj_path).output() {
         Ok(output) => {
             if !output.status.success() {
                 let stderr_out = String::from_utf8_lossy(&output.stderr);
@@ -261,7 +261,7 @@ fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
         },
     };
 
-    let _linker_status: () = match platform.linker(&artifacts).output() {
+    let _linker_status: () = match platform.linker(&artifacts.obj_path, &artifacts.exe_path).output() {
         Ok(output) => {
             if !output.status.success() {
                 let stderr_out = String::from_utf8_lossy(&output.stderr);

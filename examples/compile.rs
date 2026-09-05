@@ -132,8 +132,16 @@ fn main() -> ExitCode {
 
     if let Language::Kay | Language::Asm = language {
         let _assembler_status: () = {
+            let assembly_src_path = match language {
+                // using the freshly generated assembly file
+                Language::Kay => &artifacts.asm_path,
+                // using the assembly file specified at the command line
+                Language::Asm => src_path,
+                Language::Obj => unreachable!(),
+            };
+
             let logger = Logger::new();
-            let mut assembler_command = platform.assembler(&artifacts);
+            let mut assembler_command = platform.assembler(assembly_src_path, &artifacts.obj_path);
             let assembler_result = assembler_command.output();
             logger.sub_step(&ASSEMBLING, Some(&artifacts.obj_path), verbosity);
             match assembler_result {
@@ -160,8 +168,15 @@ fn main() -> ExitCode {
     }
 
     let _linker_status: () = {
+        let obj_src_path = match language {
+            // using the freshly generated object file
+            Language::Kay | Language::Asm => &artifacts.obj_path,
+            // using the assembly file specified at the command line
+            Language::Obj => src_path,
+        };
+
         let logger = Logger::new();
-        let mut linker_command = platform.linker(&artifacts);
+        let mut linker_command = platform.linker(obj_src_path, &artifacts.exe_path);
         let linker_result = linker_command.output();
         logger.sub_step(&LINKING, Some(&artifacts.exe_path), verbosity);
         match linker_result {

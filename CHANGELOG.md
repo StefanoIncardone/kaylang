@@ -34,6 +34,10 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 - Started implementing platforms and compilation targets
 
+### Fixed
+
+- Corrected compilation in assembly and object file modes bug
+
 ## 0.6.4 - 2026-08-13
 
 ### Language

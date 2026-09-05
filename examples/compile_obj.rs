@@ -1,11 +1,7 @@
 #![expect(clippy::print_stderr, reason = "it's a cli tool")]
 
 use kaylang::{
-    code_generation::{Artifacts, Platform},
-    Logger,
-    Color,
-    error::MsgSimple,
-    Verbosity,
+    Color, Logger, Verbosity, code_generation::{Artifacts, Platform}, error::MsgSimple,
 };
 use kaylang::{
     COMPILING, COULD_NOT_RUN_LINKER, DONE, LINKING, LINKING_ERROR, SUBSTEP_DONE,
@@ -43,8 +39,10 @@ fn main() -> ExitCode {
     let compilation_sub_step = Logger::new();
 
     let _linker_status: () = {
+        let obj_src_path = src_path;
+
         let logger = Logger::new();
-        let mut linker_command = platform.linker(&artifacts);
+        let mut linker_command = platform.linker(obj_src_path, &artifacts.exe_path);
         let linker_result = linker_command.output();
         logger.sub_step(&LINKING, Some(&artifacts.exe_path), verbosity);
         match linker_result {
