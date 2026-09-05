@@ -20,6 +20,8 @@ use core::fmt::{Display, Write as _};
 use error::MsgWithCauseUnderText;
 use std::{io::IsTerminal, path::Path, time::Instant};
 
+use crate::code_generation::Artifacts;
+
 const fn max_text_len(texts: &[&str]) -> usize {
     let mut max_len = 0;
     let mut text_index = 0;
@@ -55,10 +57,11 @@ const STEP_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
 const STEP_INDENT: usize = 0;
 messages!(
     const STEP_PADDING: usize = max_text_len;
-    pub CHECKING  = "Checking",  STEP_FG, STEP_BG, STEP_FLAGS;
-    pub COMPILING = "Compiling", STEP_FG, STEP_BG, STEP_FLAGS;
-    pub RUNNING   = "Running",   STEP_FG, STEP_BG, STEP_FLAGS;
-    pub DONE      = "Done",      STEP_FG, STEP_BG, STEP_FLAGS;
+    pub CHECKING     = "Checking",     STEP_FG, STEP_BG, STEP_FLAGS;
+    pub TRANSFORMING = "Transforming", STEP_FG, STEP_BG, STEP_FLAGS;
+    pub COMPILING    = "Compiling",    STEP_FG, STEP_BG, STEP_FLAGS;
+    pub RUNNING      = "Running",      STEP_FG, STEP_BG, STEP_FLAGS;
+    pub DONE         = "Done",         STEP_FG, STEP_BG, STEP_FLAGS;
 );
 
 // sub compilation steps (displayed when verbosity lever is verbose)
@@ -1296,7 +1299,7 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
         let out_path_str = &out_path_arg[out_path.start_of_value_index as usize..];
         let out_path_path = Path::new(out_path_str);
 
-        if !out_path_path.is_dir() {
+        if !Artifacts::is_valid_out_path(out_path_path) {
             self.errors.push(Error::MustBeADirectoryPath(out_path));
         }
 

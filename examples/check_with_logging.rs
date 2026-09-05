@@ -74,7 +74,7 @@ fn main() -> ExitCode {
         }
     };
 
-    checking_sub_step.sub_step(&SUBSTEP_DONE, None, verbosity);
+    checking_sub_step.sub_step(&DONE, None, verbosity);
     execution_step.step(&DONE, None, verbosity);
     return ExitCode::SUCCESS;
 }

@@ -116,10 +116,6 @@ impl Artifacts {
             None => return Err(Error::SrcPathCannotBeEmpty),
         };
 
-        if out_path.is_file() {
-            return Err(Error::MustBeADirectoryPath(out_path.to_owned()));
-        }
-
         if out_path == Path::new("") || out_path == Path::new(".") {
             let artifacts = Self {
                 asm_path: src_path_stem.with_extension(extensions.asm),
@@ -129,9 +125,10 @@ impl Artifacts {
             return Ok(artifacts);
         }
 
-        if let Err(err) = std::fs::create_dir_all(out_path)
-            && err.kind() != std::io::ErrorKind::AlreadyExists
-        {
+        if !Self::is_valid_out_path(out_path) {
+            return Err(Error::MustBeADirectoryPath(out_path.to_owned()));
+        }
+        else if let Err(err) = std::fs::create_dir_all(out_path) {
             return Err(Error::CouldNotCreateOutputDirectory { path: out_path.to_owned(), err });
         }
 
@@ -141,6 +138,12 @@ impl Artifacts {
             exe_path: out_path.join(src_path_stem.with_extension(extensions.exe)),
         };
         return Ok(artifacts);
+    }
+
+    #[must_use]
+    #[inline(always)]
+    pub fn is_valid_out_path(path: &Path) -> bool {
+        return !path.exists() || path.is_dir();
     }
 }
 

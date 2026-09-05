@@ -2,7 +2,7 @@
 //! This file is also an example of how it's possible to create cli tools based on this compiler
 
 use kaylang::{
-    Args, ArgsParser, Command, Help, Language, Logger, Version, back_end::ir, code_generation::{Artifacts, Platform, nasm::compiler_ast::Compiler }, error::MsgSimple, front_end::{
+    Args, ArgsParser, Command, Help, Language, Logger, TRANSFORMING, Version, back_end::ir, code_generation::{Artifacts, Platform, nasm::compiler_ast::Compiler }, error::MsgSimple, front_end::{
         ast::Parser,
         src_file::SrcFile,
         syntax_tree,
@@ -149,22 +149,27 @@ fn main() -> ExitCode {
             }
         };
 
-        checking_sub_step.sub_step(&SUBSTEP_DONE, None, verbosity);
+        checking_sub_step.sub_step(&DONE, None, verbosity);
 
         let (Command::Compile { out_path, .. } | Command::Run { out_path, .. }) = &command else {
             execution_step.step(&DONE, None, verbosity);
             return ExitCode::SUCCESS;
         };
 
-        Logger::info(&COMPILING, src_path, verbosity);
-        compilation_sub_step = Logger::new();
+        Logger::info(&TRANSFORMING, src_path, verbosity);
+        let transforming_sub_step = Logger::new();
 
-        // let _ir = {
+        // let ir = {
         //     let logger = Logger::new();
         //     let ir = ir::Parser::parse(&src, &tokens, &tast);
         //     logger.sub_step(&GENERATING_IR, None, verbosity);
         //     ir
         // };
+
+        transforming_sub_step.sub_step(&DONE, None, verbosity);
+
+        Logger::info(&COMPILING, src_path, verbosity);
+        compilation_sub_step = Logger::new();
 
         let extensions = platform.extensions();
         artifacts = match Artifacts::new(src_path, out_path, &extensions) {
@@ -272,7 +277,7 @@ fn main() -> ExitCode {
         }
     };
 
-    compilation_sub_step.sub_step(&SUBSTEP_DONE, None, verbosity);
+    compilation_sub_step.sub_step(&DONE, None, verbosity);
     execution_step.step(&DONE, None, verbosity);
 
     let Command::Run { .. } = command else {

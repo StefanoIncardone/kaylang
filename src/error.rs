@@ -112,6 +112,13 @@ pub struct MsgWithCauseUnderText<'kind, 'message, 'cause, 'src> {
 
 impl Display for MsgWithCauseUnderText<'_, '_, '_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let kind = Colored {
+            text: self.kind,
+            fg: AnsiFg::LightRed,
+            bg: AnsiBg::Default,
+            flags: AnsiFlag::Bold as ansi_flag,
+        };
+
         let error_message = Colored {
             text: self.message,
             fg: AnsiFg::White,
@@ -137,7 +144,6 @@ impl Display for MsgWithCauseUnderText<'_, '_, '_, '_> {
             \n{BAR}\
             \n{BAR} {line_text}\
             \n{BAR} {spaces:>pointers_offset$}{pointers_and_cause}",
-            kind = self.kind,
             line_text = self.line_text,
             pointers_offset = self.pointers_offset as usize,
             spaces = ""

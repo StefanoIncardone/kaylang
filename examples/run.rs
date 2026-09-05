@@ -81,7 +81,7 @@ fn main() -> ExitCode {
         }
     };
 
-    checking_sub_step.sub_step(&SUBSTEP_DONE, None, verbosity);
+    checking_sub_step.sub_step(&DONE, None, verbosity);
 
     let extensions = platform.extensions();
     let artifacts = match Artifacts::new(src_path, out_path, &extensions) {
@@ -164,7 +164,7 @@ fn main() -> ExitCode {
         }
     };
 
-    compilation_sub_step.sub_step(&SUBSTEP_DONE, None, verbosity);
+    compilation_sub_step.sub_step(&DONE, None, verbosity);
     execution_step.step(&DONE, None, verbosity);
 
     let exe_path = Path::new(".").join(&artifacts.exe_path);
