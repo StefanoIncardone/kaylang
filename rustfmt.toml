@@ -1,8 +1,8 @@
 array_width = 110
 attr_fn_like_width = 110
 # binop_separator = "Front" # unstable
-# blank_lines_lower_bound = 0 # unstable
-# blank_lines_upper_bound = 1 # unstable
+blank_lines_lower_bound = 0 # unstable
+blank_lines_upper_bound = 2 # unstable
 # brace_style = "SameLineWhere" # unstable
 chain_width = 110
 # color = "Auto" # unstable

@@ -10,7 +10,7 @@ use kaylang::{
     Verbosity,
 };
 use kaylang::{
-    CHECKING, DONE, LOADING_SOURCE, PARSING_AST, SUBSTEP_DONE, TOKENIZATION,
+    PARSING, DONE, LOADING_SOURCE, PARSING_AST, SUBSTEP_DONE, TOKENIZATION,
 };
 use std::{path::Path, process::ExitCode};
 
@@ -28,7 +28,7 @@ fn main() -> ExitCode {
 
     let execution_step = Logger::new();
 
-    Logger::info(&CHECKING, src_path, verbosity);
+    Logger::info(&PARSING, src_path, verbosity);
     let checking_sub_step = Logger::new();
 
     let src_file = {

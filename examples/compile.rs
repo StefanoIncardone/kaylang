@@ -8,7 +8,7 @@ use kaylang::{
     },
 };
 use kaylang::{
-    ASSEMBLING, ASSEMBLING_ERROR, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_LINKER,
+    ASSEMBLING, ASSEMBLING_ERROR, PARSING, COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_LINKER,
     COULD_NOT_WRITE_COMPILED_CODE,
     DONE, GENERATING_ASM, LINKING, LINKING_ERROR, LOADING_SOURCE,
     PARSING_AST, SUBSTEP_DONE, TOKENIZATION,
@@ -45,7 +45,7 @@ fn main() -> ExitCode {
     let compilation_sub_step: Logger;
     let execution_step = Logger::new();
 
-    Logger::info(&CHECKING, src_path, verbosity);
+    Logger::info(&PARSING, src_path, verbosity);
     let checking_sub_step = Logger::new();
 
     if let Language::Kay = language {

@@ -914,9 +914,16 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
                                 _ => Ok(TokenKind::Op(Op::SaturatingTimes)),
                             }
                         },
-                        // Some(b'#') => {
-                        //     unimplemented!("Error: unopened block comment");
-                        // }
+                        Some(b'#') => {
+                            tokenizer.col += 1;
+                            tokenizer.errors.push(Msg {
+                                severity: MsgSeverity::NonTerminalError,
+                                kind: ErrorKind::UnopenedBlockComment,
+                                col: tokenizer.token_start_col,
+                                pointers_count: 2,
+                            });
+                            Err(())
+                        }
                         _ => Ok(TokenKind::Op(Op::Times)),
                     },
                     b'/' => match tokenizer.current_byte_multiline() {
@@ -1917,6 +1924,7 @@ impl Base {
 pub enum ErrorKind<'code> {
     OldStyleLineComment,
     UnclosedBlockComment,
+    UnopenedBlockComment,
 
     UnclosedRoundBracket,
     UnclosedSquareBracket,
@@ -1966,6 +1974,10 @@ impl IntoMsgInfo for ErrorKind<'_> {
             Self::UnclosedBlockComment => (
                 "unclosed block comment".into(),
                 "missing closing `*#`".into(),
+            ),
+            Self::UnopenedBlockComment => (
+                "unopened block comment".into(),
+                "missing opening `#*`".into(),
             ),
 
             Self::UnclosedRoundBracket => (

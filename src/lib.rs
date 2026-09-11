@@ -58,7 +58,7 @@ const STEP_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
 const STEP_INDENT: usize = 0;
 messages!(
     const STEP_PADDING: usize = max_text_len;
-    pub CHECKING     = "Checking",     STEP_FG, STEP_BG, STEP_FLAGS;
+    pub PARSING      = "Parsing",      STEP_FG, STEP_BG, STEP_FLAGS;
     pub TRANSFORMING = "Transforming", STEP_FG, STEP_BG, STEP_FLAGS;
     pub COMPILING    = "Compiling",    STEP_FG, STEP_BG, STEP_FLAGS;
     pub RUNNING      = "Running",      STEP_FG, STEP_BG, STEP_FLAGS;

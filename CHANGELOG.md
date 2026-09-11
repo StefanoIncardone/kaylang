@@ -38,6 +38,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 - Corrected compilation in assembly and object file modes bug
 - Corrected checking and reporting of invalid output path
+- Corrected error reporting of unopened block comments
 
 ## 0.6.4 - 2026-08-13
 

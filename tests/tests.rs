@@ -7,7 +7,7 @@ use kaylang::{
     },
 };
 use kaylang::{
-    ASSEMBLING_ERROR, CHECKING, COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE,
+    ASSEMBLING_ERROR, PARSING, COMPILING, COULD_NOT_RUN_ASSEMBLER, COULD_NOT_RUN_EXECUTABLE,
     COULD_NOT_RUN_LINKER, COULD_NOT_WRITE_COMPILED_CODE, DONE, LINKING_ERROR, RUNNING,
 };
 use std::{
@@ -95,7 +95,7 @@ fn check(src_path: &Path) -> Result<(), ExitCode> {
     let verbosity = Verbosity::Normal;
 
     let execution_step = Logger::new();
-    Logger::info(&CHECKING, src_path, verbosity);
+    Logger::info(&PARSING, src_path, verbosity);
 
     let src_file = match SrcFile::load(src_path) {
         Ok(src_file) => src_file,
@@ -164,7 +164,7 @@ fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
     let verbosity = Verbosity::Normal;
 
     let execution_step = Logger::new();
-    Logger::info(&CHECKING, src_path, verbosity);
+    Logger::info(&PARSING, src_path, verbosity);
 
     let src_file = match SrcFile::load(src_path) {
         Ok(src_file) => src_file,
