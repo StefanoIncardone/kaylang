@@ -2,12 +2,8 @@
 //! This file is also an example of how it's possible to create cli tools based on this compiler
 
 use kaylang::{
-    Args, ArgsParser, Command, Help, Language, Logger, TRANSFORMING, Version, back_end::ir, code_generation::{Artifacts, Platform, nasm::compiler_ast::Compiler }, error::MsgSimple, front_end::{
-        ast::Parser,
-        src_file::SrcFile,
-        syntax_tree,
-        tokenizer::{TokenizedCode, Tokenizer},
-        typed_abstract_syntax_tree,
+    Args, ArgsParser, Command, Help, Language, Logger, TRANSFORMING, Version, back_end::ir, code_generation::{Artifacts, Platform, nasm::{self, compiler_ast::Compiler} }, error::MsgSimple, front_end::{
+        ast::Parser, src_file::SrcFile, syntax_tree, tokenizer::{TokenizationResult, TokenizedCode, Tokenizer}, typed_abstract_syntax_tree,
     },
 };
 use kaylang::{
@@ -89,12 +85,12 @@ fn main() -> ExitCode {
             }
         };
 
-        let (src, tokens) = {
+        let tokens = {
             let logger = Logger::new();
-            let TokenizedCode { result, src } = Tokenizer::tokenize(&src_file);
+            let TokenizationResult { src, result } = Tokenizer::tokenize(&src_file);
             logger.sub_step(&TOKENIZATION, None, verbosity);
             match result {
-                Ok(tokens) => (src, tokens),
+                Ok(tokens) => TokenizedCode { src, tokens },
                 Err(errors) => {
                     for error in errors {
                         eprintln!("{}\n", error.display(&src));
@@ -106,13 +102,13 @@ fn main() -> ExitCode {
 
         let st = {
             let logger = Logger::new();
-            let building_st_result = syntax_tree::Parser::parse(&src, &tokens);
+            let result = syntax_tree::Parser::parse(&tokens);
             logger.sub_step(&PARSING_SYNTAX_TREE, None, verbosity);
-            match building_st_result {
+            match result {
                 Ok(st) => st,
                 Err(errors) => {
                     for error in errors {
-                        eprintln!("{}\n", error.display(&src));
+                        eprintln!("{}\n", error.display(&tokens.src));
                     }
                     return ExitCode::FAILURE;
                 },
@@ -121,13 +117,13 @@ fn main() -> ExitCode {
 
         let tast = {
             let logger = Logger::new();
-            let building_tast_result = typed_abstract_syntax_tree::Parser::parse(&src, &tokens, &st);
+            let result = typed_abstract_syntax_tree::Parser::parse(&st);
             logger.sub_step(&TYPE_CHECKING, None, verbosity);
-            match building_tast_result {
+            match result {
                 Ok(tast) => tast,
                 Err(errors) => {
                     for error in errors {
-                        eprintln!("{}\n", error.display(&src));
+                        eprintln!("{}\n", error.display(&tokens.src));
                     }
                     return ExitCode::FAILURE;
                 },
@@ -136,13 +132,13 @@ fn main() -> ExitCode {
 
         let ast = {
             let logger = Logger::new();
-            let building_ast_result = Parser::parse(&src, &tokens);
+            let building_ast_result = Parser::parse(&tokens.src, &tokens.tokens);
             logger.sub_step(&PARSING_AST, None, verbosity);
             match building_ast_result {
                 Ok(ast) => ast,
                 Err(errors) => {
                     for error in errors {
-                        eprintln!("{}\n", error.display(&src));
+                        eprintln!("{}\n", error.display(&tokens.src));
                     }
                     return ExitCode::FAILURE;
                 },
@@ -159,14 +155,26 @@ fn main() -> ExitCode {
         Logger::info(&TRANSFORMING, src_path, verbosity);
         let transforming_sub_step = Logger::new();
 
-        // let ir = {
-        //     let logger = Logger::new();
-        //     let ir = ir::Parser::parse(&src, &tokens, &tast);
-        //     logger.sub_step(&GENERATING_IR, None, verbosity);
-        //     ir
-        // };
+        let ir = {
+            let logger = Logger::new();
+            let ir = ir::Parser::parse(&tast);
+            logger.sub_step(&GENERATING_IR, None, verbosity);
+            ir
+        };
+
 
         transforming_sub_step.sub_step(&DONE, None, verbosity);
+
+        // REMOVE(stefano): terminating early to avoid wasting time compiling, i'm just testing the ir parsing
+        if true {
+            execution_step.step(&DONE, None, verbosity);
+
+            eprintln!("{}", ir.display_debug());
+            eprintln!("--------------------------------");
+            eprintln!("{}", ir.display());
+
+            return ExitCode::SUCCESS;
+        }
 
         Logger::info(&COMPILING, src_path, verbosity);
         compilation_sub_step = Logger::new();
@@ -180,9 +188,20 @@ fn main() -> ExitCode {
             },
         };
 
-        let _compiler_result: () = {
+        // let _compiler_result_ast: () = {
+        //     let logger = Logger::new();
+        //     let compiled_code = nasm::compiler_ast::Compiler::compile(&src, &ast);
+        //     logger.sub_step(&GENERATING_ASM, Some(&artifacts.asm_path), verbosity);
+        //     if let Err(err) = std::fs::write(&artifacts.asm_path, compiled_code) {
+        //         let error = MsgSimple { kind: &COULD_NOT_WRITE_COMPILED_CODE, message: &err };
+        //         eprintln!("{error}");
+        //         return ExitCode::FAILURE;
+        //     }
+        // };
+
+        let _compiler_result_ir: () = {
             let logger = Logger::new();
-            let compiled_code = Compiler::compile(&src, &ast);
+            let compiled_code = nasm::compiler_ir::Compiler::compile(&ir);
             logger.sub_step(&GENERATING_ASM, Some(&artifacts.asm_path), verbosity);
             if let Err(err) = std::fs::write(&artifacts.asm_path, compiled_code) {
                 let error = MsgSimple { kind: &COULD_NOT_WRITE_COMPILED_CODE, message: &err };

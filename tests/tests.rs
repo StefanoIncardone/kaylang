@@ -3,11 +3,7 @@
 
 use kaylang::{
     Color, Logger, Verbosity, code_generation::{Artifacts, Platform, nasm::compiler_ast::Compiler}, front_end::{
-        ast::Parser,
-        src_file::SrcFile,
-        syntax_tree as st,
-        tokenizer::{TokenizedCode, Tokenizer},
-        typed_abstract_syntax_tree as tast,
+        ast::Parser, src_file::SrcFile, syntax_tree as st, tokenizer::{TokenizationResult, TokenizedCode, Tokenizer}, typed_abstract_syntax_tree as tast,
     },
 };
 use kaylang::{
@@ -109,10 +105,10 @@ fn check(src_path: &Path) -> Result<(), ExitCode> {
         },
     };
 
-    let (src, tokens) = {
-        let TokenizedCode { result, src } = Tokenizer::tokenize(&src_file);
+    let tokens = {
+        let TokenizationResult { result, src } = Tokenizer::tokenize(&src_file);
         match result {
-            Ok(tokens) => (src, tokens),
+            Ok(tokens) => TokenizedCode { src, tokens },
             Err(errors) => {
                 for error in errors {
                     eprintln!("{}\n", error.display(&src));
@@ -122,18 +118,18 @@ fn check(src_path: &Path) -> Result<(), ExitCode> {
         }
     };
 
-    let syntax_tree = match st::Parser::parse(&src, &tokens) {
+    let syntax_tree = match st::Parser::parse(&tokens) {
         Ok(syntax_tree) => syntax_tree,
         Err(errors) => {
             for error in errors {
-                eprintln!("{}\n", error.display(&src));
+                eprintln!("{}\n", error.display(&tokens.src));
             }
             return Err(ExitCode::FAILURE);
         },
     };
 
     #[expect(clippy::let_unit_value)]
-    let _typed_syntax_tree = match tast::Parser::parse(&src, &tokens, &syntax_tree) {
+    let _typed_syntax_tree = match tast::Parser::parse(&syntax_tree) {
         // #[expect(clippy::print_stdout)]
         Ok(_typed_syntax_tree) => {
             // typed_syntax_tree
@@ -141,17 +137,17 @@ fn check(src_path: &Path) -> Result<(), ExitCode> {
         },
         Err(errors) => {
             for error in errors {
-                eprintln!("{}\n", error.display(&src));
+                eprintln!("{}\n", error.display(&tokens.src));
             }
             // return ExitCode::FAILURE;
         },
     };
 
-    let _ast = match Parser::parse(&src, &tokens) {
+    let _ast = match Parser::parse(&tokens.src, &tokens.tokens) {
         Ok(ast) => ast,
         Err(errors) => {
             for error in errors {
-                eprintln!("{}\n", error.display(&src));
+                eprintln!("{}\n", error.display(&tokens.src));
             }
             return Err(ExitCode::FAILURE);
         },
@@ -178,10 +174,10 @@ fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
         },
     };
 
-    let (src, tokens) = {
-        let TokenizedCode { result, src } = Tokenizer::tokenize(&src_file);
+    let tokens = {
+        let TokenizationResult { result, src } = Tokenizer::tokenize(&src_file);
         match result {
-            Ok(tokens) => (src, tokens),
+            Ok(tokens) => TokenizedCode { src, tokens },
             Err(errors) => {
                 for error in errors {
                     eprintln!("{}\n", error.display(&src));
@@ -191,18 +187,18 @@ fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
         }
     };
 
-    let syntax_tree = match st::Parser::parse(&src, &tokens) {
+    let syntax_tree = match st::Parser::parse(&tokens) {
         Ok(syntax_tree) => syntax_tree,
         Err(errors) => {
             for error in errors {
-                eprintln!("{}\n", error.display(&src));
+                eprintln!("{}\n", error.display(&tokens.src));
             }
             return Err(ExitCode::FAILURE);
         },
     };
 
     #[expect(clippy::let_unit_value)]
-    let _typed_syntax_tree = match tast::Parser::parse(&src, &tokens, &syntax_tree) {
+    let _typed_syntax_tree = match tast::Parser::parse(&syntax_tree) {
         // #[expect(clippy::print_stdout)]
         Ok(_typed_syntax_tree) => {
             // typed_syntax_tree
@@ -210,17 +206,17 @@ fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
         },
         Err(errors) => {
             for error in errors {
-                eprintln!("{}\n", error.display(&src));
+                eprintln!("{}\n", error.display(&tokens.src));
             }
             // return ExitCode::FAILURE;
         },
     };
 
-    let ast = match Parser::parse(&src, &tokens) {
+    let ast = match Parser::parse(&tokens.src, &tokens.tokens) {
         Ok(ast) => ast,
         Err(errors) => {
             for error in errors {
-                eprintln!("{}\n", error.display(&src));
+                eprintln!("{}\n", error.display(&tokens.src));
             }
             return Err(ExitCode::FAILURE);
         },
@@ -238,7 +234,7 @@ fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
         },
     };
 
-    let compiled_code = Compiler::compile(&src, &ast);
+    let compiled_code = Compiler::compile(&tokens.src, &ast);
     if let Err(err) = std::fs::write(&artifacts.asm_path, compiled_code) {
         eprintln!("{COULD_NOT_WRITE_COMPILED_CODE}: {err}");
         return Err(ExitCode::FAILURE);

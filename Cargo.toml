@@ -170,3 +170,4 @@ disallowed_names = "allow" # why is this even a lint?
 inline_trait_bounds = "allow"
 
 doc_paragraphs_missing_punctuation = "allow"
+partial_pub_fields = "allow"

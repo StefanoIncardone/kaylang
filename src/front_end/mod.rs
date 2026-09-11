@@ -3,19 +3,20 @@ pub mod src_file;
 pub mod syntax_tree;
 pub mod tokenizer;
 pub mod typed_abstract_syntax_tree;
+pub mod types;
 
 use self::src_file::{DisplayPosition, SrcCode};
 use crate::{ERROR, error::MsgWithCauseUnderTextWithLocation};
 use core::fmt::{Debug, Display};
 extern crate alloc;
 use alloc::borrow::Cow;
-use back_to_front::uoffset32;
+use back_to_front::usize32;
 use std::path::Path;
 
 // IDEA(stefano): move to back-to-front
 #[derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
-pub(crate) struct Index32<T>(pub(crate) uoffset32, core::marker::PhantomData<T>);
+pub(crate) struct Index32<T>(pub(crate) usize32, core::marker::PhantomData<T>);
 
 #[expect(clippy::missing_trait_methods)]
 impl<T> Clone for Index32<T> {
@@ -30,14 +31,14 @@ impl<T> Copy for Index32<T> {}
 impl<T> Index32<T> {
     #[must_use]
     #[inline(always)]
-    pub(crate) const fn new_uoffset32(index: uoffset32) -> Self {
+    pub(crate) const fn new_usize32(index: usize32) -> Self {
         return Self(index, core::marker::PhantomData);
     }
 
     #[must_use]
     #[inline(always)]
     pub(crate) const fn new(index: usize) -> Self {
-        return Self(index as uoffset32, core::marker::PhantomData);
+        return Self(index as usize32, core::marker::PhantomData);
     }
 
     #[track_caller]
@@ -115,15 +116,15 @@ pub struct Msg<K: IntoMsgInfo> {
     pub severity: MsgSeverity,
     pub kind: K,
     /// absolute source code byte position
-    pub col: uoffset32,
-    pub pointers_count: uoffset32,
+    pub col: usize32,
+    pub pointers_count: usize32,
 }
 
 impl<K: IntoMsgInfo> Msg<K> {
     pub fn display<'code, 'path: 'code>(&self, src: &SrcCode<'code, 'path>) -> MsgDisplay<'code, 'path> {
         let DisplayPosition { line, column, display_column } = src.display_position(self.col);
         let line_span = src.lines[line as usize - 1];
-        let line_text = &src.code()[line_span.start as usize..line_span.end as usize];
+        let line_text = &src.code()[line_span.start() as usize..line_span.end() as usize];
 
         let MsgInfo { message: error_message, cause: error_cause_message } = self.kind.info();
         return MsgDisplay {
@@ -146,12 +147,12 @@ pub struct MsgDisplay<'code, 'path: 'code> {
     pub severity: MsgSeverity,
     pub error_message: Cow<'static, str>,
     pub file: &'path Path,
-    pub line: uoffset32,
-    pub column: uoffset32,
-    pub absolute_column: uoffset32,
+    pub line: usize32,
+    pub column: usize32,
+    pub absolute_column: usize32,
     pub line_text: &'code str,
-    pub pointers_count: uoffset32,
-    pub pointers_offset: uoffset32,
+    pub pointers_count: usize32,
+    pub pointers_offset: usize32,
     pub error_cause_message: Cow<'static, str>,
 }
 

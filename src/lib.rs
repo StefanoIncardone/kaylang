@@ -1,4 +1,5 @@
 // IDEA(stefano): warn on invalid "-output" (correct: "--output") or "--o" (correct: "-o") or similar
+// TODO(stefano): add flag to emit syntax tree/typed syntax tree/ir debug output/ir output/asm
 
 #![warn(clippy::print_stdout, clippy::print_stderr)]
 
@@ -13,7 +14,7 @@ pub mod front_end;
 
 use back_to_front::{
     cli::{Arg, FlagPrefix, FlagSeparator, Mask, bits, mask, AnsiFg, AnsiBg, AnsiFlag},
-    uoffset32,
+    usize32,
 };
 use color::{Colored, ansi_flag};
 use core::fmt::{Display, Write as _};
@@ -1729,8 +1730,8 @@ impl<S: AsRef<str>> Display for Errors<'_, '_, S> {
                 message: &error_message,
                 cause: &error_cause_message,
                 line_text: &args_text,
-                pointers_offset: display_pointers_offset as uoffset32,
-                pointers_count: pointers_count as uoffset32,
+                pointers_offset: display_pointers_offset as usize32,
+                pointers_count: pointers_count as usize32,
             };
             writeln!(f, "{error_msg}\n")?;
 

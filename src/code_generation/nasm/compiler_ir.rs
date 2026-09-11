@@ -1,21 +1,18 @@
 use back_to_front::x86_64::Reg64;
 
-use crate::{
-    front_end::src_file::SrcCode,
-    back_end::ir::{Expression, ExpressionIndex, Ir, Node, Operand, OperandIndex, VariableDefinitionIndex}
-};
+use crate::back_end::ir::{Expression, ExpressionIndex, Ir, Node, Operand, OperandIndex};
 
 use core::fmt::Write as _;
 
 #[derive(Debug)]
 struct StackVariable<'ir, 'code: 'ir> {
-    inner: &'ir VariableDefinitionIndex<'code>,
+    inner: &'ir ExpressionIndex<'code>,
     offset: usize,
 }
 
 #[derive(Debug)]
 struct RegisterVariable<'ir, 'code: 'ir> {
-    inner: &'ir VariableDefinitionIndex<'code>,
+    inner: &'ir ExpressionIndex<'code>,
     reg: Reg64,
 }
 
@@ -49,9 +46,8 @@ struct RegisterVariable<'ir, 'code: 'ir> {
 // }
 
 #[derive(Debug)]
-pub struct Compiler<'ir, 'tast: 'ir, 'st: 'tast, 'src: 'tast, 'tokens: 'src, 'code: 'src, 'path: 'code> {
-    src: &'src SrcCode<'code, 'path>,
-    ir: &'ir Ir<'tast, 'st, 'tokens, 'code>,
+pub struct Compiler<'ir, 'tast: 'ir, 'st: 'tast, 'tokens: 'tast, 'code: 'tokens, 'path: 'code> {
+    ir: &'ir Ir<'tast, 'st, 'tokens, 'code, 'path>,
 
     asm: String,
 
@@ -66,10 +62,9 @@ pub struct Compiler<'ir, 'tast: 'ir, 'st: 'tast, 'src: 'tast, 'tokens: 'src, 'co
 }
 
 // Generation of compilation artifacts (.asm, .o, executable)
-impl<'ir, 'tast: 'ir, 'st: 'tast, 'src: 'tast, 'tokens: 'src, 'code: 'src, 'path: 'code>
-    Compiler<'ir, 'tast, 'st, 'src, 'tokens, 'code, 'path> {
+impl<'ir, 'tast: 'ir, 'st: 'tast, 'tokens: 'st, 'code: 'tokens, 'path: 'code> Compiler<'ir, 'tast, 'st, 'tokens, 'code, 'path> {
     #[must_use]
-    pub fn compile(src: &'src SrcCode<'code, 'path>, ir: &'ir Ir<'tast, 'st, 'tokens, 'code>) -> String {
+    pub fn compile(ir: &'ir Ir<'tast, 'st, 'tokens, 'code, 'path>) -> String {
         use crate::code_generation::nasm::asm::{
             ASCII_ARRAY_DEBUG_EPRINT_ASM, ASCII_ARRAY_DEBUG_PRINT_ASM, ASCII_EPRINT_ASM,
             ASCII_PRINT_ASM, ASSERT_ARRAY_INDEX_IN_RANGE_ASM, ASSERT_STR_INDEX_IN_RANGE_ASM,
@@ -89,7 +84,6 @@ impl<'ir, 'tast: 'ir, 'st: 'tast, 'src: 'tast, 'tokens: 'src, 'code: 'src, 'path
         };
 
         let mut this = Compiler {
-            src,
             ir,
             asm: String::new(),
             register_variables: Vec::new(),
@@ -334,18 +328,19 @@ section .rodata
  section .data
  {strings}"#,
             asm = this.asm,
-            src_path = src.path().display(),
+            src_path = ir.tast.syntax_tree.path().display(),
         );
 
         return program;
     }
 }
 
-impl<'ir, 'code: 'ir> Compiler<'ir, '_, '_, '_, '_, 'code, '_> {
+impl<'ir, 'code: 'ir> Compiler<'ir, '_, '_, '_, 'code, '_> {
     fn node(&mut self, node: &'ir Node<'code>) {
         match node {
-            Node::LetVariable { variable } => self.let_variable(*variable),
-            Node::VarVariable { variable } => unimplemented!(),
+            Node::Expression { value } => unimplemented!(),
+            Node::TempVariable { value } => unimplemented!(),
+            Node::Variable { value, .. } => unimplemented!(),
             Node::Print { argument } => {
                 self.expression(*argument);
                 self.print(*argument);
@@ -354,31 +349,17 @@ impl<'ir, 'code: 'ir> Compiler<'ir, '_, '_, '_, '_, 'code, '_> {
         }
     }
 
-    fn let_variable(&mut self, variable_index: VariableDefinitionIndex<'code>) {
-        let variable = &self.ir.variables[variable_index];
-        self.expression(variable.value);
-    }
-
+    #[rustfmt::skip]
     fn operand(&mut self, operand_index: OperandIndex<'code>) {
         let operand = &self.ir.operands[operand_index];
         match operand {
-            Operand::False => {
-                _ = writeln!(self.asm, " mov rdi, false");
-            },
-            Operand::True => {
-                _ = writeln!(self.asm, " mov rdi, true");
-            },
-            Operand::I64 { value } => {
-                _ = writeln!(self.asm, " mov rdi, {value}");
-            },
-            Operand::Ascii { character } => {
-                _ = writeln!(self.asm, " mov rdi, {character}");
-            },
-            Operand::Str { literal } => {
-                unimplemented!();
-            },
-            Operand::LetVariable { variable } => self.let_variable(*variable),
-            Operand::VarVariable { variable } => unimplemented!(),
+            Operand::False =>               _ = writeln!(self.asm, " mov rdi, false"),
+            Operand::True =>                _ = writeln!(self.asm, " mov rdi, true"),
+            Operand::I64 { value } =>       _ = writeln!(self.asm, " mov rdi, {value}"),
+            Operand::Ascii { character } => _ = writeln!(self.asm, " mov rdi, {character}"),
+            Operand::Str { literal } => unimplemented!(),
+            Operand::TempVariable { value } => unimplemented!(),
+            Operand::Variable { value, name } => unimplemented!(),
         }
     }
 
@@ -406,11 +387,12 @@ impl<'ir, 'code: 'ir> Compiler<'ir, '_, '_, '_, '_, 'code, '_> {
                     Operand::I64 { .. } => _ = writeln!(self.asm, " call i64_print"),
                     Operand::Ascii { .. } => _ = writeln!(self.asm, " call ascii_print"),
                     Operand::Str { .. } => _ = unimplemented!(),
-                    Operand::LetVariable { variable: variable_index } => {
-                        let variable = &self.ir.variables[*variable_index];
-                        self.print(variable.value);
-                    },
-                    Operand::VarVariable { .. } => unimplemented!(),
+                    Operand::TempVariable { value } => unimplemented!(),
+                    Operand::Variable { value, .. } => unimplemented!(),
+                    // Operand::Variable { variable } => {
+                    //     let variable = &self.ir.variables[*variable_index];
+                    //     self.print(variable.value);
+                    // },
                 }
             }
         }

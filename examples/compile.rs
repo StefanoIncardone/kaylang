@@ -4,7 +4,7 @@ use kaylang::{
     Color, Language, Logger, Verbosity, code_generation::{Artifacts, Platform, nasm::compiler_ast::Compiler}, error::MsgSimple, front_end::{
         ast::Parser,
         src_file::SrcFile,
-        tokenizer::{TokenizedCode, Tokenizer},
+        tokenizer::{TokenizationResult, Tokenizer},
     },
 };
 use kaylang::{
@@ -64,7 +64,7 @@ fn main() -> ExitCode {
 
         let (src, tokens) = {
             let logger = Logger::new();
-            let TokenizedCode { result, src } = Tokenizer::tokenize(&src_file);
+            let TokenizationResult { result, src } = Tokenizer::tokenize(&src_file);
             logger.sub_step(&TOKENIZATION, None, verbosity);
             match result {
                 Ok(tokens) => (src, tokens),

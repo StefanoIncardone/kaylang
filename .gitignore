@@ -1,5 +1,3 @@
-*.tldr
-
 # any file used to test language functionality
 test*.kay
 test*.kbe

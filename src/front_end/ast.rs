@@ -2,17 +2,16 @@
 // IDEA(stefano): fuse tokenization and parsing, making the tokenizer a generator of tokens
 // TODO(stefano): multidimensional arrays
 
-use back_to_front::{digit, uoffset32};
+use back_to_front::{digit, usize32, ascii};
 
 use crate::front_end::{
-    MsgSeverity,
-    tokenizer::{self, EscapedAscii},
+    MsgSeverity, tokenizer::{self, EscapedAscii}, types::{BaseType, SizeOf},
 };
 
 use super::{
     IntoMsgInfo, Msg, MsgInfo,
     src_file::{Position, SrcCode},
-    tokenizer::{Op, Token, TokenIndex, TokenKind, Tokens, ascii},
+    tokenizer::{Op, Token, TokenIndex, TokenKind, Tokens},
 };
 use core::fmt::{Debug, Display};
 
@@ -24,38 +23,6 @@ pub(crate) trait BaseTypeOf: TypeOf {
     fn base_typ(&self) -> BaseType;
 }
 
-pub(crate) trait SizeOf {
-    fn size(&self) -> usize;
-}
-
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
-pub enum BaseType {
-    I64,
-    Ascii,
-    Bool,
-    Str,
-}
-
-impl BaseType {
-    #[must_use]
-    #[inline]
-    pub const fn to_str(self) -> &'static str {
-        return match self {
-            Self::I64 => "i64",
-            Self::Ascii => "ascii",
-            Self::Bool => "bool",
-            Self::Str => "str",
-        };
-    }
-}
-
-impl Display for BaseType {
-    #[inline(always)]
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        return f.write_str(self.to_str());
-    }
-}
 
 impl TypeOf for BaseType {
     #[inline(always)]
@@ -71,17 +38,6 @@ impl BaseTypeOf for BaseType {
     }
 }
 
-impl SizeOf for BaseType {
-    #[inline]
-    fn size(&self) -> usize {
-        return match self {
-            Self::I64 => size_of::<i64>(),
-            Self::Ascii => size_of::<ascii>(),
-            Self::Bool => size_of::<bool>(),
-            Self::Str => size_of::<u64>() + size_of::<*const ascii>(),
-        };
-    }
-}
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum Type {
@@ -513,12 +469,12 @@ impl Display for PrefixAssignmentOp {
     }
 }
 
-type StringLabel = uoffset32;
-type VariableIndex = uoffset32;
-type IfIndex = uoffset32;
-type LoopIndex = uoffset32;
-type ExpressionIndex = uoffset32;
-pub(crate) type ScopeIndex = uoffset32;
+type StringLabel = usize32;
+type VariableIndex = usize32;
+type IfIndex = usize32;
+type LoopIndex = usize32;
+type ExpressionIndex = usize32;
+pub(crate) type ScopeIndex = usize32;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Expression {
@@ -542,7 +498,7 @@ pub(crate) enum Expression {
 
     Unary {
         op: UnaryOp,
-        op_col: uoffset32,
+        op_col: usize32,
         operand_index: ExpressionIndex,
     },
     BooleanUnary {
@@ -552,7 +508,7 @@ pub(crate) enum Expression {
     Binary {
         lhs_index: ExpressionIndex,
         op: BinaryOp,
-        op_col: uoffset32,
+        op_col: usize32,
         rhs_index: ExpressionIndex,
     },
     BooleanBinary {
@@ -568,7 +524,7 @@ pub(crate) enum Expression {
     ArrayIndex {
         base_type: BaseType,
         indexable_index: ExpressionIndex,
-        bracket_col: uoffset32,
+        bracket_col: usize32,
         index_expression_index: ExpressionIndex,
     },
 
@@ -746,8 +702,8 @@ pub(crate) enum Node {
     Continue,
 
     Definition { var_index: VariableIndex },
-    Reassignment { target: Expression, op: AssignmentOp, op_col: uoffset32, new_value: Expression },
-    PrefixReassignment { target: Expression, op: PrefixAssignmentOp, op_col: uoffset32 },
+    Reassignment { target: Expression, op: AssignmentOp, op_col: usize32, new_value: Expression },
+    PrefixReassignment { target: Expression, op: PrefixAssignmentOp, op_col: usize32 },
 
     Scope { index: ScopeIndex },
 
@@ -1279,7 +1235,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
     fn next_token(&mut self) -> Option<Token<'code>> {
         loop {
-            let tokens_len = self.tokens.tokens.len() as uoffset32;
+            let tokens_len = self.tokens.tokens.len() as usize32;
             if self.token.0 >= tokens_len - 1 {
                 self.token.0 = tokens_len;
                 return None;
@@ -1295,7 +1251,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
     fn next_token_bounded(&mut self, expected: Expected) -> Result<Token<'code>, Msg<ErrorKind>> {
         loop {
-            let tokens_len = self.tokens.tokens.len() as uoffset32;
+            let tokens_len = self.tokens.tokens.len() as usize32;
             if self.token.0 >= tokens_len - 1 {
                 let previous = self.tokens.tokens[self.token];
                 self.token.0 = tokens_len;
@@ -1318,7 +1274,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     fn peek_next_token(&self) -> Option<Token<'code>> {
         let mut current_token = self.token;
         loop {
-            if current_token.0 >= self.tokens.tokens.len() as uoffset32 - 1 {
+            if current_token.0 >= self.tokens.tokens.len() as usize32 - 1 {
                 return None;
             }
 
@@ -1439,10 +1395,10 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         };
 
         let parse_fn = match base {
-            digit::Base::Binary => digit::parse_binary_offset,
-            digit::Base::Octal => digit::parse_octal_offset,
-            digit::Base::Decimal => digit::parse_decimal_offset,
-            digit::Base::Hexadecimal => digit::parse_hexadecimal_offset,
+            digit::Base::Binary => digit::binary::parse,
+            digit::Base::Octal => digit::octal::parse,
+            digit::Base::Decimal => digit::decimal::parse,
+            digit::Base::Hexadecimal => digit::hexadecimal::parse,
         };
 
         let literal = literal_str.as_bytes();
@@ -1470,10 +1426,10 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         };
 
         let parse_fn = match base {
-            digit::Base::Binary => digit::parse_binary_offset,
-            digit::Base::Octal => digit::parse_octal_offset,
-            digit::Base::Decimal => digit::parse_decimal_offset,
-            digit::Base::Hexadecimal => digit::parse_hexadecimal_offset,
+            digit::Base::Binary => digit::binary::parse,
+            digit::Base::Octal => digit::octal::parse,
+            digit::Base::Decimal => digit::decimal::parse,
+            digit::Base::Hexadecimal => digit::hexadecimal::parse,
         };
 
         let literal = literal_str.as_bytes();

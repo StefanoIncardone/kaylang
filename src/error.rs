@@ -1,15 +1,12 @@
 use crate::{
     AT, BAR, CAUSE,
     color::{Colored, ansi_flag},
-    front_end::{
-        MsgSeverity,
-        tokenizer::{ascii, utf32},
-    },
+    front_end::MsgSeverity,
 };
 use core::fmt::Display;
 use std::path::Path;
 
-use back_to_front::{cli::{AnsiBg, AnsiFg, AnsiFlag}, uoffset32};
+use back_to_front::{cli::{AnsiBg, AnsiFg, AnsiFlag}, usize32, ascii, utf32};
 use unicode_width::UnicodeWidthChar as _;
 
 // IDEA(stefano): move to back-to-front
@@ -17,11 +14,11 @@ use unicode_width::UnicodeWidthChar as _;
 // calculating the actual visible length of characters, but rather the length of the pointers in
 // error messages
 pub(crate) trait DisplayLen {
-    fn display_len(&self) -> uoffset32;
+    fn display_len(&self) -> usize32;
 }
 
 impl DisplayLen for str {
-    fn display_len(&self) -> uoffset32 {
+    fn display_len(&self) -> usize32 {
         let mut len = 0;
         for character in self.chars() {
             len += character.width_cjk().unwrap_or_default();
@@ -29,24 +26,24 @@ impl DisplayLen for str {
         if len == 0 {
             len = 1;
         }
-        return len as uoffset32;
+        return len as usize32;
     }
 }
 
 impl DisplayLen for utf32 {
     #[inline]
-    fn display_len(&self) -> uoffset32 {
+    fn display_len(&self) -> usize32 {
         let mut len = self.width_cjk().unwrap_or_default();
         if len == 0 {
             len = 1;
         }
-        return len as uoffset32;
+        return len as usize32;
     }
 }
 
 impl DisplayLen for ascii {
     #[inline]
-    fn display_len(&self) -> uoffset32 {
+    fn display_len(&self) -> usize32 {
         return (*self as char).display_len();
     }
 }
@@ -55,8 +52,8 @@ impl DisplayLen for ascii {
 // pub enum MsgLocation<'loc> {
 //     #[default]
 //     None,
-//     Path(&'loc Path, Option<(uoffset32, Option<uoffset32>)>),
-//     Str(&'loc str, Option<(uoffset32, Option<uoffset32>)>),
+//     Path(&'loc Path, Option<(usize32, Option<usize32>)>),
+//     Str(&'loc str, Option<(usize32, Option<usize32>)>),
 // }
 
 // #[derive(Clone, Debug)]
@@ -106,8 +103,8 @@ pub struct MsgWithCauseUnderText<'kind, 'message, 'cause, 'src> {
     pub message: &'message dyn Display,
     pub cause: &'cause dyn Display,
     pub line_text: &'src dyn Display,
-    pub pointers_count: uoffset32,
-    pub pointers_offset: uoffset32,
+    pub pointers_count: usize32,
+    pub pointers_offset: usize32,
 }
 
 impl Display for MsgWithCauseUnderText<'_, '_, '_, '_> {
@@ -158,12 +155,12 @@ pub struct MsgWithCauseUnderTextWithLocation<'kind, 'message, 'cause, 'src> {
     pub message: &'message dyn Display,
     pub cause: &'cause dyn Display,
     pub file: &'src Path,
-    pub line: uoffset32,
-    pub column: uoffset32,
-    pub absolute_column: uoffset32,
+    pub line: usize32,
+    pub column: usize32,
+    pub absolute_column: usize32,
     pub line_text: &'src dyn Display,
-    pub pointers_count: uoffset32,
-    pub pointers_offset: uoffset32,
+    pub pointers_count: usize32,
+    pub pointers_offset: usize32,
 }
 
 // IDEA(stefano): add cli flag to control the amount of spaces (default 4) to display when printing tabs

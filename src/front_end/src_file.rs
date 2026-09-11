@@ -1,41 +1,41 @@
 use crate::{ERROR, error::MsgWithCause};
 use core::fmt::Display;
 use std::{fs::File, io::Read as _, path::Path};
+use back_to_front::src_code::Line;
 use unicode_width::UnicodeWidthChar as _;
 
 #[expect(clippy::useless_attribute, reason = "false positive")]
 #[expect(clippy::pub_use)]
-pub use back_to_front::uoffset32;
+pub use back_to_front::usize32;
 
-#[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
-pub struct Span {
-    /// inclusive
-    pub start: uoffset32,
-
-    /// not inclusive
-    pub end: uoffset32,
-}
-
-pub type Line = Span;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct Position {
-    pub line: uoffset32,
-    pub column: uoffset32,
+    pub line: usize32,
+    pub column: usize32,
 }
+
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct DisplayPosition {
-    pub line: uoffset32,
-    pub column: uoffset32,
-    pub display_column: uoffset32,
+    pub line: usize32,
+    pub column: usize32,
+    pub display_column: usize32,
 }
+
 
 // IDEA(stefano): let the user chose how to obtain the source code and just store a reference to it
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct SrcFile<'path> {
     pub(crate) path: &'path Path,
     pub(crate) code: String,
+}
+
+// getters
+#[rustfmt::skip]
+impl<'path> SrcFile<'path> {
+    #[must_use] #[inline(always)] pub const fn path(&self) -> &'path Path { return self.path; }
+    #[must_use] #[inline(always)] pub const fn code(&self) -> &str        { return self.code.as_str(); }
 }
 
 impl<'path> SrcFile<'path> {
@@ -60,14 +60,14 @@ impl<'path> SrcFile<'path> {
         }
 
         let file_metadata_len = file_metadata.len();
-        if file_metadata_len > uoffset32::MAX as u64 {
-            return Err(Error { path, kind: ErrorKind::FileTooBig { max: uoffset32::MAX } });
+        if file_metadata_len > usize32::MAX as u64 {
+            return Err(Error { path, kind: ErrorKind::FileTooBig { max: usize32::MAX } });
         }
-        let file_len = file_metadata_len as uoffset32;
+        let file_len = file_metadata_len as usize32;
 
         let mut code = String::new();
         let bytes_read = match file.read_to_string(&mut code) {
-            Ok(bytes_read) => bytes_read as uoffset32,
+            Ok(bytes_read) => bytes_read as usize32,
             Err(err) => {
                 return Err(Error { path, kind: ErrorKind::Io(err) });
             },
@@ -79,52 +79,31 @@ impl<'path> SrcFile<'path> {
 
         return Ok(Self { path, code });
     }
-
-    #[must_use]
-    #[inline(always)]
-    pub const fn path(&self) -> &'path Path {
-        return self.path;
-    }
-
-    #[must_use]
-    #[inline(always)]
-    pub fn code(&self) -> &str {
-        return &self.code;
-    }
 }
+
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct SrcCode<'code, 'path: 'code> {
-    pub(crate) src_file: &'code SrcFile<'path>,
+    pub src_file: &'code SrcFile<'path>,
     pub(crate) lines: Vec<Line>,
+}
+
+// getters
+#[rustfmt::skip]
+impl<'code, 'path: 'code> SrcCode<'code, 'path> {
+    #[must_use] #[inline(always)] pub const fn path(&self)  -> &'path Path { return self.src_file.path(); }
+    #[must_use] #[inline(always)] pub const fn code(&self)  -> &'code str  { return self.src_file.code(); }
+    #[must_use] #[inline(always)] pub const fn lines(&self) -> &[Line]     { return self.lines.as_slice(); }
 }
 
 impl<'code, 'path: 'code> SrcCode<'code, 'path> {
     #[must_use]
-    #[inline(always)]
-    pub const fn path(&self) -> &'path Path {
-        return self.src_file.path();
-    }
-
-    #[must_use]
-    #[inline(always)]
-    pub fn code(&self) -> &'code str {
-        return self.src_file.code();
-    }
-
-    #[must_use]
-    #[inline(always)]
-    pub fn lines(&self) -> &[Line] {
-        return &self.lines;
-    }
-
-    #[must_use]
-    fn line_index(&self, column: uoffset32) -> uoffset32 {
-        let mut left: uoffset32 = 0;
-        let mut right = self.lines.len() as uoffset32 - 1;
+    fn line_index(&self, column: usize32) -> usize32 {
+        let mut left: usize32 = 0;
+        let mut right = self.lines.len() as usize32 - 1;
         while left < right {
             let middle = left + (right - left) / 2;
-            if column <= self.lines[middle as usize].end {
+            if column <= self.lines[middle as usize].end() {
                 right = middle;
             } else {
                 left = middle + 1;
@@ -134,10 +113,10 @@ impl<'code, 'path: 'code> SrcCode<'code, 'path> {
     }
 
     #[must_use]
-    pub(crate) fn position(&self, column: uoffset32) -> Position {
+    pub(crate) fn position(&self, column: usize32) -> Position {
         let line_index = self.line_index(column);
         let line = self.lines[line_index as usize];
-        let line_text_before_error = &self.code()[line.start as usize..column as usize];
+        let line_text_before_error = &self.code()[line.start() as usize..column as usize];
         let mut utf8_column = 1;
         for _character in line_text_before_error.chars() {
             utf8_column += 1;
@@ -147,15 +126,15 @@ impl<'code, 'path: 'code> SrcCode<'code, 'path> {
     }
 
     #[must_use]
-    pub(crate) fn display_position(&self, column: uoffset32) -> DisplayPosition {
+    pub(crate) fn display_position(&self, column: usize32) -> DisplayPosition {
         let line_index = self.line_index(column);
         let line = self.lines[line_index as usize];
-        let line_text_before_error = &self.code()[line.start as usize..column as usize];
+        let line_text_before_error = &self.code()[line.start() as usize..column as usize];
         let mut display_column = 1;
         let mut utf8_column = 1;
         for character in line_text_before_error.chars() {
             let character_utf8_len = character.width_cjk().unwrap_or_default();
-            display_column += character_utf8_len as uoffset32;
+            display_column += character_utf8_len as usize32;
             utf8_column += 1;
         }
 
@@ -163,13 +142,15 @@ impl<'code, 'path: 'code> SrcCode<'code, 'path> {
     }
 }
 
+
 #[derive(Debug)]
 pub enum ErrorKind {
     Io(std::io::Error),
     MustBeAFilePath,
-    FileTooBig { max: uoffset32 },
+    FileTooBig { max: usize32 },
     CouldNotReadEntireFile,
 }
+
 
 #[derive(Debug)]
 pub struct Error<'path> {

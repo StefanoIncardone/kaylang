@@ -5,7 +5,7 @@ use kaylang::{
     front_end::{
         ast::Parser,
         src_file::SrcFile,
-        tokenizer::{TokenizedCode, Tokenizer},
+        tokenizer::{TokenizationResult, Tokenizer},
     },
 };
 use std::{path::Path, process::ExitCode};
@@ -28,7 +28,7 @@ fn main() -> ExitCode {
     };
 
     let (src, tokens) = {
-        let TokenizedCode { result, src } = Tokenizer::tokenize(&src_file);
+        let TokenizationResult { result, src } = Tokenizer::tokenize(&src_file);
         match result {
             Ok(tokens) => (src, tokens),
             Err(errors) => {

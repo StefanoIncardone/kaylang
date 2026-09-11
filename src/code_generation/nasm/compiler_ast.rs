@@ -1,13 +1,12 @@
 // TODO(stefano): take TypedSyntaxTree instead of Ast and remove ast module
 use crate::front_end::{
     ast::{
-        self, AssignmentOp, Ast, BaseType, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression, IfStatement,
-        Node, PrefixAssignmentOp, ScopeIndex, SizeOf as _, Type, TypeOf as _, UnaryOp,
-    },
-    src_file::{Position, SrcCode},
+        self, AssignmentOp, Ast, BinaryOp, BooleanBinaryOp, ComparisonOp, Expression, IfStatement,
+        Node, PrefixAssignmentOp, ScopeIndex, Type, TypeOf as _, UnaryOp,
+    }, src_file::{Position, SrcCode}, types::{BaseType, SizeOf as _},
 };
 use Reg64::{Rcx, Rdi, Rdx, Rsi};
-use back_to_front::uoffset32;
+use back_to_front::usize32;
 #[expect(clippy::useless_attribute, reason = "false positive")]
 #[expect(clippy::pub_use)]
 pub use back_to_front::x86_64::Reg64;
@@ -755,7 +754,7 @@ impl<'ast, 'code: 'ast> Compiler<'ast, '_, 'code, '_> {
         &mut self,
         base_type: BaseType,
         value: &'ast Expression,
-        bracket_col: uoffset32,
+        bracket_col: usize32,
         index: &'ast Expression,
     ) {
         let Position { line, column } = self.src.position(bracket_col);
@@ -2297,7 +2296,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
         &mut self,
         target: &'ast Expression,
         op: AssignmentOp,
-        op_col: uoffset32,
+        op_col: usize32,
         new_value: &'ast Expression,
     ) {
         match target {
@@ -2872,7 +2871,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
         }
     }
 
-    fn prefix_reassignment(&mut self, target: &'ast Expression, op: PrefixAssignmentOp, op_col: uoffset32) {
+    fn prefix_reassignment(&mut self, target: &'ast Expression, op: PrefixAssignmentOp, op_col: usize32) {
         match target {
             Expression::ArrayIndex { base_type, indexable_index, bracket_col, index_expression_index } => {
                 let indexable = &self.ast.expressions[*indexable_index as usize];

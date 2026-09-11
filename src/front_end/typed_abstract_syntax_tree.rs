@@ -1,72 +1,21 @@
+// IDEA(stefano): add error for boolean conditions with `!=`, stating that this language uses `!==`
+// IDEA(stefano): fuse tokenization and parsing, making the tokenizer a generator of tokens
+// TODO(stefano): multidimensional arrays
+
 use crate::front_end::{
-    Index32, MsgDisplay, MsgSeverity,
-    src_file::DisplayPosition,
-    tokenizer::{self, TokenKind, Tokens},
+    Index32, MsgDisplay, MsgSeverity, src_file::DisplayPosition, tokenizer::{self, TokenKind}, types::BaseType,
 };
-use back_to_front::{digit, uoffset32};
+use back_to_front::{ascii, digit, usize32};
 
 use super::{
     IntoMsgInfo, Msg, MsgInfo,
-    src_file::SrcCode,
     syntax_tree::{self as st, SyntaxTree},
-    tokenizer::{Op, TextIndex, ascii},
+    tokenizer::{Op, TextIndex},
 };
-use core::{fmt::Display, marker::PhantomData};
+use core::fmt::Display;
 extern crate alloc;
 use alloc::borrow::Cow;
 
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
-pub enum BaseType {
-    I64,
-    Ascii,
-    Bool,
-    Str,
-}
-
-impl BaseType {
-    pub(crate) const I64_STR: &str = "i64";
-    pub(crate) const ASCII_STR: &str = "ascii";
-    pub(crate) const BOOL_STR: &str = "bool";
-    pub(crate) const STR_STR: &str = "str";
-
-    #[expect(clippy::single_call_fn)]
-    #[must_use]
-    #[inline]
-    fn from_str(name: &str) -> Option<Self> {
-        return match name {
-            Self::I64_STR => Some(Self::I64),
-            Self::ASCII_STR => Some(Self::Ascii),
-            Self::BOOL_STR => Some(Self::Bool),
-            Self::STR_STR => Some(Self::Str),
-            _ => None,
-        };
-    }
-}
-
-impl BaseType {
-    #[must_use]
-    #[inline]
-    pub const fn size(&self) -> usize {
-        return match self {
-            Self::I64 => size_of::<i64>(),
-            Self::Ascii => size_of::<ascii>(),
-            Self::Bool => size_of::<bool>(),
-            Self::Str => size_of::<u64>() + size_of::<*const ascii>(),
-        };
-    }
-}
-
-impl Display for BaseType {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        return match self {
-            Self::I64 => f.write_str(Self::I64_STR),
-            Self::Ascii => f.write_str(Self::ASCII_STR),
-            Self::Bool => f.write_str(Self::BOOL_STR),
-            Self::Str => f.write_str(Self::STR_STR),
-        };
-    }
-}
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Type {
@@ -92,10 +41,10 @@ impl Type {
 
     #[must_use]
     #[inline]
-    pub const fn size(&self) -> usize {
+    pub const fn size_of(&self) -> usize {
         return match self {
-            Self::Base(typ) => typ.size(),
-            Self::Array { base_type, len } => base_type.size() * *len as usize,
+            Self::Base(typ) => typ.size_of(),
+            Self::Array { base_type, len } => base_type.size_of() * *len as usize,
         };
     }
 }
@@ -170,7 +119,7 @@ impl Display for PrefixOp {
 impl PrefixOp {
     #[expect(dead_code)]
     #[inline(always)]
-    pub(super) fn display_len(self) -> uoffset32 {
+    pub(super) fn display_len(self) -> usize32 {
         let op: Op = self.into();
         return op.display_len();
     }
@@ -228,7 +177,7 @@ impl Display for BooleanPrefixOp {
 impl BooleanPrefixOp {
     #[expect(dead_code)]
     #[inline(always)]
-    pub(super) fn display_len(self) -> uoffset32 {
+    pub(super) fn display_len(self) -> usize32 {
         let op: Op = self.into();
         return op.display_len();
     }
@@ -319,7 +268,7 @@ impl Display for BinaryOp {
 impl BinaryOp {
     #[expect(dead_code)]
     #[inline(always)]
-    pub(super) fn display_len(self) -> uoffset32 {
+    pub(super) fn display_len(self) -> usize32 {
         let op: Op = self.into();
         return op.display_len();
     }
@@ -378,7 +327,7 @@ impl Display for BooleanBinaryOp {
 impl BooleanBinaryOp {
     #[expect(dead_code)]
     #[inline(always)]
-    pub(super) fn display_len(self) -> uoffset32 {
+    pub(super) fn display_len(self) -> usize32 {
         let op: Op = self.into();
         return op.display_len();
     }
@@ -436,7 +385,7 @@ impl Display for ComparisonOp {
 impl ComparisonOp {
     #[expect(dead_code)]
     #[inline(always)]
-    pub(super) fn display_len(self) -> uoffset32 {
+    pub(super) fn display_len(self) -> usize32 {
         let op: Op = self.into();
         return op.display_len();
     }
@@ -501,7 +450,7 @@ impl Display for BooleanComparisonOp {
 impl BooleanComparisonOp {
     #[expect(dead_code)]
     #[inline(always)]
-    pub(super) fn display_len(self) -> uoffset32 {
+    pub(super) fn display_len(self) -> usize32 {
         let op: Op = self.into();
         return op.display_len();
     }
@@ -553,7 +502,7 @@ impl Display for AssignmentOp {
 impl AssignmentOp {
     #[expect(dead_code)]
     #[inline(always)]
-    pub(super) fn display_len(self) -> uoffset32 {
+    pub(super) fn display_len(self) -> usize32 {
         let op: Op = self.into();
         return op.display_len();
     }
@@ -614,7 +563,7 @@ impl Display for PrefixAssignmentOp {
 impl PrefixAssignmentOp {
     #[expect(dead_code)]
     #[inline(always)]
-    pub(super) fn display_len(self) -> uoffset32 {
+    pub(super) fn display_len(self) -> usize32 {
         let op: Op = self.into();
         return op.display_len();
     }
@@ -667,7 +616,7 @@ impl Display for BooleanPrefixAssignmentOp {
 impl BooleanPrefixAssignmentOp {
     #[expect(dead_code)]
     #[inline(always)]
-    pub(super) fn display_len(self) -> uoffset32 {
+    pub(super) fn display_len(self) -> usize32 {
         let op: Op = self.into();
         return op.display_len();
     }
@@ -753,7 +702,7 @@ impl Display for BinaryAssignmentOp {
 impl BinaryAssignmentOp {
     #[expect(dead_code)]
     #[inline(always)]
-    pub(super) fn display_len(self) -> uoffset32 {
+    pub(super) fn display_len(self) -> usize32 {
         let op: Op = self.into();
         return op.display_len();
     }
@@ -807,7 +756,7 @@ impl Display for BooleanBinaryAssignmentOp {
 impl BooleanBinaryAssignmentOp {
     #[expect(dead_code)]
     #[inline(always)]
-    pub(super) fn display_len(self) -> uoffset32 {
+    pub(super) fn display_len(self) -> usize32 {
         let op: Op = self.into();
         return op.display_len();
     }
@@ -822,26 +771,26 @@ pub(crate) type NodeIndex<'code> = Index32<Node<'code>>;
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Expression<'code> {
     False {
-        column: uoffset32,
+        column: usize32,
     },
     True {
-        column: uoffset32,
+        column: usize32,
     },
     I64 {
         value: i64,
-        column: uoffset32,
+        column: usize32,
     },
     Ascii {
         character: ascii,
-        column: uoffset32,
+        column: usize32,
     },
     Str {
         literal: TextIndex<'code>,
-        column: uoffset32,
+        column: usize32,
     },
     Variable {
         variable: VariableDefinitionIndex<'code>,
-        column: uoffset32,
+        column: usize32,
     },
     Array {
         base_type: BaseType,
@@ -852,48 +801,48 @@ pub(crate) enum Expression<'code> {
 
     Prefix {
         operator: PrefixOp,
-        operator_column: uoffset32,
+        operator_column: usize32,
         right_operand: ExpressionIndex<'code>,
     },
     BooleanPrefix {
         operator: BooleanPrefixOp,
-        operator_column: uoffset32,
+        operator_column: usize32,
         right_operand: ExpressionIndex<'code>,
     },
     Binary {
         left_operand: ExpressionIndex<'code>,
         operator: BinaryOp,
-        operator_column: uoffset32,
+        operator_column: usize32,
         right_operand: ExpressionIndex<'code>,
     },
     BooleanBinary {
         left_operand: ExpressionIndex<'code>,
         operator: BooleanBinaryOp,
-        operator_column: uoffset32,
+        operator_column: usize32,
         right_operand: ExpressionIndex<'code>,
     },
     Comparison {
         left_operand: ExpressionIndex<'code>,
         operator: ComparisonOp,
-        operator_column: uoffset32,
+        operator_column: usize32,
         right_operand: ExpressionIndex<'code>,
     },
     BooleanComparison {
         left_operand: ExpressionIndex<'code>,
         operator: BooleanComparisonOp,
-        operator_column: uoffset32,
+        operator_column: usize32,
         right_operand: ExpressionIndex<'code>,
     },
 
     Index {
         indexed_expression: ExpressionIndex<'code>,
-        open_square_bracket_column: uoffset32,
+        open_square_bracket_column: usize32,
         index_expression: ExpressionIndex<'code>,
     },
 }
 
 impl Expression<'_> {
-    pub(crate) fn typ(&self, ast: &TypedSyntaxTree<'_, '_, '_>) -> Type {
+    pub(crate) fn typ(&self, ast: &TypedSyntaxTree<'_, '_, '_, '_>) -> Type {
         return match self {
             Self::False { .. } | Self::True { .. } => Type::Base(BaseType::Bool),
             Self::I64 { .. } => Type::Base(BaseType::I64),
@@ -974,24 +923,24 @@ pub(crate) enum Node<'code> {
     BinaryAssignment {
         target: ExpressionIndex<'code>,
         operator: BinaryAssignmentOp,
-        operator_column: uoffset32,
+        operator_column: usize32,
         new_value: ExpressionIndex<'code>,
     },
     BooleanAssignmentExpression {
         target: ExpressionIndex<'code>,
         operator: BooleanBinaryAssignmentOp,
-        operator_column: uoffset32,
+        operator_column: usize32,
         new_value: ExpressionIndex<'code>,
     },
     PrefixAssignmentExpression {
         target: ExpressionIndex<'code>,
         operator: PrefixAssignmentOp,
-        operator_column: uoffset32,
+        operator_column: usize32,
     },
     BooleanPrefixAssignment {
         target: ExpressionIndex<'code>,
         operator: BooleanPrefixAssignmentOp,
-        operator_column: uoffset32,
+        operator_column: usize32,
     },
 
     Scope {
@@ -1023,17 +972,17 @@ enum ParsedNode<'code> {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct TypedSyntaxTree<'st, 'tokens: 'st, 'code: 'tokens> {
+pub struct TypedSyntaxTree<'st, 'tokens: 'st, 'code: 'tokens, 'path: 'code> {
+    pub(crate) syntax_tree: &'st SyntaxTree<'tokens, 'code, 'path>,
+
     pub(crate) nodes: Vec<Node<'code>>,
 
     pub(crate) expressions: Vec<Expression<'code>>,
     pub(crate) array_items: Vec<ExpressionIndex<'code>>,
     pub(crate) variables: Vec<VariableDefinition<'code>>,
-
-    _syntax_tree: PhantomData<&'st SyntaxTree<'tokens, 'code>>,
 }
 
-impl<'code> TypedSyntaxTree<'_, '_, 'code> {
+impl<'code> TypedSyntaxTree<'_, '_, 'code, '_> {
     #[inline]
     fn new_expression(&mut self, expression: Expression<'code>) -> ExpressionIndex<'code> {
         let index = ExpressionIndex::new(self.expressions.len());
@@ -1049,52 +998,44 @@ impl<'code> TypedSyntaxTree<'_, '_, 'code> {
     }
 }
 
-impl<'tokens> TypedSyntaxTree<'_, 'tokens, '_> {
+impl<'tokens> TypedSyntaxTree<'_, 'tokens, '_, '_> {
     #[must_use]
     #[inline(always)]
-    pub const fn display(&self, tokens: &'tokens Tokens<'_>) -> TypedSyntaxTreeDisplay<'_, '_, 'tokens, '_> {
-        return TypedSyntaxTreeDisplay { typed_syntax_tree: self, tokens };
+    pub const fn display(&self) -> TypedSyntaxTreeDisplay<'_, '_, 'tokens, '_, '_> {
+        return TypedSyntaxTreeDisplay { tast: self };
     }
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct Parser<'st, 'tokens: 'st, 'src: 'tokens, 'code: 'src, 'path: 'code> {
-    src: &'src SrcCode<'code, 'path>,
+pub struct Parser<'st, 'tokens: 'st, 'code: 'tokens, 'path: 'code> {
     errors: Vec<Msg<ErrorKind>>,
+    tast: TypedSyntaxTree<'st, 'tokens, 'code, 'path>,
 
-    tokens: &'tokens Tokens<'code>,
     node_index: st::NodeIndex<'code>,
-    syntax_tree: &'st SyntaxTree<'tokens, 'code>,
 
     temp_array_items: Vec<ExpressionIndex<'code>>,
-    tast: TypedSyntaxTree<'st, 'tokens, 'code>,
     scope: ScopeIndex<'code>,
     scopes: Vec<Scope<'code>>,
 }
 
-impl<'st, 'tokens: 'st, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'st, 'tokens, 'src, 'code, 'path> {
+impl<'st, 'tokens: 'st, 'code: 'tokens, 'path: 'code> Parser<'st, 'tokens, 'code, 'path> {
     #[expect(clippy::missing_errors_doc)]
     pub fn parse(
-        src: &'src SrcCode<'code, 'path>,
-        tokens: &'tokens Tokens<'code>,
-        syntax_tree: &'st SyntaxTree<'tokens, 'code>,
-    ) -> Result<TypedSyntaxTree<'st, 'tokens, 'code>, Vec<Msg<ErrorKind>>> {
+        syntax_tree: &'st SyntaxTree<'tokens, 'code, 'path>,
+    ) -> Result<TypedSyntaxTree<'st, 'tokens, 'code, 'path>, Vec<Msg<ErrorKind>>> {
         let mut parser = Self {
-            src,
             errors: Vec::new(),
-
-            tokens,
-            node_index: st::NodeIndex::new(0),
-            syntax_tree,
-
-            temp_array_items: Vec::new(),
             tast: TypedSyntaxTree {
+                syntax_tree,
                 nodes: Vec::new(),
                 expressions: Vec::new(),
                 array_items: Vec::new(),
                 variables: Vec::new(),
-                _syntax_tree: PhantomData,
             },
+
+            node_index: st::NodeIndex::new(0),
+
+            temp_array_items: Vec::new(),
             scope: ScopeIndex::new(0),
             scopes: vec![Scope {
                 parent: ScopeIndex::new(0),
@@ -1113,7 +1054,7 @@ impl<'st, 'tokens: 'st, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'st, 't
                     parser.errors.push(err);
 
                     // consuming all remaining nodes until the end of the file
-                    parser.node_index = st::NodeIndex::new(parser.syntax_tree.nodes.len());
+                    parser.node_index = st::NodeIndex::new(parser.tast.syntax_tree.nodes.len());
                     break;
                 },
             }
@@ -1262,19 +1203,19 @@ impl<'st, 'tokens: 'st, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'st, 't
     #[track_caller]
     fn invalid_node(
         &self,
-        absolute_column: uoffset32,
-        pointers_count: uoffset32,
+        absolute_column: usize32,
+        pointers_count: usize32,
         error_message: Cow<'static, str>,
         error_cause_message: Cow<'static, str>,
     ) -> ! {
-        let DisplayPosition { line, column, display_column } = self.src.display_position(absolute_column);
-        let line_span = self.src.lines[line as usize - 1];
-        let line_text = &self.src.code()[line_span.start as usize..line_span.end as usize];
+        let DisplayPosition { line, column, display_column } = self.tast.syntax_tree.tokens.src.display_position(absolute_column);
+        let line_span = self.tast.syntax_tree.tokens.src.lines[line as usize - 1];
+        let line_text = &self.tast.syntax_tree.code()[line_span.start() as usize..line_span.end() as usize];
 
         let error = MsgDisplay {
             severity: MsgSeverity::Error,
             error_message,
-            file: self.src.path(),
+            file: self.tast.syntax_tree.tokens.src.path(),
             line,
             column,
             absolute_column,
@@ -1288,7 +1229,7 @@ impl<'st, 'tokens: 'st, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'st, 't
 
     // REMOVE(stefano): could just ignore stray semicolons
     #[track_caller]
-    fn stray_semicolon(&self, semicolon_colon: uoffset32) -> ! {
+    fn stray_semicolon(&self, semicolon_colon: usize32) -> ! {
         self.invalid_node(
             semicolon_colon,
             1,
@@ -1298,7 +1239,7 @@ impl<'st, 'tokens: 'st, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'st, 't
     }
 
     #[track_caller]
-    fn invalid_scope_index(&self, open_curly_bracket_column: uoffset32) -> ! {
+    fn invalid_scope_index(&self, open_curly_bracket_column: usize32) -> ! {
         self.invalid_node(
             open_curly_bracket_column,
             1,
@@ -1314,14 +1255,14 @@ struct Peeked<'st, 'code: 'st> {
     index: st::NodeIndex<'code>,
 }
 
-impl<'st, 'code: 'st> Parser<'st, '_, '_, 'code, '_> {
+impl<'st, 'code: 'st> Parser<'st, '_, 'code, '_> {
     fn peek_next_node(&self) -> Option<Peeked<'st, 'code>> {
-        let node_index_end = st::NodeIndex::new(self.syntax_tree.nodes.len());
+        let node_index_end = st::NodeIndex::new(self.tast.syntax_tree.nodes.len());
         for next_node_index in self.node_index.0..node_index_end.0 {
-            let next_node_index_index = st::NodeIndex::new_uoffset32(next_node_index);
-            let next_node = &self.syntax_tree.nodes[next_node_index_index];
+            let next_node_index_index = st::NodeIndex::new_usize32(next_node_index);
+            let next_node = &self.tast.syntax_tree.nodes[next_node_index_index];
             let st::Node::Semicolon { .. } = next_node else {
-                let peeked_node_index_index = st::NodeIndex::new_uoffset32(next_node_index_index.0 + 1);
+                let peeked_node_index_index = st::NodeIndex::new_usize32(next_node_index_index.0 + 1);
                 return Some(Peeked { node: next_node, index: peeked_node_index_index });
             };
         }
@@ -1330,7 +1271,7 @@ impl<'st, 'code: 'st> Parser<'st, '_, '_, 'code, '_> {
     }
 }
 
-impl<'code> Parser<'_, '_, '_, 'code, '_> {
+impl<'code> Parser<'_, '_, 'code, '_> {
     fn parse_positive_i64(
         literal_str: &'code str,
         base: digit::Base,
@@ -1344,10 +1285,10 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         };
 
         let parse_fn = match base {
-            digit::Base::Binary => digit::parse_binary_offset,
-            digit::Base::Octal => digit::parse_octal_offset,
-            digit::Base::Decimal => digit::parse_decimal_offset,
-            digit::Base::Hexadecimal => digit::parse_hexadecimal_offset,
+            digit::Base::Binary => digit::binary::parse,
+            digit::Base::Octal => digit::octal::parse,
+            digit::Base::Decimal => digit::decimal::parse,
+            digit::Base::Hexadecimal => digit::hexadecimal::parse,
         };
 
         let literal = literal_str.as_bytes();
@@ -1385,10 +1326,10 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         };
 
         let parse_fn = match base {
-            digit::Base::Binary => digit::parse_binary_offset,
-            digit::Base::Octal => digit::parse_octal_offset,
-            digit::Base::Decimal => digit::parse_decimal_offset,
-            digit::Base::Hexadecimal => digit::parse_hexadecimal_offset,
+            digit::Base::Binary => digit::binary::parse,
+            digit::Base::Octal => digit::octal::parse,
+            digit::Base::Decimal => digit::decimal::parse,
+            digit::Base::Hexadecimal => digit::hexadecimal::parse,
         };
 
         let literal = literal_str.as_bytes();
@@ -1415,8 +1356,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
 
     // NOTE(stefano): only considering the first token in the expression until proper
     // multiline error messages are developed
-    fn first_token_display_len(&self, expression: st::ExpressionIndex<'code>) -> uoffset32 {
-        let st_expression = &self.syntax_tree.expressions[expression];
+    fn first_token_display_len(&self, expression: st::ExpressionIndex<'code>) -> usize32 {
+        let st_expression = &self.tast.syntax_tree.expressions[expression];
         let token_kind = match st_expression {
             st::Expression::False { .. } => TokenKind::False,
             st::Expression::True { .. } => TokenKind::True,
@@ -1446,13 +1387,13 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             },
         };
 
-        return token_kind.display_len(self.tokens);
+        return token_kind.display_len(&self.tast.syntax_tree.tokens.tokens);
     }
 
     // NOTE(stefano): only considering the first token in the expression until proper
     // multiline error messages are developed
-    fn first_token_column(&self, expression: st::ExpressionIndex<'code>) -> uoffset32 {
-        let st_expression = &self.syntax_tree.expressions[expression];
+    fn first_token_column(&self, expression: st::ExpressionIndex<'code>) -> usize32 {
+        let st_expression = &self.tast.syntax_tree.expressions[expression];
         let column = match st_expression {
             st::Expression::False { column }
             | st::Expression::True { column }
@@ -1497,7 +1438,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             let scope = &self.scopes[scope_index];
             for var_index in &scope.let_variables {
                 let var = &self.tast.variables[*var_index];
-                let var_name_text = self.tokens.text[var.name];
+                let var_name_text = self.tast.syntax_tree.text()[var.name];
                 if var_name_text == name {
                     return Some(*var_index);
                 }
@@ -1516,7 +1457,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             let scope = &self.scopes[scope_index];
             for var_index in &scope.var_variables {
                 let var = &self.tast.variables[*var_index];
-                let var_name_text = self.tokens.text[var.name];
+                let var_name_text = self.tast.syntax_tree.text()[var.name];
                 if var_name_text == name {
                     return Some(*var_index);
                 }
@@ -1554,67 +1495,67 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         st_expression_index: st::ExpressionIndex<'code>,
         expected_type: Option<&Type>,
     ) -> Result<Expression<'code>, Msg<ErrorKind>> {
-        let st_expression = &self.syntax_tree.expressions[st_expression_index];
+        let st_expression = &self.tast.syntax_tree.expressions[st_expression_index];
         let expression = match st_expression {
             st::Expression::False { column } => Expression::False { column: *column },
             st::Expression::True { column } => Expression::True { column: *column },
             st::Expression::DecimalInteger { literal, column } => {
-                let literal_text = self.tokens.text[*literal];
+                let literal_text = self.tast.syntax_tree.text()[*literal];
                 let Ok(value) = Self::parse_positive_i64(literal_text, digit::Base::Decimal, false) else {
                     return Err(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::DecimalIntegerOverflow,
                         col: *column,
-                        pointers_count: literal_text.len() as uoffset32,
+                        pointers_count: literal_text.len() as usize32,
                     });
                 };
                 Expression::I64 { value, column: *column }
             },
             st::Expression::DecimalIntegerPrefix { literal, column } => {
-                let literal_text = self.tokens.text[*literal];
+                let literal_text = self.tast.syntax_tree.text()[*literal];
                 let Ok(value) = Self::parse_positive_i64(literal_text, digit::Base::Decimal, true) else {
                     return Err(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::DecimalIntegerOverflow,
                         col: *column,
-                        pointers_count: literal_text.len() as uoffset32,
+                        pointers_count: literal_text.len() as usize32,
                     });
                 };
                 Expression::I64 { value, column: *column }
             },
             st::Expression::BinaryInteger { literal, column } => {
-                let literal_text = self.tokens.text[*literal];
+                let literal_text = self.tast.syntax_tree.text()[*literal];
                 let Ok(value) = Self::parse_positive_i64(literal_text, digit::Base::Binary, false) else {
                     return Err(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::BinaryIntegerOverflow,
                         col: *column,
-                        pointers_count: literal_text.len() as uoffset32,
+                        pointers_count: literal_text.len() as usize32,
                     });
                 };
                 Expression::I64 { value, column: *column }
             },
             st::Expression::OctalInteger { literal, column } => {
-                let literal_text = self.tokens.text[*literal];
+                let literal_text = self.tast.syntax_tree.text()[*literal];
                 let Ok(value) = Self::parse_positive_i64(literal_text, digit::Base::Octal, false) else {
                     return Err(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::OctalIntegerOverflow,
                         col: *column,
-                        pointers_count: literal_text.len() as uoffset32,
+                        pointers_count: literal_text.len() as usize32,
                     });
                 };
                 Expression::I64 { value, column: *column }
             },
             st::Expression::HexadecimalInteger { literal, column } => {
-                let literal_text = self.tokens.text[*literal];
+                let literal_text = self.tast.syntax_tree.text()[*literal];
                 let Ok(value) = Self::parse_positive_i64(literal_text, digit::Base::Hexadecimal, false)
                 else {
                     return Err(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::HexadecimalIntegerOverflow,
                         col: *column,
-                        pointers_count: literal_text.len() as uoffset32,
+                        pointers_count: literal_text.len() as usize32,
                     });
                 };
                 Expression::I64 { value, column: *column }
@@ -1627,13 +1568,13 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             },
             st::Expression::Identifier { identifier, column }
             | st::Expression::IdentifierStr { identifier, column } => {
-                let identifier_text = self.tokens.text[*identifier];
+                let identifier_text = self.tast.syntax_tree.text()[*identifier];
                 if let Some(_) = self.resolve_type(identifier_text) {
                     return Err(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::TypeInExpression,
                         col: *column,
-                        pointers_count: identifier_text.len() as uoffset32,
+                        pointers_count: identifier_text.len() as usize32,
                     });
                 }
                 let Some(variable) = self.resolve_variable(identifier_text) else {
@@ -1641,7 +1582,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::VariableNotPreviouslyDefined,
                         col: *column,
-                        pointers_count: identifier_text.len() as uoffset32,
+                        pointers_count: identifier_text.len() as usize32,
                     });
                 };
 
@@ -1664,7 +1605,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 let temp_array_items_start = self.temp_array_items.len();
                 let mut item_index = *items_start;
 
-                let first_item = &self.syntax_tree.array_items[item_index];
+                let first_item = &self.tast.syntax_tree.array_items[item_index];
                 item_index.0 += 1;
 
                 // TODO(stefano): take into consideration the array base type instead of the
@@ -1693,7 +1634,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
 
                 let items_end = (items_start.0 + items_len) as usize;
                 while (item_index.0 as usize) < items_end {
-                    let item = &self.syntax_tree.array_items[item_index];
+                    let item = &self.tast.syntax_tree.array_items[item_index];
                     item_index.0 += 1;
 
                     let parsed_item = self.expression(item.expression, expected_array_items_type_hint)?;
@@ -1715,7 +1656,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
 
                 let array_expression = Expression::Array {
                     base_type: expected_array_items_type.base_typ(),
-                    items_start: ExpressionIndex::new_uoffset32(items_start.0),
+                    items_start: ExpressionIndex::new_usize32(items_start.0),
                     items_len: *items_len as u64,
                 };
 
@@ -1789,10 +1730,10 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                     }
                 },
                 st::PrefixOp::Minus | st::PrefixOp::WrappingMinus | st::PrefixOp::SaturatingMinus => {
-                    let st_right_operand = &self.syntax_tree.expressions[*right_operand];
+                    let st_right_operand = &self.tast.syntax_tree.expressions[*right_operand];
                     match st_right_operand {
                         st::Expression::BinaryInteger { literal, column } => {
-                            let literal_text = self.tokens.text[*literal];
+                            let literal_text = self.tast.syntax_tree.text()[*literal];
                             let right_operand_expression =
                                 match Self::parse_negative_i64(literal_text, digit::Base::Binary, false) {
                                     Ok(0) => {
@@ -1800,7 +1741,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                             severity: MsgSeverity::Error,
                                             kind: ErrorKind::MinusZeroInteger,
                                             col: *column,
-                                            pointers_count: literal_text.len() as uoffset32,
+                                            pointers_count: literal_text.len() as usize32,
                                         });
                                     },
                                     Ok(integer) => Expression::I64 { value: integer, column: *column },
@@ -1809,7 +1750,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                             severity: MsgSeverity::Error,
                                             kind: ErrorKind::BinaryIntegerUnderflow,
                                             col: *column,
-                                            pointers_count: literal_text.len() as uoffset32,
+                                            pointers_count: literal_text.len() as usize32,
                                         });
                                     },
                                 };
@@ -1821,7 +1762,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             }
                         },
                         st::Expression::OctalInteger { literal, column } => {
-                            let literal_text = self.tokens.text[*literal];
+                            let literal_text = self.tast.syntax_tree.text()[*literal];
                             let right_operand_expression =
                                 match Self::parse_negative_i64(literal_text, digit::Base::Octal, false) {
                                     Ok(0) => {
@@ -1829,7 +1770,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                             severity: MsgSeverity::Error,
                                             kind: ErrorKind::MinusZeroInteger,
                                             col: *column,
-                                            pointers_count: literal_text.len() as uoffset32,
+                                            pointers_count: literal_text.len() as usize32,
                                         });
                                     },
                                     Ok(integer) => Expression::I64 { value: integer, column: *column },
@@ -1838,7 +1779,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                             severity: MsgSeverity::Error,
                                             kind: ErrorKind::OctalIntegerUnderflow,
                                             col: *column,
-                                            pointers_count: literal_text.len() as uoffset32,
+                                            pointers_count: literal_text.len() as usize32,
                                         });
                                     },
                                 };
@@ -1850,7 +1791,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             }
                         },
                         st::Expression::DecimalInteger { literal, column } => {
-                            let literal_text = self.tokens.text[*literal];
+                            let literal_text = self.tast.syntax_tree.text()[*literal];
                             let right_operand_expression =
                                 match Self::parse_negative_i64(literal_text, digit::Base::Decimal, false) {
                                     Ok(0) => {
@@ -1858,7 +1799,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                             severity: MsgSeverity::Error,
                                             kind: ErrorKind::MinusZeroInteger,
                                             col: *column,
-                                            pointers_count: literal_text.len() as uoffset32,
+                                            pointers_count: literal_text.len() as usize32,
                                         });
                                     },
                                     Ok(integer) => Expression::I64 { value: integer, column: *column },
@@ -1867,7 +1808,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                             severity: MsgSeverity::Error,
                                             kind: ErrorKind::DecimalIntegerUnderflow,
                                             col: *column,
-                                            pointers_count: literal_text.len() as uoffset32,
+                                            pointers_count: literal_text.len() as usize32,
                                         });
                                     },
                                 };
@@ -1879,7 +1820,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             }
                         },
                         st::Expression::DecimalIntegerPrefix { literal, column } => {
-                            let literal_text = self.tokens.text[*literal];
+                            let literal_text = self.tast.syntax_tree.text()[*literal];
                             let right_operand_expression =
                                 match Self::parse_negative_i64(literal_text, digit::Base::Decimal, true) {
                                     Ok(0) => {
@@ -1887,7 +1828,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                             severity: MsgSeverity::Error,
                                             kind: ErrorKind::MinusZeroInteger,
                                             col: *column,
-                                            pointers_count: literal_text.len() as uoffset32,
+                                            pointers_count: literal_text.len() as usize32,
                                         });
                                     },
                                     Ok(integer) => Expression::I64 { value: integer, column: *column },
@@ -1896,7 +1837,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                             severity: MsgSeverity::Error,
                                             kind: ErrorKind::DecimalIntegerUnderflow,
                                             col: *column,
-                                            pointers_count: literal_text.len() as uoffset32,
+                                            pointers_count: literal_text.len() as usize32,
                                         });
                                     },
                                 };
@@ -1908,7 +1849,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             }
                         },
                         st::Expression::HexadecimalInteger { literal, column } => {
-                            let literal_text = self.tokens.text[*literal];
+                            let literal_text = self.tast.syntax_tree.text()[*literal];
                             let right_operand_expression =
                                 match Self::parse_negative_i64(literal_text, digit::Base::Hexadecimal, false)
                                 {
@@ -1917,7 +1858,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                             severity: MsgSeverity::Error,
                                             kind: ErrorKind::MinusZeroInteger,
                                             col: *column,
-                                            pointers_count: literal_text.len() as uoffset32,
+                                            pointers_count: literal_text.len() as usize32,
                                         });
                                     },
                                     Ok(integer) => Expression::I64 { value: integer, column: *column },
@@ -1926,7 +1867,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                                             severity: MsgSeverity::Error,
                                             kind: ErrorKind::HexadecimalIntegerUnderflow,
                                             col: *column,
-                                            pointers_count: literal_text.len() as uoffset32,
+                                            pointers_count: literal_text.len() as usize32,
                                         });
                                     },
                                 };
@@ -2244,8 +2185,8 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
     }
 }
 
-impl<'code> Parser<'_, '_, '_, 'code, '_> {
-    // NOTE(stefano): "leaks" memory by parsing and storing expressions, but these expressions
+impl<'code> Parser<'_, '_, 'code, '_> {
+    // BUG(stefano): "leaks" memory by parsing and storing expressions, but these expressions
     // should never be used
     fn parse_type_annotation(
         &mut self,
@@ -2256,13 +2197,13 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
             array_dimensions_len,
         }: &st::TypeAnnotation<'code>,
     ) -> Result<Type, Msg<ErrorKind>> {
-        let type_name_text = self.tokens.text[*type_name];
+        let type_name_text = self.tast.syntax_tree.text()[*type_name];
         if let Some(_) = self.resolve_variable(type_name_text) {
             return Err(Msg {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::VariableInTypeAnnotation,
                 col: *type_name_column,
-                pointers_count: type_name_text.len() as uoffset32,
+                pointers_count: type_name_text.len() as usize32,
             });
         }
         let Some(base_type) = self.resolve_type(type_name_text) else {
@@ -2270,12 +2211,12 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::TypeNotPreviouslyDefined,
                 col: *type_name_column,
-                pointers_count: type_name_text.len() as uoffset32,
+                pointers_count: type_name_text.len() as usize32,
             });
         };
 
         let array_dimensions_end = array_dimensions_start.0 + array_dimensions_len;
-        let array_dimensions = &self.syntax_tree.array_dimensions
+        let array_dimensions = &self.tast.syntax_tree.array_dimensions
             [array_dimensions_start.0 as usize..array_dimensions_end as usize];
         let mut array_dimensions_iter = array_dimensions.iter();
         let Some(st::ArrayDimension { dimension_expression, open_square_bracket_column, .. }) =
@@ -2350,7 +2291,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::NestedArrayNotSupportedYet,
                 col: *type_name_column,
-                pointers_count: type_name_text.len() as uoffset32,
+                pointers_count: type_name_text.len() as usize32,
             });
         }
 
@@ -2362,15 +2303,15 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         variable_definition: st::VariableDefinitionIndex<'code>,
     ) -> Result<VariableDefinitionIndex<'code>, Msg<ErrorKind>> {
         let st::VariableDefinition { name, name_column, type_annotation, expression: initial_value, .. } =
-            &self.syntax_tree.variable_definitions[variable_definition];
+            &self.tast.syntax_tree.variable_definitions[variable_definition];
 
-        let name_text = self.tokens.text[*name];
+        let name_text = self.tast.syntax_tree.text()[*name];
         if let Some(_) = self.resolve_variable(name_text) {
             return Err(Msg {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::VariableAlreadyDefined,
                 col: *name_column,
-                pointers_count: name_text.len() as uoffset32,
+                pointers_count: name_text.len() as usize32,
             });
         }
         if let Some(_) = self.resolve_type(name_text) {
@@ -2378,7 +2319,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::TypeInVariableName,
                 col: *name_column,
-                pointers_count: name_text.len() as uoffset32,
+                pointers_count: name_text.len() as usize32,
             });
         }
 
@@ -2388,14 +2329,14 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         //             severity: MsgSeverity::Error,
         //             kind: ErrorKind::CannotInferTypeOfVariable,
         //             col: *name_column,
-        //             pointers_count: name_text.len() as uoffset32,
+        //             pointers_count: name_text.len() as usize32,
         //         });
         //     };
         //     return Err(Msg {
         //         severity: MsgSeverity::Error,
         //         kind: ErrorKind::VariablesMustBeInitialized,
         //         col: *name_column,
-        //         pointers_count: name_text.len() as uoffset32,
+        //         pointers_count: name_text.len() as usize32,
         //     });
         // };
 
@@ -2412,12 +2353,12 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
     }
 }
 
-impl<'code> Parser<'_, '_, '_, 'code, '_> {
+impl<'code> Parser<'_, '_, 'code, '_> {
     fn binary_assignment(
         &mut self,
         target: st::ExpressionIndex<'code>,
         operator: st::BinaryAssignmentOp,
-        operator_column: uoffset32,
+        operator_column: usize32,
         new_value: st::ExpressionIndex<'code>,
     ) -> Result<Node<'code>, Msg<ErrorKind>> {
         let parsed_target = self.expression(target, None)?;
@@ -2427,13 +2368,13 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         let parsed_target_type = match &parsed_target {
             Expression::Variable { variable, column } => {
                 let variable_definition = &self.tast.variables[*variable];
-                let variable_name_text = self.tokens.text[variable_definition.name];
+                let variable_name_text = self.tast.syntax_tree.text()[variable_definition.name];
                 if let Some(_) = self.resolve_let_variable(variable_name_text) {
                     return Err(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotMutateVariable,
                         col: *column,
-                        pointers_count: variable_name_text.len() as uoffset32,
+                        pointers_count: variable_name_text.len() as usize32,
                     });
                 }
                 variable_definition.typ.clone()
@@ -2456,13 +2397,13 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 };
 
                 let variable_definition = &self.tast.variables[*variable];
-                let variable_name_text = self.tokens.text[variable_definition.name];
+                let variable_name_text = self.tast.syntax_tree.text()[variable_definition.name];
                 if let Some(_) = self.resolve_let_variable(variable_name_text) {
                     return Err(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotMutateVariable,
                         col: *column,
-                        pointers_count: variable_name_text.len() as uoffset32,
+                        pointers_count: variable_name_text.len() as usize32,
                     });
                 }
 
@@ -2472,7 +2413,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                             severity: MsgSeverity::Error,
                             kind: ErrorKind::CannotMutateStringCharacters,
                             col: *column,
-                            pointers_count: variable_name_text.len() as uoffset32,
+                            pointers_count: variable_name_text.len() as usize32,
                         });
                     }
                     Type::Base(BaseType::Str)
@@ -2654,20 +2595,20 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
         &mut self,
         target: st::ExpressionIndex<'code>,
         operator: st::PrefixAssignmentOp,
-        operator_column: uoffset32,
+        operator_column: usize32,
     ) -> Result<Node<'code>, Msg<ErrorKind>> {
         let parsed_target = self.expression(target, None)?;
 
         let parsed_target_type = match &parsed_target {
             Expression::Variable { variable, column } => {
                 let variable_definition = &self.tast.variables[*variable];
-                let variable_name_text = self.tokens.text[variable_definition.name];
+                let variable_name_text = self.tast.syntax_tree.text()[variable_definition.name];
                 if let Some(_) = self.resolve_let_variable(variable_name_text) {
                     return Err(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotMutateVariable,
                         col: *column,
-                        pointers_count: variable_name_text.len() as uoffset32,
+                        pointers_count: variable_name_text.len() as usize32,
                     });
                 }
                 variable_definition.typ.clone()
@@ -2690,13 +2631,13 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                 };
 
                 let variable_definition = &self.tast.variables[*variable];
-                let variable_name_text = self.tokens.text[variable_definition.name];
+                let variable_name_text = self.tast.syntax_tree.text()[variable_definition.name];
                 if let Some(_) = self.resolve_let_variable(variable_name_text) {
                     return Err(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotMutateVariable,
                         col: *column,
-                        pointers_count: variable_name_text.len() as uoffset32,
+                        pointers_count: variable_name_text.len() as usize32,
                     });
                 }
 
@@ -2794,10 +2735,10 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
     }
 }
 
-impl<'code> Parser<'_, '_, '_, 'code, '_> {
+impl<'code> Parser<'_, '_, 'code, '_> {
     fn if_condition(
         &mut self,
-        if_column: uoffset32,
+        if_column: usize32,
         condition: st::ExpressionIndex<'code>,
     ) -> Result<Expression<'code>, Msg<ErrorKind>> {
         let condition_expression = self.expression(condition, None)?;
@@ -2810,7 +2751,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                     actual: condition_expression_type,
                 },
                 col: if_column,
-                pointers_count: TokenKind::If.display_len(self.tokens),
+                pointers_count: TokenKind::If.display_len(&self.tast.syntax_tree.tokens.tokens),
             });
         };
         return Ok(condition_expression);
@@ -2818,7 +2759,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
 
     fn loop_condition(
         &mut self,
-        loop_column: uoffset32,
+        loop_column: usize32,
         condition: st::ExpressionIndex<'code>,
     ) -> Result<Expression<'code>, Msg<ErrorKind>> {
         let condition_expression = self.expression(condition, None)?;
@@ -2831,7 +2772,7 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
                     actual: condition_expression_type,
                 },
                 col: loop_column,
-                pointers_count: TokenKind::Loop.display_len(self.tokens),
+                pointers_count: TokenKind::Loop.display_len(&self.tast.syntax_tree.tokens.tokens),
             });
         };
         return Ok(condition_expression);
@@ -2839,12 +2780,11 @@ impl<'code> Parser<'_, '_, '_, 'code, '_> {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct TypedSyntaxTreeDisplay<'tast, 'st: 'tast, 'tokens: 'st, 'code: 'tokens> {
-    pub(crate) typed_syntax_tree: &'tast TypedSyntaxTree<'st, 'tokens, 'code>,
-    pub(crate) tokens: &'tokens Tokens<'code>,
+pub struct TypedSyntaxTreeDisplay<'tast, 'st: 'tast, 'tokens: 'st, 'code: 'tokens, 'path: 'code> {
+    pub(crate) tast: &'tast TypedSyntaxTree<'st, 'tokens, 'code, 'path>,
 }
 
-impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
+impl TypedSyntaxTreeDisplay<'_, '_, '_, '_, '_> {
     const INDENT_INCREMENT: usize = 2;
 
     fn info_if(
@@ -2866,7 +2806,7 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
         node_index: &mut NodeIndex<'_>,
         indent: usize,
     ) -> core::fmt::Result {
-        let node = &self.typed_syntax_tree.nodes[*node_index];
+        let node = &self.tast.nodes[*node_index];
         node_index.0 += 1;
 
         #[rustfmt::skip]
@@ -2997,7 +2937,7 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
         expression_index: ExpressionIndex<'_>,
         indent: usize,
     ) -> core::fmt::Result {
-        let expression = &self.typed_syntax_tree.expressions[expression_index];
+        let expression = &self.tast.expressions[expression_index];
 
         #[rustfmt::skip]
         return match expression {
@@ -3010,12 +2950,12 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
                 writeln!(f, "{:>indent$}Ascii = {character}", "")
             }
             Expression::Str { literal, .. } => {
-                let literal_str = self.tokens.text[*literal];
+                let literal_str = self.tast.syntax_tree.text()[*literal];
                 writeln!(f, "{:>indent$}Str = {literal_str}", "")
             }
             Expression::Variable { variable, .. } => {
-                let variable_definition = &self.typed_syntax_tree.variables[*variable];
-                let identifier_str = self.tokens.text[variable_definition.name];
+                let variable_definition = &self.tast.variables[*variable];
+                let identifier_str = self.tast.syntax_tree.text()[variable_definition.name];
                 writeln!(f, "{:>indent$}Identifier = {identifier_str}", "")
             }
             Expression::Array { items_start, items_len, .. } => {
@@ -3024,7 +2964,7 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
 
                 let items_indent = expression_indent + Self::INDENT_INCREMENT;
                 let items_end = items_start.0 as usize + *items_len as usize;
-                let items = &self.typed_syntax_tree.array_items[items_start.0 as usize..items_end];
+                let items = &self.tast.array_items[items_start.0 as usize..items_end];
                 for item_expression in items {
                     self.info_expression(f, *item_expression, items_indent)?;
                 }
@@ -3091,8 +3031,8 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
         variable_index: VariableDefinitionIndex<'_>,
         indent: usize,
     ) -> core::fmt::Result {
-        let VariableDefinition { name, value, typ } = &self.typed_syntax_tree.variables[variable_index];
-        let name_str = self.tokens.text[*name];
+        let VariableDefinition { name, value, typ } = &self.tast.variables[variable_index];
+        let name_str = self.tast.syntax_tree.text()[*name];
         writeln!(f, "{:>indent$}Name = {name_str}", "")?;
         writeln!(f, "{:>indent$}Type = {typ}", "")?;
         writeln!(f, "{:>indent$}InitialValue", "")?;
@@ -3102,10 +3042,10 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
     }
 }
 
-impl Display for TypedSyntaxTreeDisplay<'_, '_, '_, '_> {
+impl Display for TypedSyntaxTreeDisplay<'_, '_, '_, '_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut node_index = NodeIndex::new(0);
-        while (node_index.0 as usize) < self.typed_syntax_tree.nodes.len() {
+        while (node_index.0 as usize) < self.tast.nodes.len() {
             self.info_node(f, &mut node_index, 0)?;
         }
 

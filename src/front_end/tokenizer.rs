@@ -1,27 +1,11 @@
-use super::{
-    IntoMsgInfo, Msg, MsgInfo,
-    src_file::{Line, SrcCode, SrcFile},
+use super::{IntoMsgInfo, Msg, MsgInfo, src_file::{SrcCode, SrcFile}};
+use crate::{error::DisplayLen as _, front_end::{Index32, MsgSeverity}};
+use back_to_front::{
+    ascii, digit, src_code::{Line, LineEnd}, usize32, utf32
 };
-use crate::{
-    error::DisplayLen as _,
-    front_end::{Index32, MsgSeverity},
-};
-use back_to_front::{digit, uoffset32};
-use core::{
-    fmt::{Display, Write as _},
-    ops::RangeInclusive,
-};
+use core::fmt::{Display, Write as _};
+use std::path::Path;
 use unicode_segmentation::UnicodeSegmentation as _;
-
-// TODO(stefano): move to primitives.rs
-#[expect(non_camel_case_types, reason = "alias to a primitive type")]
-/// kay's ascii character type
-pub(crate) type ascii = u8;
-
-// TODO(stefano): move to primitives.rs
-#[expect(non_camel_case_types, reason = "alias to a primitive type")]
-/// kay's utf32 character type
-pub(crate) type utf32 = char;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[repr(u8)]
@@ -114,7 +98,7 @@ pub enum Op {
 }
 
 impl Op {
-    pub(crate) const fn display_len(self) -> uoffset32 {
+    pub(crate) const fn display_len(self) -> usize32 {
         return match self {
             Self::Len => 3,
             Self::Equals => 1,
@@ -293,8 +277,41 @@ impl Display for Op {
     }
 }
 
+
+#[derive(Clone, Copy)]
+enum EscapeSequence {
+    Ok(ascii),
+    ErrBreak,
+    ErrContinue,
+}
+
+#[derive(Clone)]
+pub(crate) struct EscapedAscii {
+    pub(crate) ch: u8,
+}
+
+impl Display for EscapedAscii {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        return match self.ch {
+            control @ (b'\x00'..=b'\x1A') => {
+                let caret = (b'@' + control) as utf32;
+                write!(f, "\\^{caret}")
+            },
+            control @ b'\x1B'..=b'\x1F' => {
+                let offset = control - b'\x1B';
+                let caret = (b'[' + offset) as utf32;
+                write!(f, "\\^{caret}")
+            },
+            b'\x7F' => write!(f, "\\^?"),
+            other => f.write_char(other as utf32),
+        };
+    }
+}
+
+
 pub(crate) type TextIndex<'code> = Index32<&'code str>;
 pub(crate) type TokenIndex<'code> = Index32<Token<'code>>;
+
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum TokenKind<'code> {
@@ -355,7 +372,7 @@ pub(crate) enum TokenKind<'code> {
 }
 
 impl<'code> TokenKind<'code> {
-    pub(crate) fn display_len(self, tokens: &Tokens<'code>) -> uoffset32 {
+    pub(crate) fn display_len(self, tokens: &Tokens<'code>) -> usize32 {
         return match self {
             Self::LineComment(comment) => {
                 let text = tokens.text[comment];
@@ -387,41 +404,41 @@ impl<'code> TokenKind<'code> {
 
             Self::DecimalInteger(integer) | Self::DecimalIntegerPrefix(integer) => {
                 let text = tokens.text[integer];
-                text.len() as uoffset32
+                text.len() as usize32
             },
             Self::BinaryInteger(integer) => {
                 let text = tokens.text[integer];
-                text.len() as uoffset32
+                text.len() as usize32
             },
             Self::OctalInteger(integer) => {
                 let text = tokens.text[integer];
-                text.len() as uoffset32
+                text.len() as usize32
             },
             Self::HexadecimalInteger(integer) => {
                 let text = tokens.text[integer];
-                text.len() as uoffset32
+                text.len() as usize32
             },
 
             Self::Ascii(ascii_char, _) => {
                 let text = tokens.text[ascii_char];
-                text.len() as uoffset32
+                text.len() as usize32
             },
             Self::Str(string) => {
                 let text = tokens.text[string];
-                text.len() as uoffset32
+                text.len() as usize32
             },
             Self::RawStr(string) => {
                 let text = tokens.text[string];
-                text.len() as uoffset32
+                text.len() as usize32
             },
             Self::IdentifierStr(identifier) => {
                 let text = tokens.text[identifier];
-                text.len() as uoffset32
+                text.len() as usize32
             },
 
             Self::Identifier(identifier) => {
                 let text = tokens.text[identifier];
-                text.len() as uoffset32
+                text.len() as usize32
             },
 
             Self::Print => 5,
@@ -441,64 +458,94 @@ impl<'code> TokenKind<'code> {
     }
 }
 
+
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct Token<'code> {
     pub(crate) kind: TokenKind<'code>,
-    pub(crate) col: uoffset32,
+    pub(crate) col: usize32,
 }
+
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Tokens<'code> {
     pub(crate) tokens: Vec<Token<'code>>,
 
-    // IDEA(stefano): store a Range<uoffset32> instead
+    // IDEA(stefano): store a Range<usize32> instead
     pub(crate) text: Vec<&'code str>,
 }
 
+
 #[must_use = "this is similar to a `Result`, which should be handled"]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct TokenizedCode<'code, 'path: 'code> {
-    pub result: Result<Tokens<'code>, Vec<Msg<ErrorKind<'code>>>>,
+pub struct TokenizationResult<'code, 'path: 'code> {
+    /// Valid even on tokenization errors
     pub src: SrcCode<'code, 'path>,
+    pub result: Result<Tokens<'code>, Vec<Msg<ErrorKind<'code>>>>,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct Tokenizer<'code> {
-    code: &'code str,
-    lines: Vec<Line>,
-    line_start: uoffset32,
-
-    col: uoffset32,
-    token_start_col: uoffset32,
-    tokens: Tokens<'code>,
-
-    errors: Vec<Msg<ErrorKind<'code>>>,
+pub struct TokenizedCode<'code, 'path: 'code> {
+    pub src: SrcCode<'code, 'path>,
+    pub tokens: Tokens<'code>,
 }
 
-impl<'code, 'path: 'code> Tokenizer<'code> {
+// getters
+#[rustfmt::skip]
+impl<'code, 'path: 'code> TokenizedCode<'code, 'path> {
+    #[must_use] #[inline(always)] pub(crate) const fn path(&self)   -> &'path Path     { return self.src.path(); }
+    #[must_use] #[inline(always)] pub(crate) const fn code(&self)   -> &'code str      { return self.src.code(); }
+    #[must_use] #[inline(always)] pub(crate) const fn lines(&self)  -> &[Line]         { return self.src.lines(); }
+    #[must_use] #[inline(always)] pub(crate) const fn tokens(&self) -> &[Token<'code>] { return self.tokens.tokens.as_slice(); }
+    #[must_use] #[inline(always)] pub(crate) const fn text(&self)   -> &[&'code str]   { return self.tokens.text.as_slice(); }
+}
+
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct Tokenizer<'code, 'path: 'code> {
+    errors: Vec<Msg<ErrorKind<'code>>>,
+    tokens: TokenizedCode<'code, 'path>,
+
+    line_start: usize32,
+
+    col: usize32,
+    token_start_col: usize32,
+}
+
+// getters/setters
+#[rustfmt::skip]
+impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
+    #[must_use] #[inline(always)] pub(crate) const fn path(&self)   -> &'path Path { return self.tokens.src.path(); }
+    #[must_use] #[inline(always)] pub(crate) const fn code(&self)   -> &'code str  { return self.tokens.src.code(); }
+
+    #[inline(always)] fn push_token(&mut self, token: Token<'code>) {
+        self.tokens.tokens.tokens.push(token);
+    }
+}
+
+impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
     // IDEA(stefano): make into an iterator
-    pub fn tokenize(src_file: &'code SrcFile<'path>) -> TokenizedCode<'code, 'path> {
+    pub fn tokenize(src_file: &'code SrcFile<'path>) -> TokenizationResult<'code, 'path> {
         #[repr(C)]
         union BackPatch<'code> {
             token: TokenIndex<'code>,
-            column: uoffset32,
+            column: usize32,
         }
 
         let tokens = Tokens { tokens: Vec::new(), text: Vec::new() };
+        let src = SrcCode { src_file, lines: Vec::new() };
+
         if src_file.code.len() == 0 {
-            return TokenizedCode { result: Ok(tokens), src: SrcCode { src_file, lines: Vec::new() } };
+            return TokenizationResult { src, result: Ok(tokens) };
         }
 
         let mut tokenizer = Tokenizer {
-            code: &src_file.code,
-            lines: Vec::new(),
+            errors: Vec::new(),
+            tokens: TokenizedCode { src, tokens },
+
             line_start: 0,
 
             col: 0,
             token_start_col: 0,
-            tokens,
-
-            errors: Vec::new(),
         };
 
         let mut back_patches = Vec::<BackPatch<'_>>::new();
@@ -518,7 +565,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                             continue 'tokenization;
                         },
                         b'\r' => {
-                            if let Some(b'\n') = tokenizer.code.as_bytes().get(tokenizer.col as usize + 1) {
+                            if let Some(b'\n') = tokenizer.code().as_bytes().get(tokenizer.col as usize + 1) {
                                 tokenizer.new_line(LineEnd::CRLF);
                                 continue 'tokenization;
                             }
@@ -540,7 +587,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                     },
                     Err(grapheme) => {
                         tokenizer.push_utf8_error(grapheme);
-                        tokenizer.col += grapheme.len() as uoffset32;
+                        tokenizer.col += grapheme.len() as usize32;
                         break 'next_token Err(());
                     },
                 };
@@ -599,10 +646,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                                             };
 
                                             let kind = TokenKind::BlockComment(comment_index);
-                                            tokenizer
-                                                .tokens
-                                                .tokens
-                                                .push(Token { kind, col: tokenizer.token_start_col });
+                                            tokenizer.push_token(Token { kind, col: tokenizer.token_start_col });
                                             tokenizer.token_start_col = unsafe { token_start_col.column };
                                         },
                                         Some(_) => {},
@@ -668,7 +712,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         },
                     },
                     b'(' => {
-                        let back_patch = BackPatch { token: TokenIndex::new(tokenizer.tokens.tokens.len()) };
+                        let back_patch = BackPatch { token: TokenIndex::new(tokenizer.tokens.tokens().len()) };
                         back_patches.push(back_patch);
                         Ok(TokenKind::OpenRoundBracket)
                     },
@@ -685,7 +729,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
 
                         let token = unsafe { bracket_index.token };
                         #[expect(clippy::wildcard_enum_match_arm)]
-                        match tokenizer.tokens.tokens[token].kind {
+                        match tokenizer.tokens.tokens()[token].kind {
                             TokenKind::OpenRoundBracket
                             | TokenKind::CloseRoundBracket
                             | TokenKind::CloseCurlyBracket
@@ -712,7 +756,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         }
                     },
                     b'[' => {
-                        let back_patch = BackPatch { token: TokenIndex::new(tokenizer.tokens.tokens.len()) };
+                        let back_patch = BackPatch { token: TokenIndex::new(tokenizer.tokens.tokens().len()) };
                         back_patches.push(back_patch);
                         Ok(TokenKind::OpenSquareBracket)
                     },
@@ -729,7 +773,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
 
                         let token = unsafe { bracket_index.token };
                         #[expect(clippy::wildcard_enum_match_arm)]
-                        match tokenizer.tokens.tokens[token].kind {
+                        match tokenizer.tokens.tokens()[token].kind {
                             TokenKind::OpenSquareBracket
                             | TokenKind::CloseSquareBracket
                             | TokenKind::CloseCurlyBracket
@@ -756,7 +800,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                         }
                     },
                     b'{' => {
-                        let back_patch = BackPatch { token: TokenIndex::new(tokenizer.tokens.tokens.len()) };
+                        let back_patch = BackPatch { token: TokenIndex::new(tokenizer.tokens.tokens().len()) };
                         back_patches.push(back_patch);
                         Ok(TokenKind::OpenCurlyBracket)
                     },
@@ -773,7 +817,7 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
 
                         let token = unsafe { bracket_index.token };
                         #[expect(clippy::wildcard_enum_match_arm)]
-                        match tokenizer.tokens.tokens[token].kind {
+                        match tokenizer.tokens.tokens()[token].kind {
                             TokenKind::OpenCurlyBracket
                             | TokenKind::CloseCurlyBracket
                             | TokenKind::CloseRoundBracket
@@ -1122,19 +1166,19 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
                 },
             };
 
-            tokenizer.tokens.tokens.push(Token { kind, col: tokenizer.token_start_col });
+            tokenizer.push_token(Token { kind, col: tokenizer.token_start_col });
         }
 
         if tokenizer.line_start != tokenizer.col {
             // file ended without a newline
-            let line = Line { start: tokenizer.line_start, end: tokenizer.col };
-            tokenizer.lines.push(line);
+            let line = unsafe { Line::new_unchecked(tokenizer.line_start, tokenizer.col) };
+            tokenizer.tokens.src.lines.push(line);
         }
 
         while let Some(bracket_index) = back_patches.pop() {
             let token = unsafe { bracket_index.token };
             // there can only be open brackets at this point
-            let bracket_token = tokenizer.tokens.tokens[token];
+            let bracket_token = tokenizer.tokens.tokens()[token];
 
             #[expect(clippy::wildcard_enum_match_arm)]
             let error_kind = match bracket_token.kind {
@@ -1153,56 +1197,46 @@ impl<'code, 'path: 'code> Tokenizer<'code> {
         }
 
         let result = if tokenizer.errors.len() == 0 {
-            Ok(tokenizer.tokens)
+            Ok(tokenizer.tokens.tokens)
         } else {
             Err(tokenizer.errors)
         };
-        return TokenizedCode { result, src: SrcCode { src_file, lines: tokenizer.lines } };
+        return TokenizationResult { src: tokenizer.tokens.src, result };
     }
 }
 
-// TODO(stefano): use the enum from `back-to-front`
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-enum LineEnd {
-    LF = 1,
-    CRLF = 2,
-}
-
-impl LineEnd {
-    const CR: Self = Self::LF;
-}
-
 // iteration of characters
-impl<'code> Tokenizer<'code> {
+impl<'code> Tokenizer<'code, '_> {
     #[inline]
     fn new_line(&mut self, line_end: LineEnd) {
-        let line = Line { start: self.line_start, end: self.col };
-        self.col += line_end as uoffset32;
+        let line = unsafe { Line::new_unchecked(self.line_start, self.col) };
+        self.tokens.src.lines.push(line);
+
+        self.col += line_end as usize32;
         self.line_start = self.col;
-        self.lines.push(line);
     }
 
     #[must_use]
     #[inline]
     fn new_token_text(&mut self, text: &'code str) -> TextIndex<'code> {
-        let index = TextIndex::new(self.tokens.text.len());
-        self.tokens.text.push(text);
+        let index = TextIndex::new(self.tokens.text().len());
+        self.tokens.tokens.text.push(text);
         return index;
     }
 
     #[must_use]
     #[inline(always)]
     fn token_text(&self) -> &'code str {
-        return &self.code[self.token_start_col as usize..self.col as usize];
+        return &self.code()[self.token_start_col as usize..self.col as usize];
     }
 
     #[must_use]
     #[inline]
     const fn current_byte_multiline(&self) -> Option<u8> {
-        if self.col as usize >= self.code.len() {
+        if self.col as usize >= self.code().len() {
             return None;
         }
-        return Some(self.code.as_bytes()[self.col as usize]);
+        return Some(self.code().as_bytes()[self.col as usize]);
     }
 
     #[must_use]
@@ -1227,7 +1261,7 @@ impl<'code> Tokenizer<'code> {
                 Some(b'\n')
             },
             b'\r' => {
-                if let Some(b'\n') = self.code.as_bytes().get(self.col as usize + 1) {
+                if let Some(b'\n') = self.code().as_bytes().get(self.col as usize + 1) {
                     self.new_line(LineEnd::CRLF);
                     return Some(b'\n');
                 }
@@ -1249,7 +1283,7 @@ impl<'code> Tokenizer<'code> {
     }
 
     fn current_grapheme(&self) -> &'code str {
-        let rest_of_code = &self.code[self.col as usize..];
+        let rest_of_code = &self.code()[self.col as usize..];
         let mut rest_of_line_graphemes = rest_of_code.graphemes(true);
         let Some(grapheme) = rest_of_line_graphemes.next() else {
             unreachable!("not a valid grapheme");
@@ -1303,7 +1337,7 @@ impl<'code> Tokenizer<'code> {
                 ascii_ch @ 0..=b'\x7F' => return Some(ascii_ch),
                 _utf8_ch => {
                     let grapheme = self.current_grapheme();
-                    self.col += grapheme.len() as uoffset32;
+                    self.col += grapheme.len() as usize32;
                     self.push_utf8_error(grapheme);
                 },
             }
@@ -1321,15 +1355,15 @@ impl<'code> Tokenizer<'code> {
 }
 
 // tokenization of numbers
-impl<'code> Tokenizer<'code> {
+impl<'code> Tokenizer<'code, '_> {
     fn check_digits(&mut self, base: digit::Base) -> Result<&'code str, ()> {
         let previous_errors_len = self.errors.len();
 
         let check_fn = match base {
-            digit::Base::Binary => digit::check_binary_offset,
-            digit::Base::Octal => digit::check_octal_offset,
-            digit::Base::Decimal => digit::check_decimal_offset,
-            digit::Base::Hexadecimal => digit::check_hexadecimal_offset,
+            digit::Base::Binary => digit::binary::check,
+            digit::Base::Octal => digit::octal::check,
+            digit::Base::Decimal => digit::decimal::check,
+            digit::Base::Hexadecimal => digit::hexadecimal::check,
         };
 
         while let Some(digit) = self.current_or_until_next_ascii_singleline() {
@@ -1384,43 +1418,13 @@ impl<'code> Tokenizer<'code> {
     }
 }
 
-#[derive(Clone, Copy)]
-enum EscapeSequence {
-    Ok(ascii),
-    ErrBreak,
-    ErrContinue,
-}
-
-#[derive(Clone)]
-pub(crate) struct EscapedAscii {
-    pub(crate) ch: u8,
-}
-
-impl Display for EscapedAscii {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        return match self.ch {
-            control @ (b'\x00'..=b'\x1A') => {
-                let caret = (b'@' + control) as utf32;
-                write!(f, "\\^{caret}")
-            },
-            control @ b'\x1B'..=b'\x1F' => {
-                let offset = control - b'\x1B';
-                let caret = (b'[' + offset) as utf32;
-                write!(f, "\\^{caret}")
-            },
-            b'\x7F' => write!(f, "\\^?"),
-            other => f.write_char(other as utf32),
-        };
-    }
-}
-
 // tokenization of strings and character literals
-impl<'code> Tokenizer<'code> {
-    fn escape_sequence(&mut self, start_of_character: uoffset32) -> EscapeSequence {
+impl<'code> Tokenizer<'code, '_> {
+    fn escape_sequence(&mut self, start_of_character: usize32) -> EscapeSequence {
         let current_character = match self.current_ascii_singleline() {
             Some(Ok(current_character)) => current_character,
             Some(Err(grapheme)) => {
-                self.col += grapheme.len() as uoffset32;
+                self.col += grapheme.len() as usize32;
                 self.push_utf8_error(grapheme);
                 return EscapeSequence::ErrContinue;
             },
@@ -1450,7 +1454,7 @@ impl<'code> Tokenizer<'code> {
                     Some(Ok(escape_character)) => escape_character,
                     Some(Err(grapheme)) => {
                         self.push_utf8_error(grapheme);
-                        self.col += grapheme.len() as uoffset32;
+                        self.col += grapheme.len() as usize32;
                         return EscapeSequence::ErrContinue;
                     },
                     None => {
@@ -1513,7 +1517,7 @@ impl<'code> Tokenizer<'code> {
                 Some(Ok(next_character)) => next_character,
                 Some(Err(grapheme)) => {
                     self.push_utf8_error(grapheme);
-                    self.col += grapheme.len() as uoffset32;
+                    self.col += grapheme.len() as usize32;
                     continue;
                 },
                 None => {
@@ -1592,7 +1596,7 @@ impl<'code> Tokenizer<'code> {
                 Some(Ok(next_character)) => next_character,
                 Some(Err(grapheme)) => {
                     self.push_utf8_error(grapheme);
-                    self.col += grapheme.len() as uoffset32;
+                    self.col += grapheme.len() as usize32;
                     continue;
                 },
                 None => {
@@ -1650,7 +1654,7 @@ impl<'code> Tokenizer<'code> {
                 Some(Ok(next_character)) => next_character,
                 Some(Err(grapheme)) => {
                     self.push_utf8_error(grapheme);
-                    self.col += grapheme.len() as uoffset32;
+                    self.col += grapheme.len() as usize32;
                     continue;
                 },
                 None => {
@@ -1672,7 +1676,7 @@ impl<'code> Tokenizer<'code> {
                         Some(Ok(escape_character)) => escape_character,
                         Some(Err(grapheme)) => {
                             self.push_utf8_error(grapheme);
-                            self.col += grapheme.len() as uoffset32;
+                            self.col += grapheme.len() as usize32;
                             continue;
                         },
                         None => {
@@ -1717,8 +1721,8 @@ impl<'code> Tokenizer<'code> {
 }
 
 // tokenization of identifiers
-impl<'code> Tokenizer<'code> {
-    const MAX_IDENTIFIER_LEN: uoffset32 = 63;
+impl<'code> Tokenizer<'code, '_> {
+    const MAX_IDENTIFIER_LEN: usize32 = 63;
 
     fn identifier_str_characters(&mut self) -> Result<&'code str, ()> {
         let previous_errors_len = self.errors.len();
@@ -1728,7 +1732,7 @@ impl<'code> Tokenizer<'code> {
                 Some(Ok(next_character)) => next_character,
                 Some(Err(grapheme)) => {
                     self.push_utf8_error(grapheme);
-                    self.col += grapheme.len() as uoffset32;
+                    self.col += grapheme.len() as usize32;
                     continue;
                 },
                 None => {
@@ -1763,7 +1767,7 @@ impl<'code> Tokenizer<'code> {
         }
 
         let identifier = self.token_text();
-        let identifier_len = identifier.len() as uoffset32 - 2; // - 2 for the quotes
+        let identifier_len = identifier.len() as usize32 - 2; // - 2 for the quotes
         if identifier_len > Self::MAX_IDENTIFIER_LEN {
             self.errors.push(Msg {
                 severity: MsgSeverity::NonTerminalError,
@@ -1816,7 +1820,7 @@ impl<'code> Tokenizer<'code> {
             "continue" => TokenKind::Continue,
             "len" => TokenKind::Op(Op::Len),
             identifier => {
-                let identifier_len = identifier.len() as uoffset32;
+                let identifier_len = identifier.len() as usize32;
                 if identifier_len > Self::MAX_IDENTIFIER_LEN {
                     self.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
@@ -1835,6 +1839,7 @@ impl<'code> Tokenizer<'code> {
         return Ok(identifier);
     }
 }
+
 
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
 #[repr(transparent)]
@@ -1855,10 +1860,13 @@ impl Base {
 
     pub const HEXADECIMAL_LETTER:      &str = "x";
     pub const HEXADECIMAL_PREFIX:      &str = "0x";
+}
 
+impl Base {
     #[must_use]
     #[inline]
     pub const fn letter(self) -> &'static str {
+        #[rustfmt::skip]
         return match self.0 {
             digit::Base::Binary      => Self::BINARY_LETTER,
             digit::Base::Octal       => Self::OCTAL_LETTER,
@@ -1870,6 +1878,7 @@ impl Base {
     #[must_use]
     #[inline]
     pub const fn letter_extended(self) -> &'static str {
+        #[rustfmt::skip]
         return match self.0 {
             digit::Base::Binary      => Self::BINARY_LETTER,
             digit::Base::Octal       => Self::OCTAL_LETTER,
@@ -1881,6 +1890,7 @@ impl Base {
     #[must_use]
     #[inline]
     pub const fn prefix(self) -> &'static str {
+        #[rustfmt::skip]
         return match self.0 {
             digit::Base::Binary      => Self::BINARY_PREFIX,
             digit::Base::Octal       => Self::OCTAL_PREFIX,
@@ -1892,6 +1902,7 @@ impl Base {
     #[must_use]
     #[inline]
     pub const fn prefix_extended(self) -> &'static str {
+        #[rustfmt::skip]
         return match self.0 {
             digit::Base::Binary      => Self::BINARY_PREFIX,
             digit::Base::Octal       => Self::OCTAL_PREFIX,
@@ -1899,21 +1910,8 @@ impl Base {
             digit::Base::Hexadecimal => Self::HEXADECIMAL_PREFIX,
         };
     }
-
-    #[deprecated(since = "0.6.4", note = "just access the inner field")]
-    #[must_use]
-    #[inline(always)]
-    pub const fn range(self) -> &'static [RangeInclusive<utf32>] {
-        return self.0.range_ops();
-    }
-
-    #[deprecated(since = "0.6.4", note = "just access the inner field")]
-    #[must_use]
-    #[inline(always)]
-    pub const fn range_ascii(self) -> &'static [RangeInclusive<ascii>] {
-        return self.0.range_ascii_ops();
-    }
 }
+
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum ErrorKind<'code> {
@@ -1947,7 +1945,7 @@ pub enum ErrorKind<'code> {
     EmptyCharacterLiteral,
     MultipleCharactersInCharacterLiteral,
 
-    IdentifierTooLong { max: uoffset32 },
+    IdentifierTooLong { max: usize32 },
 
     ControlCharacter(ascii),
     Utf8Character { grapheme: &'code str },
