@@ -368,7 +368,7 @@ Expressions follow this order of operations (precedence from highest to lowest):
     - binary boolean comparisons (cannot be chained, i.e.: `3 > 2 > 1` is not a valid boolean
         expression):
         - equals to `==`
-        - not equals to `!=`
+        - not equals to `!==`
         - greater than `>`
         - greater or equals than `>=`
         - less than `<`
