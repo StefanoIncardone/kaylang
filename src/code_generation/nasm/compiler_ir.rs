@@ -46,7 +46,7 @@ struct RegisterVariable<'ir, 'code: 'ir> {
 // }
 
 #[derive(Debug)]
-pub struct Compiler<'ir, 'tast: 'ir, 'st: 'tast, 'tokens: 'tast, 'code: 'tokens, 'path: 'code> {
+pub struct Compiler<'ir, 'tast: 'ir, 'st: 'tast, 'tokens: 'tast, 'code: 'tokens, 'path> {
     ir: &'ir Ir<'tast, 'st, 'tokens, 'code, 'path>,
 
     asm: String,
@@ -62,7 +62,7 @@ pub struct Compiler<'ir, 'tast: 'ir, 'st: 'tast, 'tokens: 'tast, 'code: 'tokens,
 }
 
 // Generation of compilation artifacts (.asm, .o, executable)
-impl<'ir, 'tast: 'ir, 'st: 'tast, 'tokens: 'st, 'code: 'tokens, 'path: 'code> Compiler<'ir, 'tast, 'st, 'tokens, 'code, 'path> {
+impl<'ir, 'tast: 'ir, 'st: 'tast, 'tokens: 'st, 'code: 'tokens, 'path> Compiler<'ir, 'tast, 'st, 'tokens, 'code, 'path> {
     #[must_use]
     pub fn compile(ir: &'ir Ir<'tast, 'st, 'tokens, 'code, 'path>) -> String {
         use crate::code_generation::nasm::asm::{
@@ -341,7 +341,7 @@ impl<'ir, 'code: 'ir> Compiler<'ir, '_, '_, '_, 'code, '_> {
             Node::Expression { value } => unimplemented!(),
             Node::TempVariable { value } => unimplemented!(),
             Node::Variable { value, .. } => unimplemented!(),
-            Node::Print { argument } => {
+            Node::Print { argument, .. } => {
                 self.expression(*argument);
                 self.print(*argument);
             },
@@ -366,7 +366,7 @@ impl<'ir, 'code: 'ir> Compiler<'ir, '_, '_, '_, 'code, '_> {
     fn expression(&mut self, expression_index: ExpressionIndex<'code>) {
         let expression = &self.ir.expressions[expression_index];
         match expression {
-            Expression::Operand { operand } => self.operand(*operand),
+            Expression::Operand { operand, .. } | Expression::TempOperand { operand } => self.operand(*operand),
             // Expression::Prefix { operator, operator_column, right_operand } => todo!(),
             // Expression::BooleanPrefix { operator, operator_column, right_operand } => todo!(),
             // Expression::Binary { left_operand, operator, operator_column, right_operand } => todo!(),
@@ -379,7 +379,8 @@ impl<'ir, 'code: 'ir> Compiler<'ir, '_, '_, '_, 'code, '_> {
     fn print(&mut self, argument_index: ExpressionIndex<'code>) {
         let argument = &self.ir.expressions[argument_index];
         match argument {
-            Expression::Operand { operand: operand_index } => {
+            Expression::Operand { operand: operand_index, .. }
+            | Expression::TempOperand { operand: operand_index } => {
                 let operand = &self.ir.operands[*operand_index];
                 match operand {
                     Operand::False

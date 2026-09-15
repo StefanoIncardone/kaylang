@@ -477,21 +477,21 @@ pub struct Tokens<'code> {
 
 #[must_use = "this is similar to a `Result`, which should be handled"]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct TokenizationResult<'code, 'path: 'code> {
+pub struct TokenizationResult<'code, 'path> {
     /// Valid even on tokenization errors
     pub src: SrcCode<'code, 'path>,
     pub result: Result<Tokens<'code>, Vec<Msg<ErrorKind<'code>>>>,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct TokenizedCode<'code, 'path: 'code> {
+pub struct TokenizedCode<'code, 'path> {
     pub src: SrcCode<'code, 'path>,
     pub tokens: Tokens<'code>,
 }
 
 // getters
 #[rustfmt::skip]
-impl<'code, 'path: 'code> TokenizedCode<'code, 'path> {
+impl<'code, 'path> TokenizedCode<'code, 'path> {
     #[must_use] #[inline(always)] pub(crate) const fn path(&self)   -> &'path Path     { return self.src.path(); }
     #[must_use] #[inline(always)] pub(crate) const fn code(&self)   -> &'code str      { return self.src.code(); }
     #[must_use] #[inline(always)] pub(crate) const fn lines(&self)  -> &[Line]         { return self.src.lines(); }
@@ -501,7 +501,7 @@ impl<'code, 'path: 'code> TokenizedCode<'code, 'path> {
 
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct Tokenizer<'code, 'path: 'code> {
+pub struct Tokenizer<'code, 'path> {
     errors: Vec<Msg<ErrorKind<'code>>>,
     tokens: TokenizedCode<'code, 'path>,
 
@@ -513,7 +513,7 @@ pub struct Tokenizer<'code, 'path: 'code> {
 
 // getters/setters
 #[rustfmt::skip]
-impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
+impl<'code, 'path> Tokenizer<'code, 'path> {
     #[must_use] #[inline(always)] pub(crate) const fn path(&self)   -> &'path Path { return self.tokens.src.path(); }
     #[must_use] #[inline(always)] pub(crate) const fn code(&self)   -> &'code str  { return self.tokens.src.code(); }
 
@@ -522,7 +522,7 @@ impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
     }
 }
 
-impl<'code, 'path: 'code> Tokenizer<'code, 'path> {
+impl<'code, 'path> Tokenizer<'code, 'path> {
     // IDEA(stefano): make into an iterator
     pub fn tokenize(src_file: &'code SrcFile<'path>) -> TokenizationResult<'code, 'path> {
         #[repr(C)]

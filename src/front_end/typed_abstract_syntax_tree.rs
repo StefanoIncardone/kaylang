@@ -2,9 +2,9 @@
 // IDEA(stefano): fuse tokenization and parsing, making the tokenizer a generator of tokens
 // TODO(stefano): multidimensional arrays
 
-use crate::front_end::{
-    Index32, MsgDisplay, MsgSeverity, src_file::DisplayPosition, tokenizer::{self, TokenKind}, types::BaseType,
-};
+use crate::{ERROR, error::MsgWithCauseUnderTextWithLocation, front_end::{
+    Index32, MsgSeverity, src_file::Position, tokenizer::{self, TokenKind}, types::BaseType,
+}};
 use back_to_front::{ascii, digit, usize32};
 
 use super::{
@@ -13,8 +13,6 @@ use super::{
     tokenizer::{Op, TextIndex},
 };
 use core::fmt::Display;
-extern crate alloc;
-use alloc::borrow::Cow;
 
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -884,6 +882,7 @@ pub(crate) struct Scope<'code> {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct VariableDefinition<'code> {
     pub(crate) name: TextIndex<'code>,
+    pub(crate) name_column: usize32,
     // NOTE(stefano): might remove and recalculate it each time
     pub(crate) typ: Type,
     pub(crate) value: ExpressionIndex<'code>,
@@ -895,19 +894,27 @@ pub(crate) enum Node<'code> {
     Expression(ExpressionIndex<'code>),
 
     Print {
+        print_column: usize32,
         argument: ExpressionIndex<'code>,
     },
     Println {
+        println_column: usize32,
         argument: ExpressionIndex<'code>,
     },
-    PrintlnNoArg,
+    PrintlnNoArg {
+        println_column: usize32,
+    },
     Eprint {
+        eprint_column: usize32,
         argument: ExpressionIndex<'code>,
     },
     Eprintln {
+        eprintln_column: usize32,
         argument: ExpressionIndex<'code>,
     },
-    EprintlnNoArg,
+    EprintlnNoArg {
+        eprintln_column: usize32,
+    },
 
     LetVariableDefinition {
         variable: VariableDefinitionIndex<'code>,
@@ -948,21 +955,33 @@ pub(crate) enum Node<'code> {
     },
 
     If {
+        if_column: usize32,
         condition: ExpressionIndex<'code>,
     },
     ElseIf {
+        else_column: usize32,
+        if_column: usize32,
         condition: ExpressionIndex<'code>,
     },
-    Else,
+    Else {
+        else_column: usize32,
+    },
 
     Loop {
+        loop_column: usize32,
         condition: ExpressionIndex<'code>,
     },
     DoLoop {
+        do_column: usize32,
+        loop_column: usize32,
         condition: ExpressionIndex<'code>,
     },
-    Break,
-    Continue,
+    Break {
+        break_column: usize32,
+    },
+    Continue {
+        continue_column: usize32,
+    },
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -972,7 +991,7 @@ enum ParsedNode<'code> {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct TypedSyntaxTree<'st, 'tokens: 'st, 'code: 'tokens, 'path: 'code> {
+pub struct TypedSyntaxTree<'st, 'tokens: 'st, 'code: 'tokens, 'path> {
     pub(crate) syntax_tree: &'st SyntaxTree<'tokens, 'code, 'path>,
 
     pub(crate) nodes: Vec<Node<'code>>,
@@ -1007,7 +1026,7 @@ impl<'tokens> TypedSyntaxTree<'_, 'tokens, '_, '_> {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct Parser<'st, 'tokens: 'st, 'code: 'tokens, 'path: 'code> {
+pub struct Parser<'st, 'tokens: 'st, 'code: 'tokens, 'path> {
     errors: Vec<Msg<ErrorKind>>,
     tast: TypedSyntaxTree<'st, 'tokens, 'code, 'path>,
 
@@ -1018,7 +1037,7 @@ pub struct Parser<'st, 'tokens: 'st, 'code: 'tokens, 'path: 'code> {
     scopes: Vec<Scope<'code>>,
 }
 
-impl<'st, 'tokens: 'st, 'code: 'tokens, 'path: 'code> Parser<'st, 'tokens, 'code, 'path> {
+impl<'st, 'tokens: 'st, 'code: 'tokens, 'path> Parser<'st, 'tokens, 'code, 'path> {
     #[expect(clippy::missing_errors_doc)]
     pub fn parse(
         syntax_tree: &'st SyntaxTree<'tokens, 'code, 'path>,
@@ -1083,24 +1102,28 @@ impl<'st, 'tokens: 'st, 'code: 'tokens, 'path: 'code> Parser<'st, 'tokens, 'code
                 Ok(ParsedNode::Node(parsed_assignment))
             },
 
-            st::Node::Print { argument, .. } => {
+            st::Node::Print { argument, print_column, .. } => {
                 let parsed_argument_index = self.parse_expression(*argument, None)?;
-                Ok(ParsedNode::Node(Node::Print { argument: parsed_argument_index }))
+                Ok(ParsedNode::Node(Node::Print { argument: parsed_argument_index, print_column: *print_column }))
             },
-            st::Node::Println { argument, .. } => {
+            st::Node::Println { argument, println_column, .. } => {
                 let parsed_argument_index = self.parse_expression(*argument, None)?;
-                Ok(ParsedNode::Node(Node::Println { argument: parsed_argument_index }))
+                Ok(ParsedNode::Node(Node::Println { argument: parsed_argument_index, println_column: *println_column }))
             },
-            st::Node::PrintlnNoArg { .. } => Ok(ParsedNode::Node(Node::PrintlnNoArg)),
-            st::Node::Eprint { argument, .. } => {
+            st::Node::PrintlnNoArg { println_column, .. } => {
+                Ok(ParsedNode::Node(Node::PrintlnNoArg { println_column: *println_column }))
+            },
+            st::Node::Eprint { argument, eprint_column, .. } => {
                 let parsed_argument_index = self.parse_expression(*argument, None)?;
-                Ok(ParsedNode::Node(Node::Eprint { argument: parsed_argument_index }))
+                Ok(ParsedNode::Node(Node::Eprint { argument: parsed_argument_index, eprint_column: *eprint_column }))
             },
-            st::Node::Eprintln { argument, .. } => {
+            st::Node::Eprintln { argument, eprintln_column, .. } => {
                 let parsed_argument_index = self.parse_expression(*argument, None)?;
-                Ok(ParsedNode::Node(Node::Eprintln { argument: parsed_argument_index }))
+                Ok(ParsedNode::Node(Node::Eprintln { argument: parsed_argument_index, eprintln_column: *eprintln_column }))
             },
-            st::Node::EprintlnNoArg { .. } => Ok(ParsedNode::Node(Node::EprintlnNoArg)),
+            st::Node::EprintlnNoArg { eprintln_column, .. } => {
+                Ok(ParsedNode::Node(Node::EprintlnNoArg { eprintln_column: *eprintln_column }))
+            },
 
             st::Node::LetVariableDefinition { variable_definition, .. } => {
                 let variable = self.parse_variable(*variable_definition)?;
@@ -1156,33 +1179,33 @@ impl<'st, 'tokens: 'st, 'code: 'tokens, 'path: 'code> Parser<'st, 'tokens, 'code
             st::Node::If { if_column, condition } => {
                 let parsed_condition = self.if_condition(*if_column, *condition)?;
                 let parsed_condition_index = self.tast.new_expression(parsed_condition);
-                self.tast.nodes.push(Node::If { condition: parsed_condition_index });
+                self.tast.nodes.push(Node::If { condition: parsed_condition_index, if_column: *if_column });
                 self.scope()
             },
-            st::Node::ElseIf { if_column, condition, .. } => {
+            st::Node::ElseIf { if_column, else_column, condition, .. } => {
                 let parsed_condition = self.if_condition(*if_column, *condition)?;
                 let parsed_condition_index = self.tast.new_expression(parsed_condition);
-                self.tast.nodes.push(Node::ElseIf { condition: parsed_condition_index });
+                self.tast.nodes.push(Node::ElseIf { condition: parsed_condition_index, if_column: *if_column, else_column: *else_column });
                 self.scope()
             },
-            st::Node::Else { .. } => {
-                self.tast.nodes.push(Node::Else);
+            st::Node::Else { else_column, .. } => {
+                self.tast.nodes.push(Node::Else { else_column: *else_column });
                 self.scope()
             },
             st::Node::Loop { loop_column, condition } => {
                 let parsed_condition = self.loop_condition(*loop_column, *condition)?;
                 let parsed_condition_index = self.tast.new_expression(parsed_condition);
-                self.tast.nodes.push(Node::Loop { condition: parsed_condition_index });
+                self.tast.nodes.push(Node::Loop { condition: parsed_condition_index, loop_column: *loop_column });
                 self.scope()
             },
-            st::Node::DoLoop { loop_column, condition, .. } => {
+            st::Node::DoLoop { do_column, loop_column, condition, .. } => {
                 let parsed_condition = self.loop_condition(*loop_column, *condition)?;
                 let parsed_condition_index = self.tast.new_expression(parsed_condition);
-                self.tast.nodes.push(Node::DoLoop { condition: parsed_condition_index });
+                self.tast.nodes.push(Node::DoLoop { condition: parsed_condition_index, do_column: *do_column, loop_column: *loop_column });
                 self.scope()
             },
-            st::Node::Break { .. } => Ok(ParsedNode::Node(Node::Break)),
-            st::Node::Continue { .. } => Ok(ParsedNode::Node(Node::Continue)),
+            st::Node::Break { break_column, .. } => Ok(ParsedNode::Node(Node::Break { break_column: *break_column })),
+            st::Node::Continue { continue_column, .. } => Ok(ParsedNode::Node(Node::Continue { continue_column: *continue_column })),
 
             st::Node::Semicolon { column } => self.stray_semicolon(*column),
         };
@@ -1205,24 +1228,21 @@ impl<'st, 'tokens: 'st, 'code: 'tokens, 'path: 'code> Parser<'st, 'tokens, 'code
         &self,
         absolute_column: usize32,
         pointers_count: usize32,
-        error_message: Cow<'static, str>,
-        error_cause_message: Cow<'static, str>,
+        error_message: &str,
+        error_cause_message: &str,
     ) -> ! {
-        let DisplayPosition { line, column, display_column } = self.tast.syntax_tree.tokens.src.display_position(absolute_column);
-        let line_span = self.tast.syntax_tree.tokens.src.lines[line as usize - 1];
+        let position = Position::new(&self.tast.syntax_tree.tokens.src, absolute_column);
+        let line_span = self.tast.syntax_tree.tokens.src.lines[position.line as usize - 1];
         let line_text = &self.tast.syntax_tree.code()[line_span.start() as usize..line_span.end() as usize];
 
-        let error = MsgDisplay {
+        let error = MsgWithCauseUnderTextWithLocation {
             severity: MsgSeverity::Error,
-            error_message,
-            file: self.tast.syntax_tree.tokens.src.path(),
-            line,
-            column,
-            absolute_column,
+            kind: &ERROR,
+            message: &error_message,
+            cause: &error_cause_message,
+            position,
             line_text,
             pointers_count,
-            pointers_offset: display_column,
-            error_cause_message,
         };
         panic!("{error}\n");
     }
@@ -1233,8 +1253,8 @@ impl<'st, 'tokens: 'st, 'code: 'tokens, 'path: 'code> Parser<'st, 'tokens, 'code
         self.invalid_node(
             semicolon_colon,
             1,
-            "unexpected".into(),
-            "should have been skipped in the iteration of nodes".into(),
+            "unexpected",
+            "should have been skipped in the iteration of nodes",
         );
     }
 
@@ -1243,8 +1263,8 @@ impl<'st, 'tokens: 'st, 'code: 'tokens, 'path: 'code> Parser<'st, 'tokens, 'code
         self.invalid_node(
             open_curly_bracket_column,
             1,
-            "invalid scope index".into(),
-            "should have been caught during syntax tree parsing".into(),
+            "invalid scope index",
+            "should have been caught during syntax tree parsing",
         );
     }
 }
@@ -2345,6 +2365,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
         let variable = VariableDefinition {
             name: *name,
+            name_column: *name_column,
             typ: expression_type,
             value: self.tast.new_expression(parsed_expression),
         };
@@ -2780,7 +2801,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct TypedSyntaxTreeDisplay<'tast, 'st: 'tast, 'tokens: 'st, 'code: 'tokens, 'path: 'code> {
+pub struct TypedSyntaxTreeDisplay<'tast, 'st: 'tast, 'tokens: 'st, 'code: 'tokens, 'path> {
     pub(crate) tast: &'tast TypedSyntaxTree<'st, 'tokens, 'code, 'path>,
 }
 
@@ -2848,30 +2869,30 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_, '_> {
                 writeln!(f, "{:>assignment_indent$}BooleanPrefixAssignmentOp = {operator}", "")
             }
 
-            Node::Print { argument } => {
+            Node::Print { argument, .. } => {
                 writeln!(f, "{:>indent$}Print = print", "")?;
                 let argument_indent = indent + Self::INDENT_INCREMENT;
                 self.info_expression(f, *argument, argument_indent)
             }
-            Node::Println { argument } => {
+            Node::Println { argument, .. } => {
                 writeln!(f, "{:>indent$}Println = println", "")?;
                 let argument_indent = indent + Self::INDENT_INCREMENT;
                 self.info_expression(f, *argument, argument_indent)
             }
-            Node::PrintlnNoArg => {
+            Node::PrintlnNoArg { .. } => {
                 writeln!(f, "{:>indent$}Println = println", "")
             }
-            Node::Eprint { argument } => {
+            Node::Eprint { argument, .. } => {
                 writeln!(f, "{:>indent$}Eprint = eprint", "")?;
                 let argument_indent = indent + Self::INDENT_INCREMENT;
                 self.info_expression(f, *argument, argument_indent)
             }
-            Node::Eprintln { argument } => {
+            Node::Eprintln { argument, .. } => {
                 writeln!(f, "{:>indent$}Eprintln = eprintln", "")?;
                 let argument_indent = indent + Self::INDENT_INCREMENT;
                 self.info_expression(f, *argument, argument_indent)
             }
-            Node::EprintlnNoArg => {
+            Node::EprintlnNoArg { .. } => {
                 writeln!(f, "{:>indent$}Eprintln = eprintln", "")
             }
 
@@ -2896,36 +2917,36 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_, '_> {
                 Ok(())
             }
 
-            Node::If { condition } => {
+            Node::If { condition, .. } => {
                 self.info_if(f, node_index, indent, *condition)
             }
-            Node::ElseIf { condition } => {
+            Node::ElseIf { condition, .. } => {
                 writeln!(f, "{:>indent$}Else = else", "")?;
                 self.info_if(f, node_index, indent, *condition)
             }
-            Node::Else => {
+            Node::Else { .. } => {
                 writeln!(f, "{:>indent$}Else = else", "")?;
                 let else_indent = indent + Self::INDENT_INCREMENT;
                 self.info_node(f, node_index, else_indent)
             }
 
-            Node::Loop { condition } => {
+            Node::Loop { condition, .. } => {
                 writeln!(f, "{:>indent$}Loop = loop", "")?;
                 let loop_indent = indent + Self::INDENT_INCREMENT;
                 self.info_expression(f, *condition, loop_indent)?;
                 self.info_node(f, node_index, loop_indent)
             }
-            Node::DoLoop { condition } => {
+            Node::DoLoop { condition, .. } => {
                 writeln!(f, "{:>indent$}Do = do", "")?;
                 writeln!(f, "{:>indent$}Loop = loop", "")?;
                 let loop_indent = indent + Self::INDENT_INCREMENT;
                 self.info_expression(f, *condition, loop_indent)?;
                 self.info_node(f, node_index, loop_indent)
             }
-            Node::Break => {
+            Node::Break { .. } => {
                 writeln!(f, "{:>indent$}Break = break", "")
             }
-            Node::Continue => {
+            Node::Continue { .. } => {
                 writeln!(f, "{:>indent$}Continue = continue", "")
             }
         };
@@ -3031,7 +3052,7 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_, '_> {
         variable_index: VariableDefinitionIndex<'_>,
         indent: usize,
     ) -> core::fmt::Result {
-        let VariableDefinition { name, value, typ } = &self.tast.variables[variable_index];
+        let VariableDefinition { name, value, typ, .. } = &self.tast.variables[variable_index];
         let name_str = self.tast.syntax_tree.text()[*name];
         writeln!(f, "{:>indent$}Name = {name_str}", "")?;
         writeln!(f, "{:>indent$}Type = {typ}", "")?;

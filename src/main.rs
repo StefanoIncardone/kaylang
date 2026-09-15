@@ -9,7 +9,7 @@ use kaylang::{
 use kaylang::{
     GENERATING_IR, ASSEMBLING, ASSEMBLING_ERROR, PARSING, COMPILING, COULD_NOT_RUN_ASSEMBLER,
     COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER, COULD_NOT_WRITE_COMPILED_CODE, DONE, GENERATING_ASM,
-    LINKING, LINKING_ERROR, LOADING_SOURCE, PARSING_AST, PARSING_SYNTAX_TREE, RUNNING, SUBSTEP_DONE,
+    LINKING, LINKING_ERROR, LOADING_SOURCE, PARSING_AST, PARSING_SYNTAX_TREE, RUNNING,
     TOKENIZATION, TYPE_CHECKING,
 };
 use std::{path::Path, process::ExitCode};
@@ -130,27 +130,22 @@ fn main() -> ExitCode {
             }
         };
 
-        let ast = {
-            let logger = Logger::new();
-            let building_ast_result = Parser::parse(&tokens.src, &tokens.tokens);
-            logger.sub_step(&PARSING_AST, None, verbosity);
-            match building_ast_result {
-                Ok(ast) => ast,
-                Err(errors) => {
-                    for error in errors {
-                        eprintln!("{}\n", error.display(&tokens.src));
-                    }
-                    return ExitCode::FAILURE;
-                },
-            }
-        };
+        // let ast = {
+        //     let logger = Logger::new();
+        //     let building_ast_result = Parser::parse(&tokens.src, &tokens.tokens);
+        //     logger.sub_step(&PARSING_AST, None, verbosity);
+        //     match building_ast_result {
+        //         Ok(ast) => ast,
+        //         Err(errors) => {
+        //             for error in errors {
+        //                 eprintln!("{}\n", error.display(&tokens.src));
+        //             }
+        //             return ExitCode::FAILURE;
+        //         },
+        //     }
+        // };
 
         checking_sub_step.sub_step(&DONE, None, verbosity);
-
-        let (Command::Compile { out_path, .. } | Command::Run { out_path, .. }) = &command else {
-            execution_step.step(&DONE, None, verbosity);
-            return ExitCode::SUCCESS;
-        };
 
         Logger::info(&TRANSFORMING, src_path, verbosity);
         let transforming_sub_step = Logger::new();
@@ -165,8 +160,7 @@ fn main() -> ExitCode {
 
         transforming_sub_step.sub_step(&DONE, None, verbosity);
 
-        // REMOVE(stefano): terminating early to avoid wasting time compiling, i'm just testing the ir parsing
-        if true {
+        let (Command::Compile { out_path, .. } | Command::Run { out_path, .. }) = &command else {
             execution_step.step(&DONE, None, verbosity);
 
             eprintln!("{}", ir.display_debug());
@@ -174,7 +168,7 @@ fn main() -> ExitCode {
             eprintln!("{}", ir.display());
 
             return ExitCode::SUCCESS;
-        }
+        };
 
         Logger::info(&COMPILING, src_path, verbosity);
         compilation_sub_step = Logger::new();

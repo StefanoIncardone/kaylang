@@ -1,15 +1,13 @@
 // TODO(stefano): improve usage consistency of NonZero<usize32>
 
 use super::{
-    IntoMsgInfo, Msg, MsgDisplay, MsgInfo,
-    src_file::DisplayPosition,
+    IntoMsgInfo, Msg, MsgInfo,
+    src_file::Position,
     tokenizer::{Op, TextIndex, Token, TokenIndex, TokenKind},
 };
-use crate::front_end::{Index32, MsgSeverity, tokenizer::TokenizedCode};
+use crate::{ERROR, error::MsgWithCauseUnderTextWithLocation, front_end::{Index32, MsgSeverity, tokenizer::TokenizedCode}};
 use core::{fmt::Display, num::NonZero};
 use std::path::Path;
-extern crate alloc;
-use alloc::borrow::Cow;
 use back_to_front::{ascii, src_code::Line, usize32};
 
 
@@ -565,7 +563,7 @@ enum ParsedNode<'code> {
 
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct SyntaxTree<'tokens, 'code: 'tokens, 'path: 'code> {
+pub struct SyntaxTree<'tokens, 'code: 'tokens, 'path> {
     pub(crate) tokens: &'tokens TokenizedCode<'code, 'path>,
 
     pub(crate) nodes: Vec<Node<'code>>,
@@ -579,7 +577,7 @@ pub struct SyntaxTree<'tokens, 'code: 'tokens, 'path: 'code> {
 
 // getters
 #[rustfmt::skip]
-impl<'tokens, 'code: 'tokens, 'path: 'code> SyntaxTree<'tokens, 'code, 'path> {
+impl<'tokens, 'code: 'tokens, 'path> SyntaxTree<'tokens, 'code, 'path> {
     #[must_use] #[inline(always)] pub(crate) const fn path(&self)   -> &'path Path     { return self.tokens.path(); }
     #[must_use] #[inline(always)] pub(crate) const fn code(&self)   -> &'code str      { return self.tokens.code(); }
     #[must_use] #[inline(always)] pub(crate) const fn lines(&self)  -> &[Line]         { return self.tokens.lines(); }
@@ -597,7 +595,7 @@ impl<'code> SyntaxTree<'_, 'code, '_> {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct Parser<'tokens, 'code: 'tokens, 'path: 'code> {
+pub struct Parser<'tokens, 'code: 'tokens, 'path> {
     errors: Vec<Msg<ErrorKind>>,
     syntax_tree: SyntaxTree<'tokens, 'code, 'path>,
 
@@ -607,7 +605,7 @@ pub struct Parser<'tokens, 'code: 'tokens, 'path: 'code> {
     temp_array_items: Vec<ArrayItem<'code>>,
 }
 
-impl<'tokens, 'code: 'tokens, 'path: 'code> Parser<'tokens, 'code, 'path> {
+impl<'tokens, 'code: 'tokens, 'path> Parser<'tokens, 'code, 'path> {
     #[expect(clippy::missing_errors_doc)]
     pub fn parse(
         tokens: &'tokens TokenizedCode<'code, 'path>,
@@ -794,8 +792,8 @@ impl<'tokens, 'code: 'tokens, 'path: 'code> Parser<'tokens, 'code, 'path> {
                         | Op::LessOrEquals,
                     ) => self.invalid_token(
                         after_expression_token,
-                        "unexpected operator".into(),
-                        "should have been part of the left operand".into(),
+                        "unexpected operator",
+                        "should have been part of the left operand",
                     ),
                     TokenKind::OpenRoundBracket
                     | TokenKind::CloseRoundBracket
@@ -1071,24 +1069,22 @@ impl<'tokens, 'code: 'tokens, 'path: 'code> Parser<'tokens, 'code, 'path> {
     fn invalid_token(
         &self,
         token: Token<'code>,
-        error_message: Cow<'static, str>,
-        error_cause_message: Cow<'static, str>,
+        error_message: &str,
+        error_cause_message: &str,
     ) -> ! {
-        let DisplayPosition { line, column, display_column } = self.syntax_tree.tokens.src.display_position(token.col);
-        let line_span = self.syntax_tree.lines()[line as usize - 1];
+        let position = Position::new(&self.syntax_tree.tokens.src, token.col);
+        let line_span = self.syntax_tree.lines()[position.line as usize - 1];
         let line_text = &self.syntax_tree.code()[line_span.start() as usize..line_span.end() as usize];
+        let pointers_count = token.kind.display_len(&self.syntax_tree.tokens.tokens);
 
-        let error = MsgDisplay {
+        let error = MsgWithCauseUnderTextWithLocation {
             severity: MsgSeverity::Error,
-            error_message,
-            file: self.syntax_tree.tokens.src.path(),
-            line,
-            column,
-            absolute_column: token.col,
+            kind: &ERROR,
+            message: &error_message,
+            cause: &error_cause_message,
+            position,
             line_text,
-            pointers_count: token.kind.display_len(&self.syntax_tree.tokens.tokens),
-            pointers_offset: display_column,
-            error_cause_message,
+            pointers_count,
         };
         panic!("{error}\n");
     }
@@ -1097,22 +1093,26 @@ impl<'tokens, 'code: 'tokens, 'path: 'code> Parser<'tokens, 'code, 'path> {
     fn should_have_been_skipped(&self, token: Token<'code>) -> ! {
         self.invalid_token(
             token,
-            "unexpected".into(),
-            "should have been skipped in the iteration of tokens".into(),
+            "unexpected",
+            "should have been skipped in the iteration of tokens",
         );
     }
 
     #[track_caller]
     fn unexpected(&self, token: Token<'code>) -> ! {
-        self.invalid_token(token, "unexpected".into(), "should have been caught during tokenization".into());
+        self.invalid_token(
+            token,
+            "unexpected",
+            "should have been caught during tokenization",
+        );
     }
 
     #[track_caller]
     fn unbalanced_bracket(&self, token: Token<'code>) -> ! {
         self.invalid_token(
             token,
-            "unbalanced bracket".into(),
-            "should have been caught during tokenization".into(),
+            "unbalanced bracket",
+            "should have been caught during tokenization",
         );
     }
 }
@@ -2197,7 +2197,7 @@ impl<'code> Parser<'_, 'code, '_> {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct SyntaxTreeDisplay<'syntax_tree, 'tokens: 'syntax_tree, 'code: 'tokens, 'path: 'code> {
+pub struct SyntaxTreeDisplay<'syntax_tree, 'tokens: 'syntax_tree, 'code: 'tokens, 'path> {
     pub(crate) syntax_tree: &'syntax_tree SyntaxTree<'tokens, 'code, 'path>,
 }
 

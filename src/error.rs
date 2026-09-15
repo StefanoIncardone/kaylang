@@ -1,11 +1,7 @@
 use crate::{
-    AT, BAR, CAUSE,
-    color::{Colored, ansi_flag},
-    front_end::MsgSeverity,
+    AT, BAR, CAUSE, color::{Colored, ansi_flag}, front_end::{MsgSeverity, src_file::Position},
 };
 use core::fmt::Display;
-use std::path::Path;
-
 use back_to_front::{cli::{AnsiBg, AnsiFg, AnsiFlag}, usize32, ascii, utf32};
 use unicode_width::UnicodeWidthChar as _;
 
@@ -149,22 +145,18 @@ impl Display for MsgWithCauseUnderText<'_, '_, '_, '_> {
 }
 
 #[derive(Clone)]
-pub struct MsgWithCauseUnderTextWithLocation<'kind, 'message, 'cause, 'src> {
+pub struct MsgWithCauseUnderTextWithLocation<'kind, 'message, 'cause, 'src, 'path> {
     pub severity: MsgSeverity,
     pub kind: &'kind dyn Display,
     pub message: &'message dyn Display,
     pub cause: &'cause dyn Display,
-    pub file: &'src Path,
-    pub line: usize32,
-    pub column: usize32,
-    pub absolute_column: usize32,
-    pub line_text: &'src dyn Display,
+    pub position: Position<'path>,
+    pub line_text: &'src str,
     pub pointers_count: usize32,
-    pub pointers_offset: usize32,
 }
 
 // IDEA(stefano): add cli flag to control the amount of spaces (default 4) to display when printing tabs
-impl Display for MsgWithCauseUnderTextWithLocation<'_, '_, '_, '_> {
+impl Display for MsgWithCauseUnderTextWithLocation<'_, '_, '_, '_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let error_message = Colored {
             text: &self.message,
@@ -173,7 +165,7 @@ impl Display for MsgWithCauseUnderTextWithLocation<'_, '_, '_, '_> {
             flags: AnsiFlag::Bold as ansi_flag,
         };
 
-        let line_number_text = self.line.to_string();
+        let line_number_text = self.position.line.to_string();
         let line_number = Colored {
             text: &line_number_text,
             fg: AnsiFg::LightBlue,
@@ -210,17 +202,14 @@ impl Display for MsgWithCauseUnderTextWithLocation<'_, '_, '_, '_> {
         return write!(
             f,
             "{kind}: {error_message}\
-            \n{at:>at_padding$}: {path}:{line}:{column}:{absolute_column}\
+            \n{at:>at_padding$}: {position}\
             \n{BAR:>line_number_padding$}\
             \n{line_number} {BAR} {line_text}\
             \n{BAR:>line_number_padding$}{spaces:>pointers_offset$}{pointers_and_cause}",
             at_padding = kind_text.len(),
-            path = self.file.display(),
-            line = self.line,
-            column = self.column as usize,
-            absolute_column = self.absolute_column as usize,
+            position = self.position,
             line_text = self.line_text,
-            pointers_offset = self.pointers_offset as usize,
+            pointers_offset = self.position.width as usize,
             spaces = "",
         );
     }

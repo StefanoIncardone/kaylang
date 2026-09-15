@@ -1,7 +1,7 @@
 use core::fmt::Display;
-use back_to_front::ascii;
+use back_to_front::{ascii, usize32};
 use crate::front_end::{
-    Index32, tokenizer::TextIndex, typed_abstract_syntax_tree::{self as tast, TypedSyntaxTree}, types::BaseType,
+    Index32, src_file::Position, tokenizer::TextIndex, typed_abstract_syntax_tree::{self as tast, TypedSyntaxTree}, types::BaseType,
 };
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -60,7 +60,7 @@ impl Operand<'_> {
             Self::Ascii { .. } => Type::Base(BaseType::Ascii),
             Self::Str { .. } => Type::Base(BaseType::Str),
 
-            Self::TempVariable { value } | Self::Variable { value, .. } => {
+            Self::TempVariable { value, .. } | Self::Variable { value, .. } => {
                 let expression = &ir.expressions[*value];
                 expression.typ(ir)
             },
@@ -71,6 +71,10 @@ impl Operand<'_> {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Expression<'code> {
     Operand {
+        operand: OperandIndex<'code>,
+        column: usize32,
+    },
+    TempOperand {
         operand: OperandIndex<'code>,
     },
 
@@ -119,7 +123,7 @@ pub(crate) enum Expression<'code> {
 impl Expression<'_> {
     pub(crate) fn typ(&self, ir: &Ir<'_, '_, '_, '_, '_>) -> Type {
         return match self {
-            Self::Operand { operand } => {
+            Self::Operand { operand, .. } | Self::TempOperand { operand } => {
                 let ir_operand = &ir.operands[*operand];
                 ir_operand.typ(ir)
             },
@@ -167,9 +171,9 @@ pub(crate) type NodeIndex<'code> = Index32<Node<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Node<'code> {
-    Expression { value: TempExpressionIndex<'code> },
+    Expression { value: ExpressionIndex<'code> },
     TempVariable { value: TempExpressionIndex<'code> },
-    Variable { value: ExpressionIndex<'code>, name: TextIndex<'code> },
+    Variable { value: ExpressionIndex<'code>, name: TextIndex<'code>, name_column: usize32 },
 
     // Assignment {
     //     target: ExpressionIndex<'code>,
@@ -200,6 +204,7 @@ pub(crate) enum Node<'code> {
     // },
 
     Print {
+        print_column: usize32,
         argument: ExpressionIndex<'code>,
     },
     // Eprint {
@@ -213,7 +218,7 @@ pub(crate) enum Node<'code> {
 
 #[must_use]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct Ir<'tast, 'st: 'tast, 'tokens: 'st, 'code: 'tokens, 'path: 'code> {
+pub struct Ir<'tast, 'st: 'tast, 'tokens: 'st, 'code: 'tokens, 'path> {
     pub(crate) tast: &'tast TypedSyntaxTree<'st, 'tokens, 'code, 'path>,
     pub(crate) nodes: Vec<Node<'code>>,
 
@@ -259,12 +264,12 @@ impl<'code> Ir<'_, '_, '_, 'code, '_> {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct Parser<'tast, 'st: 'tast, 'tokens: 'st, 'code: 'tokens, 'path: 'code> {
+pub struct Parser<'tast, 'st: 'tast, 'tokens: 'st, 'code: 'tokens, 'path> {
     ir: Ir<'tast, 'st, 'tokens, 'code, 'path>,
     node_index: tast::NodeIndex<'code>,
 }
 
-impl<'tast, 'st: 'tast, 'tokens: 'st, 'code: 'tokens, 'path: 'code> Parser<'tast, 'st, 'tokens, 'code, 'path> {
+impl<'tast, 'st: 'tast, 'tokens: 'st, 'code: 'tokens, 'path> Parser<'tast, 'st, 'tokens, 'code, 'path> {
     pub fn parse(
         tast: &'tast TypedSyntaxTree<'st, 'tokens, 'code, 'path>
     ) -> Ir<'tast, 'st, 'tokens, 'code, 'path> {
@@ -303,43 +308,43 @@ impl<'tast, 'st: 'tast, 'tokens: 'st, 'code: 'tokens, 'path: 'code> Parser<'tast
 
                 let ir_expression = self.expression(tast_variable.value);
                 let ir_expression_index = self.ir.new_expression(ir_expression);
-                let ir_variable = Node::Variable { value: ir_expression_index, name: tast_variable.name };
+                let ir_variable = Node::Variable { value: ir_expression_index, name: tast_variable.name, name_column: tast_variable.name_column };
 
                 self.ir.nodes.push(ir_variable);
             },
 
-            tast::Node::Print { argument } => {
+            tast::Node::Print { argument, print_column } => {
                 let ir_expression = self.expression(*argument);
                 let ir_expression_index = self.ir.new_expression(ir_expression);
 
-                let println_node = Node::Print { argument: ir_expression_index };
+                let println_node = Node::Print { argument: ir_expression_index, print_column: *print_column };
                 self.ir.nodes.push(println_node);
             },
-            tast::Node::Println { argument } => {
+            tast::Node::Println { argument, println_column } => {
                 let ir_expression = self.expression(*argument);
                 let ir_expression_index = self.ir.new_expression(ir_expression);
 
-                let println_node = Node::Print { argument: ir_expression_index };
+                let println_node = Node::Print { argument: ir_expression_index, print_column: *println_column };
                 self.ir.nodes.push(println_node);
 
                 let new_line = Operand::Ascii { character: b'\n' };
                 let new_line_index = self.ir.new_operand(new_line);
-                let new_line_expression = Expression::Operand { operand: new_line_index };
+                let new_line_expression = Expression::TempOperand { operand: new_line_index };
                 let new_line_expression_index = self.ir.new_expression(new_line_expression);
 
-                let print_new_line_node = Node::Print { argument: new_line_expression_index };
+                let print_new_line_node = Node::Print { argument: new_line_expression_index, print_column: *println_column };
                 self.ir.nodes.push(print_new_line_node);
             },
-            tast::Node::PrintlnNoArg => {
+            tast::Node::PrintlnNoArg { .. } => {
                 unimplemented!()
             },
-            tast::Node::Eprint { argument } => {
+            tast::Node::Eprint { argument, .. } => {
                 unimplemented!()
             },
-            tast::Node::Eprintln { argument } => {
+            tast::Node::Eprintln { argument, .. } => {
                 unimplemented!()
             },
-            tast::Node::EprintlnNoArg => {
+            tast::Node::EprintlnNoArg { .. } => {
                 unimplemented!()
             },
             tast::Node::Assignment { target, operator, new_value } => {
@@ -360,25 +365,25 @@ impl<'tast, 'st: 'tast, 'tokens: 'st, 'code: 'tokens, 'path: 'code> Parser<'tast
             tast::Node::Scope { raw_nodes_in_scope_count } => {
                 unimplemented!()
             },
-            tast::Node::If { condition } => {
+            tast::Node::If { condition, .. } => {
                 unimplemented!()
             },
-            tast::Node::ElseIf { condition } => {
+            tast::Node::ElseIf { condition, .. } => {
                 unimplemented!()
             },
-            tast::Node::Else => {
+            tast::Node::Else { .. } => {
                 unimplemented!()
             },
-            tast::Node::Loop { condition } => {
+            tast::Node::Loop { condition, .. } => {
                 unimplemented!()
             },
-            tast::Node::DoLoop { condition } => {
+            tast::Node::DoLoop { condition, .. } => {
                 unimplemented!()
             },
-            tast::Node::Break => {
+            tast::Node::Break { .. } => {
                 unimplemented!()
             },
-            tast::Node::Continue => {
+            tast::Node::Continue { .. } => {
                 unimplemented!()
             },
         }
@@ -403,30 +408,30 @@ impl<'tast, 'code: 'tast> Parser<'tast, '_, '_, 'code, '_> {
     fn expression(&mut self, expression_index: tast::ExpressionIndex<'code>) -> Expression<'code> {
         let tast_expression = &self.ir.tast.expressions[expression_index];
         return match tast_expression {
-            tast::Expression::False { .. } => {
+            tast::Expression::False { column, .. } => {
                 let operand = Operand::False;
                 let operand_index = self.ir.new_operand(operand);
-                Expression::Operand { operand: operand_index }
+                Expression::Operand { operand: operand_index, column: *column }
             },
-            tast::Expression::True { .. } => {
-                let operand = Operand::False;
+            tast::Expression::True { column, .. } => {
+                let operand = Operand::True;
                 let operand_index = self.ir.new_operand(operand);
-                Expression::Operand { operand: operand_index }
+                Expression::Operand { operand: operand_index, column: *column }
             },
-            tast::Expression::I64 { value, .. } => {
+            tast::Expression::I64 { value, column, .. } => {
                 let operand = Operand::I64 { value: *value };
                 let operand_index = self.ir.new_operand(operand);
-                Expression::Operand { operand: operand_index }
+                Expression::Operand { operand: operand_index, column: *column }
             },
-            tast::Expression::Ascii { character, .. } => {
+            tast::Expression::Ascii { character, column, .. } => {
                 let operand = Operand::Ascii { character: *character };
                 let operand_index = self.ir.new_operand(operand);
-                Expression::Operand { operand: operand_index }
+                Expression::Operand { operand: operand_index, column: *column }
             },
-            tast::Expression::Str { literal, .. } => {
+            tast::Expression::Str { literal, column, .. } => {
                 let operand = Operand::Str { literal: *literal };
                 let operand_index = self.ir.new_operand(operand);
-                Expression::Operand { operand: operand_index }
+                Expression::Operand { operand: operand_index, column: *column }
             },
             tast::Expression::Variable { variable, .. } => unimplemented!(),
             tast::Expression::Array { base_type, items_start, items_len } => unimplemented!(),
@@ -442,7 +447,7 @@ impl<'tast, 'code: 'tast> Parser<'tast, '_, '_, 'code, '_> {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct IrDebug<'ir, 'tast, 'st: 'tast, 'tokens: 'st, 'code: 'tokens, 'path: 'code> {
+pub struct IrDebug<'ir, 'tast, 'st: 'tast, 'tokens: 'st, 'code: 'tokens, 'path> {
     pub(crate) ir: &'ir Ir<'tast, 'st, 'tokens, 'code, 'path>,
 }
 
@@ -466,7 +471,7 @@ impl IrDebug<'_, '_, '_, '_, '_, '_> {
                 let variable_indent = indent + Self::INDENT_INCREMENT;
                 self.info_expression(f, *value, variable_indent)
             }
-            Node::Variable { value, name } => {
+            Node::Variable { value, name, .. } => {
                 writeln!(f, "{:>indent$}Let", "")?;
                 let variable_indent = indent + Self::INDENT_INCREMENT;
                 self.info_expression(f, *value, variable_indent)
@@ -506,7 +511,7 @@ impl IrDebug<'_, '_, '_, '_, '_, '_> {
             //     writeln!(f, "{:>assignment_indent$}BooleanPrefixAssignmentOp = {operator}", "")
             // }
 
-            Node::Print { argument } => {
+            Node::Print { argument, .. } => {
                 writeln!(f, "{:>indent$}Print = print", "")?;
                 let argument_indent = indent + Self::INDENT_INCREMENT;
                 self.info_expression(f, *argument, argument_indent)
@@ -583,7 +588,8 @@ impl IrDebug<'_, '_, '_, '_, '_, '_> {
 
         #[rustfmt::skip]
         return match expression {
-            Expression::Operand { operand } => self.info_operand(f, *operand, indent),
+            Expression::Operand { operand, .. } => self.info_operand(f, *operand, indent),
+            Expression::TempOperand { operand } => self.info_operand(f, *operand, indent),
             // Expression::Prefix { operator, operator_column, right_operand } => {
             //     let expression_indent = indent + Self::INDENT_INCREMENT;
             //     writeln!(f, "{:>indent$}PrefixExpression", "")?;
@@ -640,7 +646,23 @@ impl Display for IrDebug<'_, '_, '_, '_, '_, '_> {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct IrDisplay<'ir, 'tast, 'st: 'tast, 'tokens: 'st, 'code: 'tokens, 'path: 'code> {
+pub struct SrcAttribute<'ir, 'tast, 'st: 'tast, 'tokens: 'st, 'code: 'tokens, 'path> {
+    pub(crate) ir: &'ir Ir<'tast, 'st, 'tokens, 'code, 'path>,
+    pub(crate) column: usize32,
+}
+
+impl Display for SrcAttribute<'_, '_, '_, '_, '_, '_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let position = Position::new(&self.ir.tast.syntax_tree.tokens.src, self.column);
+        // BUG(stefano): i my have found a bug in VsCode: when two file locations appear on the same line
+            // any location following the first point to first instead of at the correct location
+            // IDEA(stefano): submit an issue
+        return write!(f, "#src({position})");
+    }
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct IrDisplay<'ir, 'tast, 'st: 'tast, 'tokens: 'st, 'code: 'tokens, 'path> {
     pub(crate) ir: &'ir Ir<'tast, 'st, 'tokens, 'code, 'path>,
 }
 
@@ -672,16 +694,15 @@ impl IrDisplay<'_, '_, '_, '_, '_, '_> {
                 self.info_expression(f, ir_variable_value, indent)?;
                 writeln!(f, ";")
             }
-            Node::Variable { value, name } => {
+            Node::Variable { value, name, name_column, .. } => {
                 // TODO(stefano): print type annotation
                 let variable_name = self.ir.tast.syntax_tree.text()[*name];
-                let ir_variable_name = TempVariableDisplay { value: *value };
                 let ir_variable_value = &self.ir.expressions[*value];
                 let ir_variable_type = ir_variable_value.typ(self.ir);
-                write!(f, "{:>indent$}let {ir_variable_name}: {ir_variable_type} = ", "")?;
+                let src_attribute = SrcAttribute { ir: self.ir, column: *name_column };
+                write!(f, "{:>indent$}let {variable_name} {src_attribute}: {ir_variable_type} = ", "")?;
                 self.info_expression(f, ir_variable_value, indent)?;
-
-                writeln!(f, "; ## {variable_name}: TODO/file/location:12:21")
+                writeln!(f, ";")
             }
 
             // Node::Assignment { target, new_value, operator } => {
@@ -718,7 +739,7 @@ impl IrDisplay<'_, '_, '_, '_, '_, '_> {
             //     writeln!(f, "{:>assignment_indent$}BooleanPrefixAssignmentOp = {operator}", "")
             // }
 
-            Node::Print { argument } => {
+            Node::Print { argument, .. } => {
                 writeln!(f, "{:>indent$}Print = print", "")?;
                 let argument_indent = indent + Self::INDENT_INCREMENT;
                 let ir_argument = &self.ir.expressions[*argument];
@@ -757,24 +778,37 @@ impl IrDisplay<'_, '_, '_, '_, '_, '_> {
         &self,
         f: &mut core::fmt::Formatter<'_>,
         operand: &Operand<'_>,
+        column: usize32,
     ) -> core::fmt::Result {
         #[rustfmt::skip]
         return match operand {
-            Operand::False => write!(f, "false"),
-            Operand::True => write!(f, "true"),
-            Operand::I64 { value } => write!(f, "{value}"),
+            Operand::False => {
+                let src_attribute = SrcAttribute { ir: self.ir, column };
+                write!(f, "false {src_attribute}")
+            },
+            Operand::True => {
+                let src_attribute = SrcAttribute { ir: self.ir, column };
+                write!(f, "true {src_attribute}")
+            },
+            Operand::I64 { value } => {
+                let src_attribute = SrcAttribute { ir: self.ir, column };
+                write!(f, "{value} {src_attribute}")
+            },
             Operand::Ascii { character } => unimplemented!("escaping"),
-            Operand::Str { literal, .. } => {
+            Operand::Str { literal } => {
+                let src_attribute = SrcAttribute { ir: self.ir, column };
                 let literal_str = self.ir.tast.syntax_tree.text()[*literal];
-                write!(f, "{literal_str}")
+                write!(f, "{literal_str} {src_attribute}")
             }
             Operand::TempVariable { value } => {
+                let src_attribute = SrcAttribute { ir: self.ir, column };
                 let variable_name = TempVariableDisplay { value: *value };
-                write!(f, "{variable_name}")
+                write!(f, "{variable_name} {src_attribute}")
             }
             Operand::Variable { name, .. } => {
+                let src_attribute = SrcAttribute { ir: self.ir, column };
                 let variable_name = self.ir.tast.syntax_tree.text()[*name];
-                write!(f, "{variable_name}")
+                write!(f, "{variable_name} {src_attribute}")
             }
         };
     }
@@ -787,10 +821,16 @@ impl IrDisplay<'_, '_, '_, '_, '_, '_> {
     ) -> core::fmt::Result {
         #[rustfmt::skip]
         return match expression {
-            Expression::Operand { operand } => {
+            Expression::Operand { operand, column } => {
                 let ir_operand = &self.ir.operands[*operand];
-                self.info_operand(f, ir_operand)
+                self.info_operand(f, ir_operand, *column)
             }
+            Expression::TempOperand { operand } => {
+                unimplemented!()
+                // let ir_operand = &self.ir.operands[*operand];
+                // self.info_operand(f, ir_operand, *column)
+            }
+
             // Expression::Prefix { operator, operator_column, right_operand } => {
             //     let expression_indent = indent + Self::INDENT_INCREMENT;
             //     writeln!(f, "{:>indent$}PrefixExpression", "")?;

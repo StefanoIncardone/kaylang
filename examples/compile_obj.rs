@@ -4,7 +4,7 @@ use kaylang::{
     Color, Logger, Verbosity, code_generation::{Artifacts, Platform}, error::MsgSimple,
 };
 use kaylang::{
-    COMPILING, COULD_NOT_RUN_LINKER, DONE, LINKING, LINKING_ERROR, SUBSTEP_DONE,
+    COMPILING, COULD_NOT_RUN_LINKER, DONE, LINKING, LINKING_ERROR,
 };
 use std::{path::Path, process::ExitCode};
 

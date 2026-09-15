@@ -746,7 +746,7 @@ pub struct Ast<'code> {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct Parser<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> {
+pub struct Parser<'tokens, 'src: 'tokens, 'code: 'src, 'path> {
     src: &'src SrcCode<'code, 'path>,
     errors: Vec<Msg<ErrorKind>>,
 
@@ -760,7 +760,7 @@ pub struct Parser<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> {
     ast: Ast<'code>,
 }
 
-impl<'tokens, 'src: 'tokens, 'code: 'src, 'path: 'code> Parser<'tokens, 'src, 'code, 'path> {
+impl<'tokens, 'src: 'tokens, 'code: 'src, 'path> Parser<'tokens, 'src, 'code, 'path> {
     // IDEA(stefano): move into freestanding function
     #[expect(clippy::missing_errors_doc)]
     pub fn parse(
@@ -1108,18 +1108,12 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 Ok(Node::Semicolon)
             },
             TokenKind::OpenCurlyBracket => {
-                let Position { line, column } = self.src.position(token.col);
-                unreachable!(
-                    "blocks not allowed in single statements: {file}:{line}:{column}",
-                    file = self.src.path().display(),
-                );
+                let position = Position::new(self.src, token.col);
+                unreachable!("blocks not allowed in single statements: {position}");
             },
             TokenKind::CloseCurlyBracket | TokenKind::CloseSquareBracket | TokenKind::CloseRoundBracket => {
-                let Position { line, column } = self.src.position(token.col);
-                unreachable!(
-                    "should have been cought during tokenization: {file}:{line}:{column}",
-                    file = self.src.path().display(),
-                );
+                let position = Position::new(self.src, token.col);
+                unreachable!("should have been cought during tokenization: {position}");
             },
             TokenKind::Colon => {
                 _ = self.next_token();

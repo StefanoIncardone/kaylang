@@ -9,20 +9,45 @@ use unicode_width::UnicodeWidthChar as _;
 pub use back_to_front::usize32;
 
 
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub struct Position {
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct Position<'path> {
+    pub file: &'path Path,
+    /// starts from 1
     pub line: usize32,
+    /// starts from 1, relative to the line, aware of utf8 characters
     pub column: usize32,
+    /// starts from 0, relative to the start of the file
+    pub offset: usize32,
+    /// graphemes display width
+    pub width: usize32,
 }
 
+impl<'path> Position<'path> {
+    #[must_use]
+    pub(crate) fn new(src: &SrcCode<'_, 'path>, offset: usize32) -> Self {
+        let line_index = src.line_index(offset);
+        let line = src.lines[line_index as usize];
+        let line_text_before_error = &src.code()[line.start() as usize..offset as usize];
 
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub struct DisplayPosition {
-    pub line: usize32,
-    pub column: usize32,
-    pub display_column: usize32,
+        let mut width = 1;
+        let mut column = 1;
+        for character in line_text_before_error.chars() {
+            let character_width = character.width_cjk().unwrap_or_default();
+            width += character_width as usize32;
+            column += 1;
+        }
+
+        return Self { file: src.path(), line: line_index + 1, column, offset, width };
+    }
 }
 
+impl Display for Position<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let Self { file: file_raw, line, column, offset, .. } = self;
+        let file = file_raw.display();
+        return write!(f, "{file}:{line}:{column}:{offset}");
+    }
+}
 
 // IDEA(stefano): let the user chose how to obtain the source code and just store a reference to it
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -43,16 +68,12 @@ impl<'path> SrcFile<'path> {
     pub fn load(path: &'path Path) -> Result<Self, Error<'path>> {
         let mut file = match File::open(path) {
             Ok(file) => file,
-            Err(err) => {
-                return Err(Error { path, kind: ErrorKind::Io(err) });
-            },
+            Err(err) => return Err(Error { path, kind: ErrorKind::Io(err) }),
         };
 
         let file_metadata = match file.metadata() {
             Ok(file_metadata) => file_metadata,
-            Err(err) => {
-                return Err(Error { path, kind: ErrorKind::Io(err) });
-            },
+            Err(err) => return Err(Error { path, kind: ErrorKind::Io(err) }),
         };
 
         if !file_metadata.is_file() {
@@ -68,9 +89,7 @@ impl<'path> SrcFile<'path> {
         let mut code = String::new();
         let bytes_read = match file.read_to_string(&mut code) {
             Ok(bytes_read) => bytes_read as usize32,
-            Err(err) => {
-                return Err(Error { path, kind: ErrorKind::Io(err) });
-            },
+            Err(err) => return Err(Error { path, kind: ErrorKind::Io(err) }),
         };
 
         if bytes_read != file_len {
@@ -83,20 +102,20 @@ impl<'path> SrcFile<'path> {
 
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct SrcCode<'code, 'path: 'code> {
-    pub src_file: &'code SrcFile<'path>,
+pub struct SrcCode<'code, 'path> {
+    pub(crate) src_file: &'code SrcFile<'path>,
     pub(crate) lines: Vec<Line>,
 }
 
 // getters
 #[rustfmt::skip]
-impl<'code, 'path: 'code> SrcCode<'code, 'path> {
+impl<'code, 'path> SrcCode<'code, 'path> {
     #[must_use] #[inline(always)] pub const fn path(&self)  -> &'path Path { return self.src_file.path(); }
     #[must_use] #[inline(always)] pub const fn code(&self)  -> &'code str  { return self.src_file.code(); }
     #[must_use] #[inline(always)] pub const fn lines(&self) -> &[Line]     { return self.lines.as_slice(); }
 }
 
-impl<'code, 'path: 'code> SrcCode<'code, 'path> {
+impl SrcCode<'_, '_> {
     #[must_use]
     fn line_index(&self, column: usize32) -> usize32 {
         let mut left: usize32 = 0;
@@ -110,35 +129,6 @@ impl<'code, 'path: 'code> SrcCode<'code, 'path> {
             }
         }
         return left;
-    }
-
-    #[must_use]
-    pub(crate) fn position(&self, column: usize32) -> Position {
-        let line_index = self.line_index(column);
-        let line = self.lines[line_index as usize];
-        let line_text_before_error = &self.code()[line.start() as usize..column as usize];
-        let mut utf8_column = 1;
-        for _character in line_text_before_error.chars() {
-            utf8_column += 1;
-        }
-
-        return Position { line: line_index + 1, column: utf8_column };
-    }
-
-    #[must_use]
-    pub(crate) fn display_position(&self, column: usize32) -> DisplayPosition {
-        let line_index = self.line_index(column);
-        let line = self.lines[line_index as usize];
-        let line_text_before_error = &self.code()[line.start() as usize..column as usize];
-        let mut display_column = 1;
-        let mut utf8_column = 1;
-        for character in line_text_before_error.chars() {
-            let character_utf8_len = character.width_cjk().unwrap_or_default();
-            display_column += character_utf8_len as usize32;
-            utf8_column += 1;
-        }
-
-        return DisplayPosition { line: line_index + 1, column: utf8_column, display_column };
     }
 }
 

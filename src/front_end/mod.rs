@@ -5,13 +5,12 @@ pub mod tokenizer;
 pub mod typed_abstract_syntax_tree;
 pub mod types;
 
-use self::src_file::{DisplayPosition, SrcCode};
+use self::src_file::{Position, SrcCode};
 use crate::{ERROR, error::MsgWithCauseUnderTextWithLocation};
 use core::fmt::{Debug, Display};
 extern crate alloc;
 use alloc::borrow::Cow;
 use back_to_front::usize32;
-use std::path::Path;
 
 // IDEA(stefano): move to back-to-front
 #[derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -121,38 +120,30 @@ pub struct Msg<K: IntoMsgInfo> {
 }
 
 impl<K: IntoMsgInfo> Msg<K> {
-    pub fn display<'code, 'path: 'code>(&self, src: &SrcCode<'code, 'path>) -> MsgDisplay<'code, 'path> {
-        let DisplayPosition { line, column, display_column } = src.display_position(self.col);
-        let line_span = src.lines[line as usize - 1];
+    pub fn display<'code, 'path>(&self, src: &SrcCode<'code, 'path>) -> MsgDisplay<'code, 'path> {
+        let position = Position::new(src, self.col);
+        let line_span = src.lines[position.line as usize - 1];
         let line_text = &src.code()[line_span.start() as usize..line_span.end() as usize];
 
         let MsgInfo { message: error_message, cause: error_cause_message } = self.kind.info();
         return MsgDisplay {
             severity: self.severity,
             error_message,
-            file: src.path(),
-            line,
-            column,
-            absolute_column: self.col,
+            position,
             line_text,
-            pointers_count: self.pointers_count,
-            pointers_offset: display_column,
             error_cause_message,
+            pointers_count: self.pointers_count,
         };
     }
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct MsgDisplay<'code, 'path: 'code> {
+pub struct MsgDisplay<'code, 'path> {
     pub severity: MsgSeverity,
     pub error_message: Cow<'static, str>,
-    pub file: &'path Path,
-    pub line: usize32,
-    pub column: usize32,
-    pub absolute_column: usize32,
+    pub position: Position<'path>,
     pub line_text: &'code str,
     pub pointers_count: usize32,
-    pub pointers_offset: usize32,
     pub error_cause_message: Cow<'static, str>,
 }
 
@@ -163,13 +154,9 @@ impl Display for MsgDisplay<'_, '_> {
             kind: &ERROR,
             message: &self.error_message,
             cause: &self.error_cause_message,
-            file: self.file,
-            line: self.line,
-            column: self.column,
-            absolute_column: self.absolute_column,
-            line_text: &self.line_text,
+            position: self.position.clone(),
+            line_text: self.line_text,
             pointers_count: self.pointers_count,
-            pointers_offset: self.pointers_offset,
         };
         return write!(f, "{error}");
     }

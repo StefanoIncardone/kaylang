@@ -10,7 +10,7 @@ use kaylang::{
     Verbosity,
 };
 use kaylang::{
-    PARSING, DONE, LOADING_SOURCE, PARSING_AST, SUBSTEP_DONE, TOKENIZATION,
+    PARSING, DONE, LOADING_SOURCE, PARSING_AST, TOKENIZATION,
 };
 use std::{path::Path, process::ExitCode};
 
