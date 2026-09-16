@@ -109,7 +109,7 @@ messages!(
     pub LINKING_ERROR                 = "Linking Error",                ERR_FG, ERR_BG, ERR_FLAGS;
 );
 
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Logger {
     pub start: Instant,
 }
