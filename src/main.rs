@@ -2,14 +2,14 @@
 //! This file is also an example of how it's possible to create cli tools based on this compiler
 
 use kaylang::{
-    Args, ArgsParser, Command, Help, Language, Logger, TRANSFORMING, Version, back_end::ir, code_generation::{Artifacts, Platform, nasm::{self, compiler_ast::Compiler} }, error::MsgSimple, front_end::{
-        ast::Parser, src_file::SrcFile, syntax_tree, tokenizer::{TokenizationResult, TokenizedCode, Tokenizer}, typed_abstract_syntax_tree,
+    Args, ArgsParser, Command, Help, Language, Logger, TRANSFORMING, Version, back_end::ir, code_generation::{Artifacts, Platform, nasm }, error::MsgSimple, front_end::{
+        src_file::SrcFile, syntax_tree, tokenizer::{TokenizationResult, TokenizedCode, Tokenizer}, typed_abstract_syntax_tree,
     },
 };
 use kaylang::{
     GENERATING_IR, ASSEMBLING, ASSEMBLING_ERROR, PARSING, COMPILING, COULD_NOT_RUN_ASSEMBLER,
     COULD_NOT_RUN_EXECUTABLE, COULD_NOT_RUN_LINKER, COULD_NOT_WRITE_COMPILED_CODE, DONE, GENERATING_ASM,
-    LINKING, LINKING_ERROR, LOADING_SOURCE, PARSING_AST, PARSING_SYNTAX_TREE, RUNNING,
+    LINKING, LINKING_ERROR, LOADING_SOURCE, PARSING_SYNTAX_TREE, RUNNING,
     TOKENIZATION, TYPE_CHECKING,
 };
 use std::{path::Path, process::ExitCode};
@@ -32,8 +32,7 @@ fn main() -> ExitCode {
             Err(errors) => {
                 color.set(&std::io::stderr());
 
-                let errors_display =
-                    kaylang::Errors { executable_name: Some(executable_name), args: &args, errors };
+                let errors_display = kaylang::Errors { executable_name: Some(executable_name), args: &args, errors };
                 eprint!("{errors_display}");
                 return ExitCode::FAILURE;
             },
@@ -130,21 +129,6 @@ fn main() -> ExitCode {
             }
         };
 
-        // let ast = {
-        //     let logger = Logger::new();
-        //     let building_ast_result = Parser::parse(&tokens.src, &tokens.tokens);
-        //     logger.sub_step(&PARSING_AST, None, verbosity);
-        //     match building_ast_result {
-        //         Ok(ast) => ast,
-        //         Err(errors) => {
-        //             for error in errors {
-        //                 eprintln!("{}\n", error.display(&tokens.src));
-        //             }
-        //             return ExitCode::FAILURE;
-        //         },
-        //     }
-        // };
-
         checking_sub_step.sub_step(&DONE, None, verbosity);
 
         Logger::info(&TRANSFORMING, src_path, verbosity);
@@ -204,9 +188,7 @@ fn main() -> ExitCode {
             }
         };
     } else {
-        let (Command::Compile { out_path, .. } | Command::Run { out_path, .. }) = &command else {
-            unreachable!()
-        };
+        let (Command::Compile { out_path, .. } | Command::Run { out_path, .. }) = &command else { unreachable!() };
 
         Logger::info(&COMPILING, src_path, verbosity);
         compilation_sub_step = Logger::new();
@@ -236,18 +218,16 @@ fn main() -> ExitCode {
             let assembler_result = assembler_command.output();
             logger.sub_step(&ASSEMBLING, Some(&artifacts.obj_path), verbosity);
             match assembler_result {
-                Ok(output) => {
-                    if !output.status.success() {
-                        let error = MsgSimple {
-                            kind: &ASSEMBLING_ERROR,
-                            message: &String::from_utf8_lossy(&output.stderr),
-                        };
-                        eprintln!("{error}");
-                        return match output.status.code() {
-                            Some(code) => ExitCode::from(code as u8),
-                            None => ExitCode::FAILURE,
-                        };
-                    }
+                Ok(output) => if !output.status.success() {
+                    let error = MsgSimple {
+                        kind: &ASSEMBLING_ERROR,
+                        message: &String::from_utf8_lossy(&output.stderr),
+                    };
+                    eprintln!("{error}");
+                    return match output.status.code() {
+                        Some(code) => ExitCode::from(code as u8),
+                        None       => ExitCode::FAILURE,
+                    };
                 },
                 Err(err) => {
                     let error = MsgSimple { kind: &COULD_NOT_RUN_ASSEMBLER, message: &err };
@@ -271,16 +251,13 @@ fn main() -> ExitCode {
         let linker_result = linker_command.output();
         logger.sub_step(&LINKING, Some(&artifacts.exe_path), verbosity);
         match linker_result {
-            Ok(output) => {
-                if !output.status.success() {
-                    let error =
-                        MsgSimple { kind: &LINKING_ERROR, message: &String::from_utf8_lossy(&output.stderr) };
-                    eprintln!("{error}");
-                    return match output.status.code() {
-                        Some(code) => ExitCode::from(code as u8),
-                        None => ExitCode::FAILURE,
-                    };
-                }
+            Ok(output) => if !output.status.success() {
+                let error = MsgSimple { kind: &LINKING_ERROR, message: &String::from_utf8_lossy(&output.stderr) };
+                eprintln!("{error}");
+                return match output.status.code() {
+                    Some(code) => ExitCode::from(code as u8),
+                    None => ExitCode::FAILURE,
+                };
             },
             Err(err) => {
                 let error = MsgSimple { kind: &COULD_NOT_RUN_LINKER, message: &err };
@@ -293,22 +270,18 @@ fn main() -> ExitCode {
     compilation_sub_step.sub_step(&DONE, None, verbosity);
     execution_step.step(&DONE, None, verbosity);
 
-    let Command::Run { .. } = command else {
-        return ExitCode::SUCCESS;
-    };
+    let Command::Run { .. } = command else { return ExitCode::SUCCESS; };
 
     let exe_path = Path::new(".").join(&artifacts.exe_path);
     Logger::info(&RUNNING, &exe_path, verbosity);
 
     let mut run_command = std::process::Command::new(exe_path);
     match run_command.status() {
-        Ok(status) => {
-            if !status.success() {
-                return match status.code() {
-                    Some(code) => ExitCode::from(code as u8),
-                    None => ExitCode::FAILURE,
-                };
-            }
+        Ok(status) => if !status.success() {
+            return match status.code() {
+                Some(code) => ExitCode::from(code as u8),
+                None => ExitCode::FAILURE,
+            };
         },
         Err(err) => {
             let error = MsgSimple { kind: &COULD_NOT_RUN_EXECUTABLE, message: &err };

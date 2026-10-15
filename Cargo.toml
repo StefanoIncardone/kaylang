@@ -59,6 +59,9 @@ unused_results = "forbid"
 private_bounds = "forbid"
 private_interfaces = "forbid"
 unused_must_use = "forbid"
+non_snake_case = "allow"
+non_camel_case_types = "allow"
+non_upper_case_globals = "allow"
 
 [lints.clippy] # to be used once in a while
 nursery = { level = "warn", priority = -1 }
@@ -171,3 +174,5 @@ inline_trait_bounds = "allow"
 
 doc_paragraphs_missing_punctuation = "allow"
 partial_pub_fields = "allow"
+let_underscore_must_use = "allow"
+enum_variant_names = "allow"

@@ -23,7 +23,7 @@ fn check_project_euler() -> Result<(), ExitCode> {
     let project_euler_path = "examples/project_euler";
     let src_files = match std::fs::read_dir(project_euler_path) {
         Ok(files) => files,
-        Err(err) => panic!("could not read '{project_euler_path}' folder: {err}"),
+        Err(err)  => panic!("could not read '{project_euler_path}' folder: {err}"),
     };
 
     let mut error = false;
@@ -32,18 +32,14 @@ fn check_project_euler() -> Result<(), ExitCode> {
             Ok(path) => path.path(),
             Err(err) => panic!("could not get path: {err}"),
         };
-        if let Some(extension) = src_path.extension()
-            && extension == "kay"
-        {
+        if let Some(extension) = src_path.extension() && extension == "kay" {
             if let Err(_) = check(&src_path) {
                 error = true;
             }
         }
     }
 
-    if error {
-        return Err(ExitCode::FAILURE);
-    }
+    if error { return Err(ExitCode::FAILURE); }
     return Ok(());
 }
 
@@ -56,7 +52,7 @@ fn run_project_euler() -> Result<(), ExitCode> {
     let project_euler_path = "examples/project_euler";
     let src_files = match std::fs::read_dir(project_euler_path) {
         Ok(files) => files,
-        Err(err) => panic!("could not read '{project_euler_path}' folder: {err}"),
+        Err(err)  => panic!("could not read '{project_euler_path}' folder: {err}"),
     };
 
     let mut error = false;
@@ -65,18 +61,14 @@ fn run_project_euler() -> Result<(), ExitCode> {
             Ok(path) => path.path(),
             Err(err) => panic!("could not get path: {err}"),
         };
-        if let Some(extension) = src_path.extension()
-            && extension == "kay"
-        {
+        if let Some(extension) = src_path.extension() && extension == "kay" {
             if let Err(_) = run(&src_path, out_path) {
                 error = true;
             }
         }
     }
 
-    if error {
-        return Err(ExitCode::FAILURE);
-    }
+    if error { return Err(ExitCode::FAILURE); }
     return Ok(());
 }
 

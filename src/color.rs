@@ -2,14 +2,10 @@ use core::fmt::Display;
 
 use back_to_front::cli::{AnsiBg, AnsiCode, AnsiFg, AnsiFlag};
 
-#[expect(non_camel_case_types, reason = "alias to a primitive type")]
 pub type ansi_flag = u8;
-
-#[expect(non_camel_case_types, reason = "alias to a primitive type")]
 pub type ansi_code = u8;
 
 // IDEA(stefano): make more "pure" by selecting the printing mode each time
-#[expect(non_upper_case_globals, reason = "alias to a function")]
 pub(super) static mut print: fn(
     f: &mut core::fmt::Formatter<'_>,
     text: &dyn Display,
@@ -119,6 +115,7 @@ pub(super) fn print_color(
 }
 
 #[derive(Clone)]
+#[must_use]
 pub struct Colored<'text, Text: Display + ?Sized> {
     pub text: &'text Text,
     pub fg: AnsiFg,

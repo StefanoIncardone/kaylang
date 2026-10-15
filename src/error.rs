@@ -10,6 +10,7 @@ use unicode_width::UnicodeWidthChar as _;
 // calculating the actual visible length of characters, but rather the length of the pointers in
 // error messages
 pub(crate) trait DisplayLen {
+    #[must_use]
     fn display_len(&self) -> usize32;
 }
 
@@ -62,6 +63,7 @@ impl DisplayLen for ascii {
 // }
 
 #[derive(Clone)]
+#[must_use]
 pub struct MsgSimple<'kind, 'message> {
     pub kind: &'kind dyn Display,
     pub message: &'message dyn Display,
@@ -74,6 +76,7 @@ impl Display for MsgSimple<'_, '_> {
 }
 
 #[derive(Clone)]
+#[must_use]
 pub struct MsgWithCause<'kind, 'message, 'cause> {
     pub kind: &'kind dyn Display,
     pub message: &'message dyn Display,
@@ -94,6 +97,7 @@ impl Display for MsgWithCause<'_, '_, '_> {
 }
 
 #[derive(Clone)]
+#[must_use]
 pub struct MsgWithCauseUnderText<'kind, 'message, 'cause, 'src> {
     pub kind: &'kind dyn Display,
     pub message: &'message dyn Display,
@@ -145,6 +149,7 @@ impl Display for MsgWithCauseUnderText<'_, '_, '_, '_> {
 }
 
 #[derive(Clone)]
+#[must_use]
 pub struct MsgWithCauseUnderTextWithLocation<'kind, 'message, 'cause, 'src, 'path> {
     pub severity: MsgSeverity,
     pub kind: &'kind dyn Display,

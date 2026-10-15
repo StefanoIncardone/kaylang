@@ -23,6 +23,7 @@ use std::{io::IsTerminal, path::Path, time::Instant};
 
 use crate::code_generation::Artifacts;
 
+#[must_use]
 const fn max_text_len(texts: &[&str]) -> usize {
     let mut max_len = 0;
     let mut text_index = 0;
@@ -110,12 +111,12 @@ messages!(
 );
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[must_use]
 pub struct Logger {
     pub start: Instant,
 }
 
 impl Logger {
-    #[must_use]
     #[inline(always)]
     pub fn new() -> Self {
         return Self { start: Instant::now() };
@@ -181,7 +182,7 @@ macro_rules! flag {
 
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
+#[must_use] #[repr(u8)]
 pub enum FlagLen {
     Short = 0b000_0001,
     Long  = 0b000_0000,
@@ -193,15 +194,14 @@ impl Mask for FlagLen {
 
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
+#[must_use] #[repr(u8)]
 pub enum ColorFlag {
     DashDashColor = flag!(DashDash, FlagLen::Long as u8),
     DashC         = flag!(Dash,     FlagLen::Short as u8),
 }
 
 impl ColorFlag {
-    #[must_use]
-    #[inline]
+    #[must_use] #[inline]
     pub const fn to_str(self) -> &'static str {
         #[rustfmt::skip]
         return match self {
@@ -220,7 +220,7 @@ impl Display for ColorFlag {
 
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
-#[repr(u8)]
+#[must_use] #[repr(u8)]
 pub enum Color {
     #[default]
     Auto   = 0b0000_0000,
@@ -233,8 +233,7 @@ impl Mask for Color {
 }
 
 impl Color {
-    #[must_use]
-    #[inline(always)]
+    #[must_use] #[inline(always)]
     pub const fn to_str(self) -> &'static str {
         #[rustfmt::skip]
         return match self {
@@ -295,7 +294,7 @@ impl Color {
 
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
-#[repr(u8)]
+#[must_use] #[repr(u8)]
 pub enum Language {
     #[default]
     Kay = 0b0000_0000,
@@ -308,13 +307,12 @@ impl Mask for Language {
 }
 
 impl Language {
-    #[must_use]
+    #[must_use] #[inline(always)]
     pub const fn combine(self, tag: u8) -> u8 {
         return bits(&[self as u8, tag << Self::MASK_SHIFT]);
     }
 
-    #[must_use]
-    #[inline(always)]
+    #[must_use] #[inline]
     pub const fn to_str(self) -> &'static str {
         return match self {
             Self::Kay => "kay",
@@ -333,7 +331,7 @@ impl Display for Language {
 
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
+#[must_use] #[repr(u8)]
 pub enum LanguageFlag {
     DashDashKay = flag!(DashDash, Language::Kay as u8),
     DashDashAsm = flag!(DashDash, Language::Asm as u8),
@@ -341,8 +339,7 @@ pub enum LanguageFlag {
 }
 
 impl LanguageFlag {
-    #[must_use]
-    #[inline]
+    #[must_use] #[inline]
     pub const fn to_str(self) -> &'static str {
         #[rustfmt::skip]
         return match self {
@@ -362,15 +359,14 @@ impl Display for LanguageFlag {
 
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
+#[must_use] #[repr(u8)]
 pub enum OutputFlag {
     DashDashOutput = flag!(DashDash, FlagLen::Long as u8),
     DashO          = flag!(Dash,     FlagLen::Short as u8),
 }
 
 impl OutputFlag {
-    #[must_use]
-    #[inline]
+    #[must_use] #[inline]
     pub const fn to_str(self) -> &'static str {
         #[rustfmt::skip]
         return match self {
@@ -389,15 +385,14 @@ impl Display for OutputFlag {
 
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
+#[must_use] #[repr(u8)]
 pub enum SrcFlag {
     DashDashSrc = flag!(DashDash, FlagLen::Long as u8),
     DashS       = flag!(Dash,     FlagLen::Short as u8),
 }
 
 impl SrcFlag {
-    #[must_use]
-    #[inline]
+    #[must_use] #[inline]
     pub const fn to_str(self) -> &'static str {
         #[rustfmt::skip]
         return match self {
@@ -416,7 +411,7 @@ impl Display for SrcFlag {
 
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
-#[repr(u8)]
+#[must_use] #[repr(u8)]
 pub enum Verbosity {
     #[default]
     Normal  = 0b0000_0000,
@@ -429,7 +424,7 @@ impl Mask for Verbosity {
 }
 
 impl Verbosity {
-    #[must_use]
+    #[must_use] #[inline(always)]
     pub const fn combine(self, tag: u8) -> u8 {
         return bits(&[self as u8, tag << Self::MASK_SHIFT]);
     }
@@ -437,7 +432,7 @@ impl Verbosity {
 
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
+#[must_use] #[repr(u8)]
 pub enum VerbosityFlag {
     DashDashQuiet   = flag!(DashDash, Verbosity::Quiet.combine(FlagLen::Long as u8)),
     DashQ           = flag!(Dash,     Verbosity::Quiet.combine(FlagLen::Short as u8)),
@@ -447,8 +442,7 @@ pub enum VerbosityFlag {
 }
 
 impl VerbosityFlag {
-    #[must_use]
-    #[inline]
+    #[must_use] #[inline]
     pub const fn to_str(self) -> &'static str {
         #[rustfmt::skip]
         return match self {
@@ -470,7 +464,7 @@ impl Display for VerbosityFlag {
 
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
+#[must_use] #[repr(u8)]
 pub enum CommandFlagKey {
     Help     = 0b0000_0000,
     Question = 0b0000_0001,
@@ -493,7 +487,7 @@ impl Mask for CommandFlagKey {
 }
 
 impl CommandFlagKey {
-    #[must_use]
+    #[must_use] #[inline(always)]
     pub const fn combine(self, tag: u8) -> u8 {
         return bits(&[self as u8, tag << Self::MASK_SHIFT]);
     }
@@ -501,7 +495,7 @@ impl CommandFlagKey {
 
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
+#[must_use] #[repr(u8)]
 pub enum CommandFlag {
     Help             = flag!(Empty,    CommandFlagKey::Help.combine(FlagLen::Long as u8)),
     DashDashHelp     = flag!(DashDash, CommandFlagKey::Help.combine(FlagLen::Long as u8)),
@@ -521,8 +515,7 @@ pub enum CommandFlag {
 }
 
 impl CommandFlag {
-    #[must_use]
-    #[inline]
+    #[must_use] #[inline]
     pub const fn to_str(self) -> &'static str {
         #[rustfmt::skip]
         return match self {
@@ -554,6 +547,7 @@ impl Display for CommandFlag {
 
 #[rustfmt::skip]
 #[derive(Clone, Debug, Default, Hash, PartialEq, Eq)]
+#[must_use]
 pub enum Command<'args> {
     #[default]
     Help,
@@ -566,11 +560,10 @@ pub enum Command<'args> {
 }
 
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
-#[repr(transparent)]
+#[must_use] #[repr(transparent)]
 pub struct Version;
 
 impl Display for Version {
-    #[expect(non_upper_case_globals)]
     #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         const fg: AnsiFg = AnsiFg::White;
@@ -584,27 +577,26 @@ impl Display for Version {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub struct Help<'exe> {
     pub executable_name: &'exe Path,
 }
 
 impl Help<'_> {
-    #[must_use]
-    #[inline(always)]
+    #[must_use] #[inline(always)]
     pub fn default_executable_name() -> &'static Path {
         return Path::new("kay");
     }
 }
 
 impl Default for Help<'_> {
-    #[inline]
+    #[inline(always)]
     fn default() -> Self {
         return Self { executable_name: Self::default_executable_name() };
     }
 }
 
 impl Display for Help<'_> {
-    #[expect(non_upper_case_globals)]
     #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         const fg_value:  AnsiFg = AnsiFg::White;
@@ -732,8 +724,8 @@ impl Display for Help<'_> {
     }
 }
 
-#[must_use]
 #[derive(Debug)]
+#[must_use]
 enum ArgResult<P> {
     Ok(P),
     Err,
@@ -741,12 +733,14 @@ enum ArgResult<P> {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub struct Args<'args> {
     pub command: Result<Command<'args>, Vec<Error>>,
     pub color: Color,
 }
 
 impl Default for Args<'_> {
+    #[inline(always)]
     fn default() -> Self {
         return Self { command: Ok(Command::default()), color: Color::default() };
     }
@@ -756,12 +750,14 @@ impl Default for Args<'_> {
 pub type ArgIndex = usize;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub struct ArgValue {
     pub arg_index: ArgIndex,
     pub start_of_value_index: u8,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 struct ParsedArg<'args> {
     index: usize,
     raw: &'args str,
@@ -771,6 +767,7 @@ struct ParsedArg<'args> {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub struct ArgsParser<'args, S: AsRef<str>> {
     args: &'args [S],
     arg_index: usize,
@@ -788,7 +785,6 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
     // IDEA(stefano): make help and version commands collide with other commands
     // i.e.: `kay run file.txt help` should raise an error
     // i.e.: `kay run file.txt --help` should not raise an error
-    #[must_use]
     pub fn parse(args: &'args [S]) -> Args<'args> {
         let mut parser = Self {
             args,
@@ -1434,6 +1430,7 @@ impl<'args, S: AsRef<str>> ArgsParser<'args, S> {
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub enum Error {
     UnrecognizedColorMode(ArgValue),
 
@@ -1503,6 +1500,7 @@ pub enum Error {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub struct Errors<'executable_name, 'args, S: AsRef<str>> {
     pub executable_name: Option<&'executable_name Path>,
     pub args: &'args [S],

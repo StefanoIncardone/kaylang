@@ -10,6 +10,7 @@ pub use back_to_front::usize32;
 
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub struct Position<'path> {
     pub file: &'path Path,
     /// starts from 1
@@ -23,7 +24,6 @@ pub struct Position<'path> {
 }
 
 impl<'path> Position<'path> {
-    #[must_use]
     pub(crate) fn new(src: &SrcCode<'_, 'path>, offset: usize32) -> Self {
         let line_index = src.line_index(offset);
         let line = src.lines[line_index as usize];
@@ -51,6 +51,7 @@ impl Display for Position<'_> {
 
 // IDEA(stefano): let the user chose how to obtain the source code and just store a reference to it
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub struct SrcFile<'path> {
     pub(crate) path: &'path Path,
     pub(crate) code: String,
@@ -112,7 +113,7 @@ pub struct SrcCode<'code, 'path> {
 impl<'code, 'path> SrcCode<'code, 'path> {
     #[must_use] #[inline(always)] pub const fn path(&self)  -> &'path Path { return self.src_file.path(); }
     #[must_use] #[inline(always)] pub const fn code(&self)  -> &'code str  { return self.src_file.code(); }
-    #[must_use] #[inline(always)] pub const fn lines(&self) -> &[Line]     { return self.lines.as_slice(); }
+                #[inline(always)] pub const fn lines(&self) -> &[Line]     { return self.lines.as_slice(); }
 }
 
 impl SrcCode<'_, '_> {
@@ -134,6 +135,7 @@ impl SrcCode<'_, '_> {
 
 
 #[derive(Debug)]
+#[must_use]
 pub enum ErrorKind {
     Io(std::io::Error),
     MustBeAFilePath,
@@ -143,6 +145,7 @@ pub enum ErrorKind {
 
 
 #[derive(Debug)]
+#[must_use]
 pub struct Error<'path> {
     pub path: &'path Path,
     pub kind: ErrorKind,

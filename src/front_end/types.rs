@@ -1,11 +1,12 @@
 use back_to_front::ascii;
 
 pub(crate) trait SizeOf {
+    #[must_use]
     fn size(&self) -> usize;
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
+#[must_use] #[repr(u8)]
 pub enum BaseType {
     I64,
     Ascii,
@@ -19,8 +20,7 @@ impl BaseType {
     pub(crate) const BOOL_STR:  &str = "bool";
     pub(crate) const STR_STR:   &str = "str";
 
-    #[must_use]
-    #[inline]
+    #[must_use] #[inline]
     pub(crate) const fn to_str(self) -> &'static str {
         #[rustfmt::skip]
         return match self {
@@ -32,8 +32,7 @@ impl BaseType {
     }
 
     #[expect(clippy::single_call_fn)]
-    #[must_use]
-    #[inline]
+    #[must_use] #[inline]
     pub(crate) fn from_str(name: &str) -> Option<Self> {
         #[rustfmt::skip]
         return match name {
@@ -45,8 +44,7 @@ impl BaseType {
         };
     }
 
-    #[must_use]
-    #[inline]
+    #[must_use] #[inline]
     pub(crate) const fn size_of(&self) -> usize {
         #[rustfmt::skip]
         return match self {

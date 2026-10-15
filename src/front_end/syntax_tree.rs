@@ -13,7 +13,7 @@ use back_to_front::{ascii, src_code::Line, usize32};
 
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
+#[must_use] #[repr(u8)]
 pub(crate) enum PrefixOp {
     Len = Op::Len as u8,
     Not = Op::Not as u8,
@@ -61,7 +61,7 @@ impl PrefixOp {
 
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
+#[must_use] #[repr(u8)]
 pub(crate) enum BinaryOp {
     // binary operators
     Pow           = Op::Pow as u8,
@@ -148,7 +148,7 @@ impl BinaryOp {
 
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
+#[must_use] #[repr(u8)]
 pub(crate) enum BinaryAssignmentOp {
     Equals = Op::Equals as u8,
 
@@ -222,10 +222,9 @@ impl BinaryAssignmentOp {
 }
 
 
-#[expect(clippy::enum_variant_names)]
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
+#[must_use] #[repr(u8)]
 pub(crate) enum PrefixAssignmentOp {
     NotEquals = Op::NotEquals as u8,
 
@@ -280,6 +279,7 @@ pub(crate) type ExpressionIndex<'code> = Index32<Expression<'code>>;
         // 4. type checking -> (src, tokens, syntax, type checked code)
         // 5. ir            -> (src, tokens, syntax, type checked code, ir)
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub(crate) enum Expression<'code> {
     False {
         column: usize32,
@@ -407,7 +407,7 @@ impl PartialEq for ArrayItemSeparator {
 pub(crate) type ArrayItemsIndex<'code> = Index32<ArrayItem<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-#[repr(C)]
+#[must_use] #[repr(C)]
 pub(crate) struct ArrayItem<'code> {
     pub(crate) expression: ExpressionIndex<'code>,
     pub(crate) separator: ArrayItemSeparator,
@@ -417,6 +417,7 @@ pub(crate) struct ArrayItem<'code> {
 pub(crate) type ArrayDimensionIndex<'code> = Index32<ArrayDimension<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub(crate) struct ArrayDimension<'code> {
     pub(crate) open_square_bracket_column: usize32,
     // TODO(stefano): implement automatic inferring of array length
@@ -426,6 +427,7 @@ pub(crate) struct ArrayDimension<'code> {
 
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub(crate) struct TypeAnnotation<'code> {
     pub(crate) type_name: TextIndex<'code>,
     pub(crate) type_name_column: usize32,
@@ -437,6 +439,7 @@ pub(crate) struct TypeAnnotation<'code> {
 pub(crate) type VariableDefinitionIndex<'code> = Index32<VariableDefinition<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub(crate) struct VariableDefinition<'code> {
     pub(crate) name: TextIndex<'code>,
     pub(crate) name_column: usize32,
@@ -452,6 +455,7 @@ pub(crate) struct VariableDefinition<'code> {
 pub(crate) type NodeIndex<'code> = Index32<Node<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub(crate) enum Node<'code> {
     Semicolon {
         column: usize32,
@@ -556,6 +560,7 @@ pub(crate) enum Node<'code> {
 
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 enum ParsedNode<'code> {
     Node(Node<'code>),
     ScopeEnd,
@@ -563,6 +568,7 @@ enum ParsedNode<'code> {
 
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub struct SyntaxTree<'tokens, 'code: 'tokens, 'path> {
     pub(crate) tokens: &'tokens TokenizedCode<'code, 'path>,
 
@@ -580,8 +586,8 @@ pub struct SyntaxTree<'tokens, 'code: 'tokens, 'path> {
 impl<'tokens, 'code: 'tokens, 'path> SyntaxTree<'tokens, 'code, 'path> {
     #[must_use] #[inline(always)] pub(crate) const fn path(&self)   -> &'path Path     { return self.tokens.path(); }
     #[must_use] #[inline(always)] pub(crate) const fn code(&self)   -> &'code str      { return self.tokens.code(); }
-    #[must_use] #[inline(always)] pub(crate) const fn lines(&self)  -> &[Line]         { return self.tokens.lines(); }
-    #[must_use] #[inline(always)] pub(crate) const fn tokens(&self) -> &[Token<'code>] { return self.tokens.tokens(); }
+                #[inline(always)] pub(crate) const fn lines(&self)  -> &[Line]         { return self.tokens.lines(); }
+                #[inline(always)] pub(crate) const fn tokens(&self) -> &[Token<'code>] { return self.tokens.tokens(); }
     #[must_use] #[inline(always)] pub(crate) const fn text(&self)   -> &[&'code str]   { return self.tokens.text(); }
 }
 
@@ -595,6 +601,7 @@ impl<'code> SyntaxTree<'_, 'code, '_> {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub struct Parser<'tokens, 'code: 'tokens, 'path> {
     errors: Vec<Msg<ErrorKind>>,
     syntax_tree: SyntaxTree<'tokens, 'code, 'path>,
@@ -1118,12 +1125,14 @@ impl<'tokens, 'code: 'tokens, 'path> Parser<'tokens, 'code, 'path> {
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 struct Peeked<'code> {
     token: Token<'code>,
     index: TokenIndex<'code>,
 }
 
 impl<'code> Parser<'_, 'code, '_> {
+    #[must_use]
     fn peek_next_token(&self) -> Option<Peeked<'code>> {
         let token_index_end = TokenIndex::new(self.syntax_tree.tokens().len());
         for next_token_index in self.token_index.0..token_index_end.0 {
@@ -1246,6 +1255,7 @@ impl<'code> Parser<'_, 'code, '_> {
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 struct Operator<'code> {
     token: Token<'code>,
     operator: Op,
@@ -1253,6 +1263,7 @@ struct Operator<'code> {
 
 // TODO(stefano): make less recursive by only recursing based on operator precedence
 impl<'code> Parser<'_, 'code, '_> {
+    #[must_use]
     fn operator(&mut self, accepted_operators: &[Op]) -> Option<Operator<'code>> {
         let peeked = self.peek_next_token()?;
         let TokenKind::Op(operator) = peeked.token.kind else {
@@ -2197,12 +2208,12 @@ impl<'code> Parser<'_, 'code, '_> {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub struct SyntaxTreeDisplay<'syntax_tree, 'tokens: 'syntax_tree, 'code: 'tokens, 'path> {
     pub(crate) syntax_tree: &'syntax_tree SyntaxTree<'tokens, 'code, 'path>,
 }
 
 impl<'tokens> SyntaxTree<'tokens, '_, '_> {
-    #[must_use]
     #[inline(always)]
     pub const fn display(&self) -> SyntaxTreeDisplay<'_, 'tokens, '_, '_> {
         return SyntaxTreeDisplay { syntax_tree: self };
@@ -2213,11 +2224,7 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
     const INDENT_INCREMENT: usize = 2;
 
     #[inline(always)]
-    fn info_semicolon(
-        f: &mut core::fmt::Formatter<'_>,
-        indent: usize,
-        column: usize32,
-    ) -> core::fmt::Result {
+    fn info_semicolon(f: &mut core::fmt::Formatter<'_>, indent: usize, column: usize32) -> core::fmt::Result {
         return writeln!(f, "{:>indent$}Semicolon: {column} = ;", "");
     }
 
@@ -2566,7 +2573,7 @@ impl Display for SyntaxTreeDisplay<'_, '_, '_, '_> {
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
+#[must_use] #[repr(u8)]
 pub enum Expected {
     Operand,
     CloseRoundBracket,
@@ -2609,6 +2616,7 @@ impl Display for Expected {
 
 // TODO(stefano): add syntax errors such as "if" not followed by an expression
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub enum ErrorKind {
     PrematureEndOfFile(Expected),
     Expected(Expected),

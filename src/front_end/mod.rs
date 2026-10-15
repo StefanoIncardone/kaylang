@@ -14,7 +14,7 @@ use back_to_front::usize32;
 
 // IDEA(stefano): move to back-to-front
 #[derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
-#[repr(transparent)]
+#[must_use] #[repr(transparent)]
 pub(crate) struct Index32<T>(pub(crate) usize32, core::marker::PhantomData<T>);
 
 #[expect(clippy::missing_trait_methods)]
@@ -28,29 +28,23 @@ impl<T> Clone for Index32<T> {
 impl<T> Copy for Index32<T> {}
 
 impl<T> Index32<T> {
-    #[must_use]
     #[inline(always)]
     pub(crate) const fn new_usize32(index: usize32) -> Self {
         return Self(index, core::marker::PhantomData);
     }
 
-    #[must_use]
     #[inline(always)]
     pub(crate) const fn new(index: usize) -> Self {
         return Self(index as usize32, core::marker::PhantomData);
     }
 
-    #[track_caller]
-    #[must_use]
-    #[inline(always)]
+    #[must_use] #[inline(always)] #[track_caller]
     pub(crate) fn get(self, slice: &[T]) -> Option<&T> {
         return slice.get(self.0 as usize);
     }
 
     #[expect(dead_code)]
-    #[track_caller]
-    #[must_use]
-    #[inline(always)]
+    #[must_use] #[inline(always)] #[track_caller]
     pub(crate) fn get_mut(self, slice: &mut [T]) -> Option<&mut T> {
         return slice.get_mut(self.0 as usize);
     }
@@ -59,16 +53,14 @@ impl<T> Index32<T> {
 impl<T> core::ops::Index<Index32<T>> for [T] {
     type Output = T;
 
-    #[track_caller]
-    #[inline(always)]
+    #[inline(always)] #[track_caller]
     fn index(&self, index: Index32<T>) -> &Self::Output {
         return &self[index.0 as usize];
     }
 }
 
 impl<T> core::ops::IndexMut<Index32<T>> for [T] {
-    #[track_caller]
-    #[inline(always)]
+    #[inline(always)] #[track_caller]
     fn index_mut(&mut self, index: Index32<T>) -> &mut Self::Output {
         return &mut self[index.0 as usize];
     }
@@ -77,16 +69,14 @@ impl<T> core::ops::IndexMut<Index32<T>> for [T] {
 impl<T> core::ops::Index<Index32<T>> for Vec<T> {
     type Output = T;
 
-    #[track_caller]
-    #[inline(always)]
+    #[inline(always)] #[track_caller]
     fn index(&self, index: Index32<T>) -> &Self::Output {
         return self.as_slice().index(index);
     }
 }
 
 impl<T> core::ops::IndexMut<Index32<T>> for Vec<T> {
-    #[track_caller]
-    #[inline(always)]
+    #[inline(always)] #[track_caller]
     fn index_mut(&mut self, index: Index32<T>) -> &mut Self::Output {
         return self.as_mut_slice().index_mut(index);
     }
@@ -97,12 +87,14 @@ pub trait IntoMsgInfo {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub struct MsgInfo {
     pub message: Cow<'static, str>,
     pub cause: Cow<'static, str>,
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub enum MsgSeverity {
     Error,
     NonTerminalError,
@@ -111,6 +103,7 @@ pub enum MsgSeverity {
 
 // IDEA(stefano): allow pointers to start past the end of the line
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub struct Msg<K: IntoMsgInfo> {
     pub severity: MsgSeverity,
     pub kind: K,
@@ -138,6 +131,7 @@ impl<K: IntoMsgInfo> Msg<K> {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub struct MsgDisplay<'code, 'path> {
     pub severity: MsgSeverity,
     pub error_message: Cow<'static, str>,

@@ -5,17 +5,20 @@ use crate::back_end::ir::{Expression, ExpressionIndex, Ir, Node, Operand, Operan
 use core::fmt::Write as _;
 
 #[derive(Debug)]
+#[must_use]
 struct StackVariable<'ir, 'code: 'ir> {
     inner: &'ir ExpressionIndex<'code>,
     offset: usize,
 }
 
 #[derive(Debug)]
+#[must_use]
 struct RegisterVariable<'ir, 'code: 'ir> {
     inner: &'ir ExpressionIndex<'code>,
     reg: Reg64,
 }
 
+// #[must_use]
 // struct Allocator {
 //     registers: u16,
 // }
@@ -46,6 +49,7 @@ struct RegisterVariable<'ir, 'code: 'ir> {
 // }
 
 #[derive(Debug)]
+#[must_use]
 pub struct Compiler<'ir, 'tast: 'ir, 'st: 'tast, 'tokens: 'tast, 'code: 'tokens, 'path> {
     ir: &'ir Ir<'tast, 'st, 'tokens, 'code, 'path>,
 
@@ -291,30 +295,30 @@ section .rodata
  str _AT, "at"
  str file, "{src_path}"
 
- str attempt_division_by_zero, "attempt to divide by zero"
- str attempt_remainder_zero, "attempt to take the remainder of a division by zero"
- str attempt_exponent_negative, "attempt to raise an integer to a negative power"
- str attempt_array_index_underflow, "negative array index"
- str attempt_array_index_overflow, "array index out of bounds"
- str attempt_str_index_underflow, "negative string index"
- str attempt_str_index_overflow, "string index out of bounds"
- str attempt_left_shift_negative, "attempting to shift left by a negative quantity"
- str attempt_left_shift_over_6_bits, "attempting to shift left by a quantity over a 6 bit integer"
- str attempt_right_shift_negative, "attempting to shift right by a negative quantity"
- str attempt_right_shift_over_6_bits, "attempting to shift right by a quantity over a 6 bit integer"
- str attempt_left_rotate_negative, "attempting to rotate left by a negative quantity"
- str attempt_left_rotate_over_6_bits, "attempting to rotate left by a quantity over a 6 bit integer"
- str attempt_right_rotate_negative, "attempting to rotate right by a negative quantity"
+ str attempt_division_by_zero,         "attempt to divide by zero"
+ str attempt_remainder_zero,           "attempt to take the remainder of a division by zero"
+ str attempt_exponent_negative,        "attempt to raise an integer to a negative power"
+ str attempt_array_index_underflow,    "negative array index"
+ str attempt_array_index_overflow,     "array index out of bounds"
+ str attempt_str_index_underflow,      "negative string index"
+ str attempt_str_index_overflow,       "string index out of bounds"
+ str attempt_left_shift_negative,      "attempting to shift left by a negative quantity"
+ str attempt_left_shift_over_6_bits,   "attempting to shift left by a quantity over a 6 bit integer"
+ str attempt_right_shift_negative,     "attempting to shift right by a negative quantity"
+ str attempt_right_shift_over_6_bits,  "attempting to shift right by a quantity over a 6 bit integer"
+ str attempt_left_rotate_negative,     "attempting to rotate left by a negative quantity"
+ str attempt_left_rotate_over_6_bits,  "attempting to rotate left by a quantity over a 6 bit integer"
+ str attempt_right_rotate_negative,    "attempting to rotate right by a negative quantity"
  str attempt_right_rotate_over_6_bits, "attempting to rotate right by a quantity over a 6 bit integer"
- str pow_overflow, "exponentiation operation resulted in an overflow"
- str mul_overflow, "multiplication operation resulted in an overflow"
- str div_overflow, "division operation resulted in an overflow"
- str remainder_overflow, "remainder operation resulted in an overflow"
- str add_overflow, "add operation resulted in an overflow"
- str abs_overflow, "unary absolute value operation resulted in an overflow"
- str sub_overflow, "subtraction operation resulted in an overflow"
- str negate_overflow, "unary negation operation resulted in an overflow"
- str left_shift_overflow, "left shift operation resulted in an overflow"
+ str pow_overflow,                     "exponentiation operation resulted in an overflow"
+ str mul_overflow,                     "multiplication operation resulted in an overflow"
+ str div_overflow,                     "division operation resulted in an overflow"
+ str remainder_overflow,               "remainder operation resulted in an overflow"
+ str add_overflow,                     "add operation resulted in an overflow"
+ str abs_overflow,                     "unary absolute value operation resulted in an overflow"
+ str sub_overflow,                     "subtraction operation resulted in an overflow"
+ str negate_overflow,                  "unary negation operation resulted in an overflow"
+ str left_shift_overflow,              "left shift operation resulted in an overflow"
 
  true: equ 1
  str true_str, "true"
@@ -345,7 +349,10 @@ impl<'ir, 'code: 'ir> Compiler<'ir, '_, '_, '_, 'code, '_> {
                 self.expression(*argument);
                 self.print(*argument);
             },
-            // Node::Eprint { argument } => unimplemented!(),
+            Node::Eprint { argument, .. } => {
+                self.expression(*argument);
+                self.eprint(*argument);
+            },
         }
     }
 
@@ -384,9 +391,32 @@ impl<'ir, 'code: 'ir> Compiler<'ir, '_, '_, '_, 'code, '_> {
                 let operand = &self.ir.operands[*operand_index];
                 match operand {
                     Operand::False
-                    | Operand::True => _ = writeln!(self.asm, " call bool_print"),
-                    Operand::I64 { .. } => _ = writeln!(self.asm, " call i64_print"),
+                    | Operand::True =>       _ = writeln!(self.asm, " call bool_print"),
+                    Operand::I64 { .. } =>   _ = writeln!(self.asm, " call i64_print"),
                     Operand::Ascii { .. } => _ = writeln!(self.asm, " call ascii_print"),
+                    Operand::Str { .. } => _ = unimplemented!(),
+                    Operand::TempVariable { value } => unimplemented!(),
+                    Operand::Variable { value, .. } => unimplemented!(),
+                    // Operand::Variable { variable } => {
+                    //     let variable = &self.ir.variables[*variable_index];
+                    //     self.print(variable.value);
+                    // },
+                }
+            }
+        }
+    }
+
+    fn eprint(&mut self, argument_index: ExpressionIndex<'code>) {
+        let argument = &self.ir.expressions[argument_index];
+        match argument {
+            Expression::Operand { operand: operand_index, .. }
+            | Expression::TempOperand { operand: operand_index } => {
+                let operand = &self.ir.operands[*operand_index];
+                match operand {
+                    Operand::False
+                    | Operand::True =>       _ = writeln!(self.asm, " call bool_eprint"),
+                    Operand::I64 { .. } =>   _ = writeln!(self.asm, " call i64_eprint"),
+                    Operand::Ascii { .. } => _ = writeln!(self.asm, " call ascii_eprint"),
                     Operand::Str { .. } => _ = unimplemented!(),
                     Operand::TempVariable { value } => unimplemented!(),
                     Operand::Variable { value, .. } => unimplemented!(),

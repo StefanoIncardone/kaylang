@@ -8,7 +8,7 @@ use std::path::Path;
 use unicode_segmentation::UnicodeSegmentation as _;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
+#[must_use] #[repr(u8)]
 pub enum Op {
     Equals,
 
@@ -98,6 +98,7 @@ pub enum Op {
 }
 
 impl Op {
+    #[must_use]
     pub(crate) const fn display_len(self) -> usize32 {
         return match self {
             Self::Len => 3,
@@ -183,6 +184,7 @@ impl Op {
         };
     }
 
+    #[must_use]
     pub(crate) const fn to_str(self) -> &'static str {
         #[rustfmt::skip]
         return match self {
@@ -279,6 +281,7 @@ impl Display for Op {
 
 
 #[derive(Clone, Copy)]
+#[must_use]
 enum EscapeSequence {
     Ok(ascii),
     ErrBreak,
@@ -286,6 +289,7 @@ enum EscapeSequence {
 }
 
 #[derive(Clone)]
+#[must_use]
 pub(crate) struct EscapedAscii {
     pub(crate) ch: u8,
 }
@@ -314,6 +318,7 @@ pub(crate) type TokenIndex<'code> = Index32<Token<'code>>;
 
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub(crate) enum TokenKind<'code> {
     LineComment(TextIndex<'code>),
     BlockComment(TextIndex<'code>),
@@ -372,6 +377,7 @@ pub(crate) enum TokenKind<'code> {
 }
 
 impl<'code> TokenKind<'code> {
+    #[must_use]
     pub(crate) fn display_len(self, tokens: &Tokens<'code>) -> usize32 {
         return match self {
             Self::LineComment(comment) => {
@@ -460,6 +466,7 @@ impl<'code> TokenKind<'code> {
 
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub(crate) struct Token<'code> {
     pub(crate) kind: TokenKind<'code>,
     pub(crate) col: usize32,
@@ -467,6 +474,7 @@ pub(crate) struct Token<'code> {
 
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub struct Tokens<'code> {
     pub(crate) tokens: Vec<Token<'code>>,
 
@@ -475,8 +483,8 @@ pub struct Tokens<'code> {
 }
 
 
-#[must_use = "this is similar to a `Result`, which should be handled"]
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub struct TokenizationResult<'code, 'path> {
     /// Valid even on tokenization errors
     pub src: SrcCode<'code, 'path>,
@@ -484,6 +492,7 @@ pub struct TokenizationResult<'code, 'path> {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub struct TokenizedCode<'code, 'path> {
     pub src: SrcCode<'code, 'path>,
     pub tokens: Tokens<'code>,
@@ -494,13 +503,14 @@ pub struct TokenizedCode<'code, 'path> {
 impl<'code, 'path> TokenizedCode<'code, 'path> {
     #[must_use] #[inline(always)] pub(crate) const fn path(&self)   -> &'path Path     { return self.src.path(); }
     #[must_use] #[inline(always)] pub(crate) const fn code(&self)   -> &'code str      { return self.src.code(); }
-    #[must_use] #[inline(always)] pub(crate) const fn lines(&self)  -> &[Line]         { return self.src.lines(); }
-    #[must_use] #[inline(always)] pub(crate) const fn tokens(&self) -> &[Token<'code>] { return self.tokens.tokens.as_slice(); }
+                #[inline(always)] pub(crate) const fn lines(&self)  -> &[Line]         { return self.src.lines(); }
+                #[inline(always)] pub(crate) const fn tokens(&self) -> &[Token<'code>] { return self.tokens.tokens.as_slice(); }
     #[must_use] #[inline(always)] pub(crate) const fn text(&self)   -> &[&'code str]   { return self.tokens.text.as_slice(); }
 }
 
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub struct Tokenizer<'code, 'path> {
     errors: Vec<Msg<ErrorKind<'code>>>,
     tokens: TokenizedCode<'code, 'path>,
@@ -1223,7 +1233,6 @@ impl<'code> Tokenizer<'code, '_> {
         self.line_start = self.col;
     }
 
-    #[must_use]
     #[inline]
     fn new_token_text(&mut self, text: &'code str) -> TextIndex<'code> {
         let index = TextIndex::new(self.tokens.text().len());
@@ -1231,14 +1240,12 @@ impl<'code> Tokenizer<'code, '_> {
         return index;
     }
 
-    #[must_use]
-    #[inline(always)]
+    #[must_use] #[inline(always)]
     fn token_text(&self) -> &'code str {
         return &self.code()[self.token_start_col as usize..self.col as usize];
     }
 
-    #[must_use]
-    #[inline]
+    #[must_use] #[inline]
     const fn current_byte_multiline(&self) -> Option<u8> {
         if self.col as usize >= self.code().len() {
             return None;
@@ -1289,6 +1296,7 @@ impl<'code> Tokenizer<'code, '_> {
         };
     }
 
+    #[must_use]
     fn current_grapheme(&self) -> &'code str {
         let rest_of_code = &self.code()[self.col as usize..];
         let mut rest_of_line_graphemes = rest_of_code.graphemes(true);
@@ -1849,7 +1857,7 @@ impl<'code> Tokenizer<'code, '_> {
 
 
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
-#[repr(transparent)]
+#[must_use] #[repr(transparent)]
 pub struct Base(pub digit::Base);
 
 #[rustfmt::skip]
@@ -1870,8 +1878,7 @@ impl Base {
 }
 
 impl Base {
-    #[must_use]
-    #[inline]
+    #[must_use] #[inline]
     pub const fn letter(self) -> &'static str {
         #[rustfmt::skip]
         return match self.0 {
@@ -1882,8 +1889,7 @@ impl Base {
         };
     }
 
-    #[must_use]
-    #[inline]
+    #[must_use] #[inline]
     pub const fn letter_extended(self) -> &'static str {
         #[rustfmt::skip]
         return match self.0 {
@@ -1894,8 +1900,7 @@ impl Base {
         };
     }
 
-    #[must_use]
-    #[inline]
+    #[must_use] #[inline]
     pub const fn prefix(self) -> &'static str {
         #[rustfmt::skip]
         return match self.0 {
@@ -1906,8 +1911,7 @@ impl Base {
         };
     }
 
-    #[must_use]
-    #[inline]
+    #[must_use] #[inline]
     pub const fn prefix_extended(self) -> &'static str {
         #[rustfmt::skip]
         return match self.0 {
@@ -1921,6 +1925,7 @@ impl Base {
 
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub enum ErrorKind<'code> {
     OldStyleLineComment,
     UnclosedBlockComment,

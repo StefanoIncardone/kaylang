@@ -16,6 +16,7 @@ use core::fmt::Display;
 
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub enum Type {
     Base(BaseType),
     Array {
@@ -28,7 +29,6 @@ pub enum Type {
 }
 
 impl Type {
-    #[must_use]
     #[inline]
     pub const fn base_typ(&self) -> BaseType {
         return match self {
@@ -37,8 +37,7 @@ impl Type {
         };
     }
 
-    #[must_use]
-    #[inline]
+    #[must_use] #[inline]
     pub const fn size_of(&self) -> usize {
         return match self {
             Self::Base(typ) => typ.size_of(),
@@ -59,7 +58,7 @@ impl Display for Type {
 #[expect(dead_code)]
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
+#[must_use] #[repr(u8)]
 pub(crate) enum PrefixOp {
     Len = st::PrefixOp::Len as u8,
     Not = st::PrefixOp::Not as u8,
@@ -126,7 +125,7 @@ impl PrefixOp {
 #[expect(dead_code)]
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
+#[must_use] #[repr(u8)]
 pub(crate) enum BooleanPrefixOp {
     Not = st::PrefixOp::Not as u8,
 }
@@ -184,7 +183,7 @@ impl BooleanPrefixOp {
 #[expect(dead_code)]
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
+#[must_use] #[repr(u8)]
 pub(crate) enum BinaryOp {
     Pow           = st::BinaryOp::Pow as u8,
     WrappingPow   = st::BinaryOp::WrappingPow as u8,
@@ -275,7 +274,7 @@ impl BinaryOp {
 #[expect(dead_code)]
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
+#[must_use] #[repr(u8)]
 pub(crate) enum BooleanBinaryOp {
     And = st::BinaryOp::And as u8,
     Or  = st::BinaryOp::Or as u8,
@@ -334,7 +333,7 @@ impl BooleanBinaryOp {
 #[expect(dead_code)]
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
+#[must_use] #[repr(u8)]
 pub(crate) enum ComparisonOp {
     Compare = st::BinaryOp::Compare as u8,
 }
@@ -392,7 +391,7 @@ impl ComparisonOp {
 #[expect(dead_code)]
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
+#[must_use] #[repr(u8)]
 pub(crate) enum BooleanComparisonOp {
     EqualsEquals    = st::BinaryOp::EqualsEquals as u8,
     NotEqualsEquals = st::BinaryOp::NotEqualsEquals as u8,
@@ -456,7 +455,7 @@ impl BooleanComparisonOp {
 
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
+#[must_use] #[repr(u8)]
 pub(crate) enum AssignmentOp {
     Equals        = st::BinaryAssignmentOp::Equals as u8,
 }
@@ -506,10 +505,10 @@ impl AssignmentOp {
     }
 }
 
-#[expect(dead_code, clippy::enum_variant_names)]
+#[expect(dead_code)]
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
+#[must_use] #[repr(u8)]
 pub(crate) enum PrefixAssignmentOp {
     NotEquals = st::PrefixAssignmentOp::NotEquals as u8,
 
@@ -570,7 +569,7 @@ impl PrefixAssignmentOp {
 #[expect(dead_code)]
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
+#[must_use] #[repr(u8)]
 pub(crate) enum BooleanPrefixAssignmentOp {
     NotEquals = st::PrefixAssignmentOp::NotEquals as u8,
 }
@@ -623,7 +622,7 @@ impl BooleanPrefixAssignmentOp {
 #[expect(dead_code)]
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
+#[must_use] #[repr(u8)]
 pub(crate) enum BinaryAssignmentOp {
     Pow           = st::BinaryAssignmentOp::Pow as u8,
     WrappingPow   = st::BinaryAssignmentOp::WrappingPow as u8,
@@ -709,7 +708,7 @@ impl BinaryAssignmentOp {
 #[expect(dead_code)]
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[repr(u8)]
+#[must_use] #[repr(u8)]
 pub(crate) enum BooleanBinaryAssignmentOp {
     And    = st::BinaryAssignmentOp::And as u8,
     Or     = st::BinaryAssignmentOp::Or as u8,
@@ -767,6 +766,7 @@ pub(crate) type VariableDefinitionIndex<'code> = Index32<VariableDefinition<'cod
 pub(crate) type NodeIndex<'code> = Index32<Node<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub(crate) enum Expression<'code> {
     False {
         column: usize32,
@@ -872,6 +872,7 @@ impl Expression<'_> {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub(crate) struct Scope<'code> {
     pub(crate) parent: ScopeIndex<'code>,
     // pub(crate) types: Vec<BaseType>,
@@ -880,6 +881,7 @@ pub(crate) struct Scope<'code> {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub(crate) struct VariableDefinition<'code> {
     pub(crate) name: TextIndex<'code>,
     pub(crate) name_column: usize32,
@@ -890,6 +892,7 @@ pub(crate) struct VariableDefinition<'code> {
 
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub(crate) enum Node<'code> {
     Expression(ExpressionIndex<'code>),
 
@@ -985,12 +988,14 @@ pub(crate) enum Node<'code> {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 enum ParsedNode<'code> {
     Node(Node<'code>),
     ScopeEnd,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub struct TypedSyntaxTree<'st, 'tokens: 'st, 'code: 'tokens, 'path> {
     pub(crate) syntax_tree: &'st SyntaxTree<'tokens, 'code, 'path>,
 
@@ -1018,7 +1023,6 @@ impl<'code> TypedSyntaxTree<'_, '_, 'code, '_> {
 }
 
 impl<'tokens> TypedSyntaxTree<'_, 'tokens, '_, '_> {
-    #[must_use]
     #[inline(always)]
     pub const fn display(&self) -> TypedSyntaxTreeDisplay<'_, '_, 'tokens, '_, '_> {
         return TypedSyntaxTreeDisplay { tast: self };
@@ -1026,6 +1030,7 @@ impl<'tokens> TypedSyntaxTree<'_, 'tokens, '_, '_> {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub struct Parser<'st, 'tokens: 'st, 'code: 'tokens, 'path> {
     errors: Vec<Msg<ErrorKind>>,
     tast: TypedSyntaxTree<'st, 'tokens, 'code, 'path>,
@@ -1270,12 +1275,14 @@ impl<'st, 'tokens: 'st, 'code: 'tokens, 'path> Parser<'st, 'tokens, 'code, 'path
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 struct Peeked<'st, 'code: 'st> {
     node: &'st st::Node<'code>,
     index: st::NodeIndex<'code>,
 }
 
 impl<'st, 'code: 'st> Parser<'st, '_, 'code, '_> {
+    #[must_use]
     fn peek_next_node(&self) -> Option<Peeked<'st, 'code>> {
         let node_index_end = st::NodeIndex::new(self.tast.syntax_tree.nodes.len());
         for next_node_index in self.node_index.0..node_index_end.0 {
@@ -1376,6 +1383,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
     // NOTE(stefano): only considering the first token in the expression until proper
     // multiline error messages are developed
+    #[must_use]
     fn first_token_display_len(&self, expression: st::ExpressionIndex<'code>) -> usize32 {
         let st_expression = &self.tast.syntax_tree.expressions[expression];
         let token_kind = match st_expression {
@@ -1412,6 +1420,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
     // NOTE(stefano): only considering the first token in the expression until proper
     // multiline error messages are developed
+    #[must_use]
     fn first_token_column(&self, expression: st::ExpressionIndex<'code>) -> usize32 {
         let st_expression = &self.tast.syntax_tree.expressions[expression];
         let column = match st_expression {
@@ -1444,6 +1453,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         return column;
     }
 
+    #[must_use]
     fn resolve_variable(&self, name: &'code str) -> Option<VariableDefinitionIndex<'code>> {
         if let Some(variable) = self.resolve_let_variable(name) {
             return Some(variable);
@@ -1452,6 +1462,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         return self.resolve_var_variable(name);
     }
 
+    #[must_use]
     fn resolve_let_variable(&self, name: &'code str) -> Option<VariableDefinitionIndex<'code>> {
         let mut scope_index = self.scope;
         loop {
@@ -1471,6 +1482,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         }
     }
 
+    #[must_use]
     fn resolve_var_variable(&self, name: &'code str) -> Option<VariableDefinitionIndex<'code>> {
         let mut scope_index = self.scope;
         loop {
@@ -1491,6 +1503,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     }
 
     #[expect(clippy::unused_self)]
+    #[must_use]
     fn resolve_type(&self, name: &'code str) -> Option<BaseType> {
         return BaseType::from_str(name);
 
@@ -2801,6 +2814,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub struct TypedSyntaxTreeDisplay<'tast, 'st: 'tast, 'tokens: 'st, 'code: 'tokens, 'path> {
     pub(crate) tast: &'tast TypedSyntaxTree<'st, 'tokens, 'code, 'path>,
 }
@@ -3075,6 +3089,7 @@ impl Display for TypedSyntaxTreeDisplay<'_, '_, '_, '_, '_> {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub enum ErrorKind {
     BinaryIntegerOverflow,
     OctalIntegerOverflow,

@@ -18,6 +18,7 @@ use std::{
 };
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub struct ArtifactsExtensions {
     pub asm: &'static str,
     pub obj: &'static str,
@@ -25,7 +26,6 @@ pub struct ArtifactsExtensions {
 }
 
 impl ArtifactsExtensions {
-    #[must_use]
     #[inline(always)]
     pub const fn clone_const(&self) -> Self {
         return Self { ..*self };
@@ -33,6 +33,7 @@ impl ArtifactsExtensions {
 }
 
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
+#[must_use]
 pub enum Platform {
     #[default]
     Auto,
@@ -40,7 +41,6 @@ pub enum Platform {
 }
 
 impl Platform {
-    #[must_use]
     #[inline]
     pub const fn extensions(self) -> ArtifactsExtensions {
         return match self {
@@ -58,8 +58,7 @@ impl Platform {
         }
     }
 
-    #[must_use]
-    #[inline]
+    #[must_use] #[inline]
     pub fn assembler(self, src_path: &Path, out_path: &Path) -> Command {
         return match self {
             Self::Auto => {
@@ -76,8 +75,7 @@ impl Platform {
         };
     }
 
-    #[must_use]
-    #[inline]
+    #[must_use] #[inline]
     pub fn linker(self, src_path: &Path, out_path: &Path) -> Command {
         return match self {
             Self::Auto => {
@@ -97,6 +95,7 @@ impl Platform {
 
 // IDEA(stefano): provide a struct that contains the input paths to the assembler and linker commands
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use]
 pub struct Artifacts {
     pub asm_path: PathBuf,
     pub obj_path: PathBuf,
@@ -108,13 +107,11 @@ impl Artifacts {
     // the relevant paths
     #[expect(clippy::missing_errors_doc)]
     pub fn new(src_path: &Path, out_path: &Path, extensions: &ArtifactsExtensions) -> Result<Self, Error> {
-        if src_path.is_dir() {
-            return Err(Error::MustBeAFilePath(src_path.to_owned()));
-        }
+        if src_path.is_dir() { return Err(Error::MustBeAFilePath(src_path.to_owned())); }
 
         let src_path_stem = match src_path.file_stem() {
             Some(path_name) => Path::new(path_name),
-            None => return Err(Error::SrcPathCannotBeEmpty),
+            None            => return Err(Error::SrcPathCannotBeEmpty),
         };
 
         if out_path == Path::new("") || out_path == Path::new(".") {
@@ -141,8 +138,7 @@ impl Artifacts {
         return Ok(artifacts);
     }
 
-    #[must_use]
-    #[inline(always)]
+    #[must_use] #[inline(always)]
     pub fn is_valid_out_path(path: &Path) -> bool {
         return !path.exists() || path.is_dir();
     }
@@ -175,6 +171,7 @@ pub fn ld_linker(src_path: &Path, out_path: &Path) -> Command {
 
 
 #[derive(Debug)]
+#[must_use]
 pub enum Error {
     MustBeAFilePath(PathBuf),
     SrcPathCannotBeEmpty,
