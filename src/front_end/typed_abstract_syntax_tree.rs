@@ -10,7 +10,7 @@ use back_to_front::{ascii, digit, usize32};
 use super::{
     IntoMsgInfo, Msg, MsgInfo,
     syntax_tree::{self as st, SyntaxTree},
-    tokenizer::{Op, TextIndex},
+    tokenizer::{Op, Text},
 };
 use core::fmt::Display;
 
@@ -759,12 +759,6 @@ impl BooleanBinaryAssignmentOp {
     }
 }
 
-pub(crate) type ExpressionIndex<'code> = Index32<Expression<'code>>;
-pub(crate) type ArrayItemsIndex<'code> = Index32<Expression<'code>>;
-pub(crate) type ScopeIndex<'code> = Index32<Scope<'code>>;
-pub(crate) type VariableDefinitionIndex<'code> = Index32<VariableDefinition<'code>>;
-pub(crate) type NodeIndex<'code> = Index32<Node<'code>>;
-
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 #[must_use]
 pub(crate) enum Expression<'code> {
@@ -783,16 +777,16 @@ pub(crate) enum Expression<'code> {
         column: usize32,
     },
     Str {
-        literal: TextIndex<'code>,
+        literal: Index32<Text<'code>>,
         column: usize32,
     },
     Variable {
-        variable: VariableDefinitionIndex<'code>,
+        variable: Index32<VariableDefinition<'code>>,
         column: usize32,
     },
     Array {
         base_type: BaseType,
-        items_start: ArrayItemsIndex<'code>,
+        items_start: Index32<Expression<'code>>,
         /// always greater than 0
         items_len: u64,
     },
@@ -800,42 +794,42 @@ pub(crate) enum Expression<'code> {
     Prefix {
         operator: PrefixOp,
         operator_column: usize32,
-        right_operand: ExpressionIndex<'code>,
+        right_operand: Index32<Expression<'code>>,
     },
     BooleanPrefix {
         operator: BooleanPrefixOp,
         operator_column: usize32,
-        right_operand: ExpressionIndex<'code>,
+        right_operand: Index32<Expression<'code>>,
     },
     Binary {
-        left_operand: ExpressionIndex<'code>,
+        left_operand: Index32<Expression<'code>>,
         operator: BinaryOp,
         operator_column: usize32,
-        right_operand: ExpressionIndex<'code>,
+        right_operand: Index32<Expression<'code>>,
     },
     BooleanBinary {
-        left_operand: ExpressionIndex<'code>,
+        left_operand: Index32<Expression<'code>>,
         operator: BooleanBinaryOp,
         operator_column: usize32,
-        right_operand: ExpressionIndex<'code>,
+        right_operand: Index32<Expression<'code>>,
     },
     Comparison {
-        left_operand: ExpressionIndex<'code>,
+        left_operand: Index32<Expression<'code>>,
         operator: ComparisonOp,
         operator_column: usize32,
-        right_operand: ExpressionIndex<'code>,
+        right_operand: Index32<Expression<'code>>,
     },
     BooleanComparison {
-        left_operand: ExpressionIndex<'code>,
+        left_operand: Index32<Expression<'code>>,
         operator: BooleanComparisonOp,
         operator_column: usize32,
-        right_operand: ExpressionIndex<'code>,
+        right_operand: Index32<Expression<'code>>,
     },
 
     Index {
-        indexed_expression: ExpressionIndex<'code>,
+        indexed_expression: Index32<Expression<'code>>,
         open_square_bracket_column: usize32,
-        index_expression: ExpressionIndex<'code>,
+        index_expression: Index32<Expression<'code>>,
     },
 }
 
@@ -874,81 +868,81 @@ impl Expression<'_> {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 #[must_use]
 pub(crate) struct Scope<'code> {
-    pub(crate) parent: ScopeIndex<'code>,
+    pub(crate) parent: Index32<Scope<'code>>,
     // pub(crate) types: Vec<BaseType>,
-    pub(crate) let_variables: Vec<VariableDefinitionIndex<'code>>,
-    pub(crate) var_variables: Vec<VariableDefinitionIndex<'code>>,
+    pub(crate) let_variables: Vec<Index32<VariableDefinition<'code>>>,
+    pub(crate) var_variables: Vec<Index32<VariableDefinition<'code>>>,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 #[must_use]
 pub(crate) struct VariableDefinition<'code> {
-    pub(crate) name: TextIndex<'code>,
+    pub(crate) name: Index32<Text<'code>>,
     pub(crate) name_column: usize32,
     // NOTE(stefano): might remove and recalculate it each time
     pub(crate) typ: Type,
-    pub(crate) value: ExpressionIndex<'code>,
+    pub(crate) value: Index32<Expression<'code>>,
 }
 
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 #[must_use]
 pub(crate) enum Node<'code> {
-    Expression(ExpressionIndex<'code>),
+    Expression(Index32<Expression<'code>>),
 
     Print {
         print_column: usize32,
-        argument: ExpressionIndex<'code>,
+        argument: Index32<Expression<'code>>,
     },
     Println {
         println_column: usize32,
-        argument: ExpressionIndex<'code>,
+        argument: Index32<Expression<'code>>,
     },
     PrintlnNoArg {
         println_column: usize32,
     },
     Eprint {
         eprint_column: usize32,
-        argument: ExpressionIndex<'code>,
+        argument: Index32<Expression<'code>>,
     },
     Eprintln {
         eprintln_column: usize32,
-        argument: ExpressionIndex<'code>,
+        argument: Index32<Expression<'code>>,
     },
     EprintlnNoArg {
         eprintln_column: usize32,
     },
 
     LetVariableDefinition {
-        variable: VariableDefinitionIndex<'code>,
+        variable: Index32<VariableDefinition<'code>>,
     },
     VarVariableDefinition {
-        variable: VariableDefinitionIndex<'code>,
+        variable: Index32<VariableDefinition<'code>>,
     },
     Assignment {
-        target: ExpressionIndex<'code>,
+        target: Index32<Expression<'code>>,
         operator: AssignmentOp,
-        new_value: ExpressionIndex<'code>,
+        new_value: Index32<Expression<'code>>,
     },
     BinaryAssignment {
-        target: ExpressionIndex<'code>,
+        target: Index32<Expression<'code>>,
         operator: BinaryAssignmentOp,
         operator_column: usize32,
-        new_value: ExpressionIndex<'code>,
+        new_value: Index32<Expression<'code>>,
     },
     BooleanAssignmentExpression {
-        target: ExpressionIndex<'code>,
+        target: Index32<Expression<'code>>,
         operator: BooleanBinaryAssignmentOp,
         operator_column: usize32,
-        new_value: ExpressionIndex<'code>,
+        new_value: Index32<Expression<'code>>,
     },
     PrefixAssignmentExpression {
-        target: ExpressionIndex<'code>,
+        target: Index32<Expression<'code>>,
         operator: PrefixAssignmentOp,
         operator_column: usize32,
     },
     BooleanPrefixAssignment {
-        target: ExpressionIndex<'code>,
+        target: Index32<Expression<'code>>,
         operator: BooleanPrefixAssignmentOp,
         operator_column: usize32,
     },
@@ -959,12 +953,12 @@ pub(crate) enum Node<'code> {
 
     If {
         if_column: usize32,
-        condition: ExpressionIndex<'code>,
+        condition: Index32<Expression<'code>>,
     },
     ElseIf {
         else_column: usize32,
         if_column: usize32,
-        condition: ExpressionIndex<'code>,
+        condition: Index32<Expression<'code>>,
     },
     Else {
         else_column: usize32,
@@ -972,12 +966,12 @@ pub(crate) enum Node<'code> {
 
     Loop {
         loop_column: usize32,
-        condition: ExpressionIndex<'code>,
+        condition: Index32<Expression<'code>>,
     },
     DoLoop {
         do_column: usize32,
         loop_column: usize32,
-        condition: ExpressionIndex<'code>,
+        condition: Index32<Expression<'code>>,
     },
     Break {
         break_column: usize32,
@@ -1002,21 +996,21 @@ pub struct TypedSyntaxTree<'st, 'tokens: 'st, 'code: 'tokens, 'path> {
     pub(crate) nodes: Vec<Node<'code>>,
 
     pub(crate) expressions: Vec<Expression<'code>>,
-    pub(crate) array_items: Vec<ExpressionIndex<'code>>,
+    pub(crate) array_items: Vec<Index32<Expression<'code>>>,
     pub(crate) variables: Vec<VariableDefinition<'code>>,
 }
 
 impl<'code> TypedSyntaxTree<'_, '_, 'code, '_> {
     #[inline]
-    fn new_expression(&mut self, expression: Expression<'code>) -> ExpressionIndex<'code> {
-        let index = ExpressionIndex::new(self.expressions.len());
+    fn new_expression(&mut self, expression: Expression<'code>) -> Index32<Expression<'code>> {
+        let index = Index32::new(self.expressions.len());
         self.expressions.push(expression);
         return index;
     }
 
     #[inline]
-    fn new_variable(&mut self, variable: VariableDefinition<'code>) -> VariableDefinitionIndex<'code> {
-        let index = VariableDefinitionIndex::new(self.variables.len());
+    fn new_variable(&mut self, variable: VariableDefinition<'code>) -> Index32<VariableDefinition<'code>> {
+        let index = Index32::new(self.variables.len());
         self.variables.push(variable);
         return index;
     }
@@ -1035,10 +1029,10 @@ pub struct Parser<'st, 'tokens: 'st, 'code: 'tokens, 'path> {
     errors: Vec<Msg<ErrorKind>>,
     tast: TypedSyntaxTree<'st, 'tokens, 'code, 'path>,
 
-    node_index: st::NodeIndex<'code>,
+    node_index: Index32<st::Node<'code>>,
 
-    temp_array_items: Vec<ExpressionIndex<'code>>,
-    scope: ScopeIndex<'code>,
+    temp_array_items: Vec<Index32<Expression<'code>>>,
+    scope: Index32<Scope<'code>>,
     scopes: Vec<Scope<'code>>,
 }
 
@@ -1057,12 +1051,12 @@ impl<'st, 'tokens: 'st, 'code: 'tokens, 'path> Parser<'st, 'tokens, 'code, 'path
                 variables: Vec::new(),
             },
 
-            node_index: st::NodeIndex::new(0),
+            node_index: Index32::new(0),
 
             temp_array_items: Vec::new(),
-            scope: ScopeIndex::new(0),
+            scope: Index32::new(0),
             scopes: vec![Scope {
-                parent: ScopeIndex::new(0),
+                parent: Index32::new(0),
                 // types: vec![BaseType::I64, BaseType::Ascii, BaseType::Bool, BaseType::Str],
                 let_variables: Vec::new(),
                 var_variables: Vec::new(),
@@ -1078,7 +1072,7 @@ impl<'st, 'tokens: 'st, 'code: 'tokens, 'path> Parser<'st, 'tokens, 'code, 'path
                     parser.errors.push(err);
 
                     // consuming all remaining nodes until the end of the file
-                    parser.node_index = st::NodeIndex::new(parser.tast.syntax_tree.nodes.len());
+                    parser.node_index = Index32::new(parser.tast.syntax_tree.nodes.len());
                     break;
                 },
             }
@@ -1143,7 +1137,7 @@ impl<'st, 'tokens: 'st, 'code: 'tokens, 'path> Parser<'st, 'tokens, 'code, 'path
 
             st::Node::Scope { open_curly_bracket_column, raw_nodes_in_scope_count, .. } => {
                 let current_scope_index = self.scope;
-                self.scope = ScopeIndex::new(self.scopes.len());
+                self.scope = Index32::new(self.scopes.len());
                 self.scopes.push(Scope {
                     parent: current_scope_index,
                     // types: Vec::new(),
@@ -1152,7 +1146,7 @@ impl<'st, 'tokens: 'st, 'code: 'tokens, 'path> Parser<'st, 'tokens, 'code, 'path
                 });
 
                 let placeholder_scope = Node::Scope { raw_nodes_in_scope_count: 0 };
-                let placeholder_scope_node_index = NodeIndex::new(self.tast.nodes.len());
+                let placeholder_scope_node_index = Index32::new(self.tast.nodes.len());
                 self.tast.nodes.push(placeholder_scope);
 
                 let raw_nodes_in_scope_end = self.node_index.0 + *raw_nodes_in_scope_count;
@@ -1167,7 +1161,7 @@ impl<'st, 'tokens: 'st, 'code: 'tokens, 'path> Parser<'st, 'tokens, 'code, 'path
                     }
                 }
 
-                let last_scope_node_index = NodeIndex::new(self.tast.nodes.len() - 1);
+                let last_scope_node_index = Index32::<Node<'_>>::new(self.tast.nodes.len() - 1);
                 let Node::Scope { raw_nodes_in_scope_count: placeholder_raw_nodes_in_scope_count } =
                     &mut self.tast.nodes[placeholder_scope_node_index]
                 else {
@@ -1278,18 +1272,18 @@ impl<'st, 'tokens: 'st, 'code: 'tokens, 'path> Parser<'st, 'tokens, 'code, 'path
 #[must_use]
 struct Peeked<'st, 'code: 'st> {
     node: &'st st::Node<'code>,
-    index: st::NodeIndex<'code>,
+    index: Index32<st::Node<'code>>,
 }
 
 impl<'st, 'code: 'st> Parser<'st, '_, 'code, '_> {
     #[must_use]
     fn peek_next_node(&self) -> Option<Peeked<'st, 'code>> {
-        let node_index_end = st::NodeIndex::new(self.tast.syntax_tree.nodes.len());
+        let node_index_end = Index32::<Node<'_>>::new(self.tast.syntax_tree.nodes.len());
         for next_node_index in self.node_index.0..node_index_end.0 {
-            let next_node_index_index = st::NodeIndex::new_usize32(next_node_index);
+            let next_node_index_index = Index32::new_usize32(next_node_index);
             let next_node = &self.tast.syntax_tree.nodes[next_node_index_index];
             let st::Node::Semicolon { .. } = next_node else {
-                let peeked_node_index_index = st::NodeIndex::new_usize32(next_node_index_index.0 + 1);
+                let peeked_node_index_index = Index32::new_usize32(next_node_index_index.0 + 1);
                 return Some(Peeked { node: next_node, index: peeked_node_index_index });
             };
         }
@@ -1384,7 +1378,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     // NOTE(stefano): only considering the first token in the expression until proper
     // multiline error messages are developed
     #[must_use]
-    fn first_token_display_len(&self, expression: st::ExpressionIndex<'code>) -> usize32 {
+    fn first_token_display_len(&self, expression: Index32<st::Expression<'code>>) -> usize32 {
         let st_expression = &self.tast.syntax_tree.expressions[expression];
         let token_kind = match st_expression {
             st::Expression::False { .. } => TokenKind::False,
@@ -1421,7 +1415,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     // NOTE(stefano): only considering the first token in the expression until proper
     // multiline error messages are developed
     #[must_use]
-    fn first_token_column(&self, expression: st::ExpressionIndex<'code>) -> usize32 {
+    fn first_token_column(&self, expression: Index32<st::Expression<'code>>) -> usize32 {
         let st_expression = &self.tast.syntax_tree.expressions[expression];
         let column = match st_expression {
             st::Expression::False { column }
@@ -1454,7 +1448,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     }
 
     #[must_use]
-    fn resolve_variable(&self, name: &'code str) -> Option<VariableDefinitionIndex<'code>> {
+    fn resolve_variable(&self, name: &'code str) -> Option<Index32<VariableDefinition<'code>>> {
         if let Some(variable) = self.resolve_let_variable(name) {
             return Some(variable);
         }
@@ -1463,7 +1457,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     }
 
     #[must_use]
-    fn resolve_let_variable(&self, name: &'code str) -> Option<VariableDefinitionIndex<'code>> {
+    fn resolve_let_variable(&self, name: &'code str) -> Option<Index32<VariableDefinition<'code>>> {
         let mut scope_index = self.scope;
         loop {
             let scope = &self.scopes[scope_index];
@@ -1483,7 +1477,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     }
 
     #[must_use]
-    fn resolve_var_variable(&self, name: &'code str) -> Option<VariableDefinitionIndex<'code>> {
+    fn resolve_var_variable(&self, name: &'code str) -> Option<Index32<VariableDefinition<'code>>> {
         let mut scope_index = self.scope;
         loop {
             let scope = &self.scopes[scope_index];
@@ -1525,7 +1519,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
     fn expression(
         &mut self,
-        st_expression_index: st::ExpressionIndex<'code>,
+        st_expression_index: Index32<st::Expression<'code>>,
         expected_type: Option<&Type>,
     ) -> Result<Expression<'code>, Msg<ErrorKind>> {
         let st_expression = &self.tast.syntax_tree.expressions[st_expression_index];
@@ -1689,7 +1683,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
                 let array_expression = Expression::Array {
                     base_type: expected_array_items_type.base_typ(),
-                    items_start: ExpressionIndex::new_usize32(items_start.0),
+                    items_start: Index32::new_usize32(items_start.0),
                     items_len: *items_len as u64,
                 };
 
@@ -2190,7 +2184,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
     fn expect_expression_type(
         &self,
-        st_expression_index: st::ExpressionIndex<'code>,
+        st_expression_index: Index32<st::Expression<'code>>,
         expected_type: &Type,
         expression: &Expression<'code>,
     ) -> Result<(), Msg<ErrorKind>> {
@@ -2209,9 +2203,9 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     #[inline]
     fn parse_expression(
         &mut self,
-        st_expression_index: st::ExpressionIndex<'code>,
+        st_expression_index: Index32<st::Expression<'code>>,
         expected_type: Option<&Type>,
-    ) -> Result<ExpressionIndex<'code>, Msg<ErrorKind>> {
+    ) -> Result<Index32<Expression<'code>>, Msg<ErrorKind>> {
         let expression = self.expression(st_expression_index, expected_type)?;
         let expression_index = self.tast.new_expression(expression);
         return Ok(expression_index);
@@ -2333,8 +2327,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
     fn parse_variable(
         &mut self,
-        variable_definition: st::VariableDefinitionIndex<'code>,
-    ) -> Result<VariableDefinitionIndex<'code>, Msg<ErrorKind>> {
+        variable_definition: Index32<st::VariableDefinition<'code>>,
+    ) -> Result<Index32<VariableDefinition<'code>>, Msg<ErrorKind>> {
         let st::VariableDefinition { name, name_column, type_annotation, expression: initial_value, .. } =
             &self.tast.syntax_tree.variable_definitions[variable_definition];
 
@@ -2390,10 +2384,10 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 impl<'code> Parser<'_, '_, 'code, '_> {
     fn binary_assignment(
         &mut self,
-        target: st::ExpressionIndex<'code>,
+        target: Index32<st::Expression<'code>>,
         operator: st::BinaryAssignmentOp,
         operator_column: usize32,
-        new_value: st::ExpressionIndex<'code>,
+        new_value: Index32<st::Expression<'code>>,
     ) -> Result<Node<'code>, Msg<ErrorKind>> {
         let parsed_target = self.expression(target, None)?;
 
@@ -2627,7 +2621,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
     fn prefix_assignment(
         &mut self,
-        target: st::ExpressionIndex<'code>,
+        target: Index32<st::Expression<'code>>,
         operator: st::PrefixAssignmentOp,
         operator_column: usize32,
     ) -> Result<Node<'code>, Msg<ErrorKind>> {
@@ -2773,7 +2767,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     fn if_condition(
         &mut self,
         if_column: usize32,
-        condition: st::ExpressionIndex<'code>,
+        condition: Index32<st::Expression<'code>>,
     ) -> Result<Expression<'code>, Msg<ErrorKind>> {
         let condition_expression = self.expression(condition, None)?;
         let condition_expression_type = condition_expression.typ(&self.tast);
@@ -2794,7 +2788,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     fn loop_condition(
         &mut self,
         loop_column: usize32,
-        condition: st::ExpressionIndex<'code>,
+        condition: Index32<st::Expression<'code>>,
     ) -> Result<Expression<'code>, Msg<ErrorKind>> {
         let condition_expression = self.expression(condition, None)?;
         let condition_expression_type = condition_expression.typ(&self.tast);
@@ -2825,9 +2819,9 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_, '_> {
     fn info_if(
         &self,
         f: &mut core::fmt::Formatter<'_>,
-        node_index: &mut NodeIndex<'_>,
+        node_index: &mut Index32<Node<'_>>,
         indent: usize,
-        condition: ExpressionIndex<'_>,
+        condition: Index32<Expression<'_>>,
     ) -> core::fmt::Result {
         writeln!(f, "{:>indent$}If = if", "")?;
         let if_indent = indent + Self::INDENT_INCREMENT;
@@ -2838,7 +2832,7 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_, '_> {
     fn info_node(
         &self,
         f: &mut core::fmt::Formatter<'_>,
-        node_index: &mut NodeIndex<'_>,
+        node_index: &mut Index32<Node<'_>>,
         indent: usize,
     ) -> core::fmt::Result {
         let node = &self.tast.nodes[*node_index];
@@ -2969,7 +2963,7 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_, '_> {
     fn info_expression(
         &self,
         f: &mut core::fmt::Formatter<'_>,
-        expression_index: ExpressionIndex<'_>,
+        expression_index: Index32<Expression<'_>>,
         indent: usize,
     ) -> core::fmt::Result {
         let expression = &self.tast.expressions[expression_index];
@@ -3063,7 +3057,7 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_, '_> {
     fn info_variable(
         &self,
         f: &mut core::fmt::Formatter<'_>,
-        variable_index: VariableDefinitionIndex<'_>,
+        variable_index: Index32<VariableDefinition<'_>>,
         indent: usize,
     ) -> core::fmt::Result {
         let VariableDefinition { name, value, typ, .. } = &self.tast.variables[variable_index];
@@ -3079,7 +3073,7 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_, '_> {
 
 impl Display for TypedSyntaxTreeDisplay<'_, '_, '_, '_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let mut node_index = NodeIndex::new(0);
+        let mut node_index = Index32::new(0);
         while (node_index.0 as usize) < self.tast.nodes.len() {
             self.info_node(f, &mut node_index, 0)?;
         }

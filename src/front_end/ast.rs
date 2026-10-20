@@ -5,13 +5,13 @@
 use back_to_front::{digit, usize32, ascii};
 
 use crate::front_end::{
-    MsgSeverity, tokenizer::{self, EscapedAscii}, types::{BaseType, SizeOf},
+    Index32, MsgSeverity, tokenizer::{self, EscapedAscii}, types::{BaseType, SizeOf},
 };
 
 use super::{
     IntoMsgInfo, Msg, MsgInfo,
     src_file::{Position, SrcCode},
-    tokenizer::{Op, Token, TokenIndex, TokenKind, Tokens},
+    tokenizer::{Op, Token, TokenKind, Tokens},
 };
 use core::fmt::{Debug, Display};
 
@@ -750,7 +750,7 @@ pub struct Parser<'tokens, 'src: 'tokens, 'code: 'src, 'path> {
     src: &'src SrcCode<'code, 'path>,
     errors: Vec<Msg<ErrorKind>>,
 
-    token: TokenIndex<'code>,
+    token: Index32<Token<'code>>,
     tokens: &'tokens Tokens<'code>,
 
     loop_depth: u32,
@@ -786,7 +786,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path> Parser<'tokens, 'src, 'code, 'p
         }
 
         // skipping to the first non-comment token
-        let mut token = TokenIndex::new(0);
+        let mut token = Index32::new(0);
         while (token.0 as usize) < tokens.tokens.len() {
             let current = tokens.tokens[token];
             let (TokenKind::LineComment(_) | TokenKind::BlockComment(_)) = current.kind else {
@@ -857,7 +857,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     self.errors.push(err);
 
                     // consuming all remaining tokens until the end of the file
-                    self.token = TokenIndex::new(self.tokens.tokens.len());
+                    self.token = Index32::new(self.tokens.tokens.len());
                     break;
                 },
             }

@@ -3,7 +3,7 @@
 use super::{
     IntoMsgInfo, Msg, MsgInfo,
     src_file::Position,
-    tokenizer::{Op, TextIndex, Token, TokenIndex, TokenKind},
+    tokenizer::{Op, Text, Token, TokenKind},
 };
 use crate::{ERROR, error::MsgWithCauseUnderTextWithLocation, front_end::{Index32, MsgSeverity, tokenizer::TokenizedCode}};
 use core::{fmt::Display, num::NonZero};
@@ -268,8 +268,6 @@ impl PrefixAssignmentOp {
 }
 
 
-pub(crate) type ExpressionIndex<'code> = Index32<Expression<'code>>;
-
 // TODO(stefano): extract basic types and use them in every step so that information about the source code
     // location of tokens is not lost.
     // IDEA(stefano): bundle the result of each step with the next with the resulting struct of the next step:
@@ -288,55 +286,55 @@ pub(crate) enum Expression<'code> {
         column: usize32,
     },
     DecimalInteger {
-        literal: TextIndex<'code>,
+        literal: Index32<Text<'code>>,
         column: usize32,
     },
     DecimalIntegerPrefix {
-        literal: TextIndex<'code>,
+        literal: Index32<Text<'code>>,
         column: usize32,
     },
     BinaryInteger {
-        literal: TextIndex<'code>,
+        literal: Index32<Text<'code>>,
         column: usize32,
     },
     OctalInteger {
-        literal: TextIndex<'code>,
+        literal: Index32<Text<'code>>,
         column: usize32,
     },
     HexadecimalInteger {
-        literal: TextIndex<'code>,
+        literal: Index32<Text<'code>>,
         column: usize32,
     },
     Ascii {
-        literal: TextIndex<'code>,
+        literal: Index32<Text<'code>>,
         value: ascii,
         column: usize32,
     },
     Str {
-        literal: TextIndex<'code>,
+        literal: Index32<Text<'code>>,
         column: usize32,
     },
     RawStr {
-        literal: TextIndex<'code>,
+        literal: Index32<Text<'code>>,
         column: usize32,
     },
     Identifier {
-        identifier: TextIndex<'code>,
+        identifier: Index32<Text<'code>>,
         column: usize32,
     },
     IdentifierStr {
-        identifier: TextIndex<'code>,
+        identifier: Index32<Text<'code>>,
         column: usize32,
     },
     Array {
         open_square_bracket_column: usize32,
-        items_start: ArrayItemsIndex<'code>,
+        items_start: Index32<ArrayItem<'code>>,
         items_len: usize32,
         close_square_bracket_column: usize32,
     },
     ArrayTrailingItem {
         open_square_bracket_column: usize32,
-        items_start: ArrayItemsIndex<'code>,
+        items_start: Index32<ArrayItem<'code>>,
         /// always greater than 0
         items_len: usize32,
         close_square_bracket_column: usize32,
@@ -345,32 +343,32 @@ pub(crate) enum Expression<'code> {
     Prefix {
         operator: PrefixOp,
         operator_column: usize32,
-        right_operand: ExpressionIndex<'code>,
+        right_operand: Index32<Expression<'code>>,
     },
     Binary {
-        left_operand: ExpressionIndex<'code>,
+        left_operand: Index32<Expression<'code>>,
         operator: BinaryOp,
         operator_column: usize32,
-        right_operand: ExpressionIndex<'code>,
+        right_operand: Index32<Expression<'code>>,
     },
 
     Parenthesis {
         open_round_bracket_column: usize32,
-        inner_expression: ExpressionIndex<'code>,
+        inner_expression: Index32<Expression<'code>>,
         close_round_bracket_column: usize32,
     },
 
     Index {
-        indexed_expression: ExpressionIndex<'code>,
+        indexed_expression: Index32<Expression<'code>>,
         open_square_bracket_column: usize32,
-        index_expression: ExpressionIndex<'code>,
+        index_expression: Index32<Expression<'code>>,
         close_square_bracket_column: usize32,
     },
 }
 
 
 #[derive(Clone, Copy, Eq)]
-#[repr(C)]
+#[must_use] #[repr(C)]
 pub(crate) union ArrayItemSeparator {
     pub(crate) some: usize32,
     pub(crate) none: (),
@@ -403,56 +401,44 @@ impl PartialEq for ArrayItemSeparator {
     }
 }
 
-
-pub(crate) type ArrayItemsIndex<'code> = Index32<ArrayItem<'code>>;
-
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 #[must_use] #[repr(C)]
 pub(crate) struct ArrayItem<'code> {
-    pub(crate) expression: ExpressionIndex<'code>,
+    pub(crate) expression: Index32<Expression<'code>>,
     pub(crate) separator: ArrayItemSeparator,
 }
-
-
-pub(crate) type ArrayDimensionIndex<'code> = Index32<ArrayDimension<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 #[must_use]
 pub(crate) struct ArrayDimension<'code> {
     pub(crate) open_square_bracket_column: usize32,
     // TODO(stefano): implement automatic inferring of array length
-    pub(crate) dimension_expression: ExpressionIndex<'code>,
+    pub(crate) dimension_expression: Index32<Expression<'code>>,
     pub(crate) close_square_bracket_column: usize32,
 }
-
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 #[must_use]
 pub(crate) struct TypeAnnotation<'code> {
-    pub(crate) type_name: TextIndex<'code>,
+    pub(crate) type_name: Index32<Text<'code>>,
     pub(crate) type_name_column: usize32,
-    pub(crate) array_dimensions_start: ArrayDimensionIndex<'code>,
+    pub(crate) array_dimensions_start: Index32<ArrayDimension<'code>>,
     pub(crate) array_dimensions_len: usize32,
 }
-
-
-pub(crate) type VariableDefinitionIndex<'code> = Index32<VariableDefinition<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 #[must_use]
 pub(crate) struct VariableDefinition<'code> {
-    pub(crate) name: TextIndex<'code>,
+    pub(crate) name: Index32<Text<'code>>,
     pub(crate) name_column: usize32,
 
     pub(crate) colon_column: NonZero<usize32>,
     pub(crate) type_annotation: TypeAnnotation<'code>,
 
     pub(crate) equals_column: NonZero<usize32>,
-    pub(crate) expression: ExpressionIndex<'code>,
+    pub(crate) expression: Index32<Expression<'code>>,
 }
 
-
-pub(crate) type NodeIndex<'code> = Index32<Node<'code>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 #[must_use]
@@ -462,18 +448,18 @@ pub(crate) enum Node<'code> {
     },
 
     Expression {
-        expression: ExpressionIndex<'code>,
+        expression: Index32<Expression<'code>>,
         semicolon_column: usize32,
     },
 
     Print {
         print_column: usize32,
-        argument: ExpressionIndex<'code>,
+        argument: Index32<Expression<'code>>,
         semicolon_column: usize32,
     },
     Println {
         println_column: usize32,
-        argument: ExpressionIndex<'code>,
+        argument: Index32<Expression<'code>>,
         semicolon_column: usize32,
     },
     PrintlnNoArg {
@@ -482,12 +468,12 @@ pub(crate) enum Node<'code> {
     },
     Eprint {
         eprint_column: usize32,
-        argument: ExpressionIndex<'code>,
+        argument: Index32<Expression<'code>>,
         semicolon_column: usize32,
     },
     Eprintln {
         eprintln_column: usize32,
-        argument: ExpressionIndex<'code>,
+        argument: Index32<Expression<'code>>,
         semicolon_column: usize32,
     },
     EprintlnNoArg {
@@ -497,26 +483,26 @@ pub(crate) enum Node<'code> {
 
     LetVariableDefinition {
         let_column: usize32,
-        variable_definition: VariableDefinitionIndex<'code>,
+        variable_definition: Index32<VariableDefinition<'code>>,
         semicolon_column: usize32,
     },
     VarVariableDefinition {
         var_column: usize32,
-        variable_definition: VariableDefinitionIndex<'code>,
+        variable_definition: Index32<VariableDefinition<'code>>,
         semicolon_column: usize32,
     },
 
     BinaryAssignment {
-        target: ExpressionIndex<'code>,
+        target: Index32<Expression<'code>>,
         operator: BinaryAssignmentOp,
         operator_column: usize32,
-        new_value: ExpressionIndex<'code>,
+        new_value: Index32<Expression<'code>>,
         semicolon_column: usize32,
     },
     PrefixAssignment {
         operator: PrefixAssignmentOp,
         operator_column: usize32,
-        target: ExpressionIndex<'code>,
+        target: Index32<Expression<'code>>,
         semicolon_column: usize32,
     },
 
@@ -528,12 +514,12 @@ pub(crate) enum Node<'code> {
 
     If {
         if_column: usize32,
-        condition: ExpressionIndex<'code>,
+        condition: Index32<Expression<'code>>,
     },
     ElseIf {
         else_column: usize32,
         if_column: usize32,
-        condition: ExpressionIndex<'code>,
+        condition: Index32<Expression<'code>>,
     },
     Else {
         else_column: usize32,
@@ -541,12 +527,12 @@ pub(crate) enum Node<'code> {
 
     Loop {
         loop_column: usize32,
-        condition: ExpressionIndex<'code>,
+        condition: Index32<Expression<'code>>,
     },
     DoLoop {
         do_column: usize32,
         loop_column: usize32,
-        condition: ExpressionIndex<'code>,
+        condition: Index32<Expression<'code>>,
     },
     Break {
         break_column: usize32,
@@ -593,8 +579,8 @@ impl<'tokens, 'code: 'tokens, 'path> SyntaxTree<'tokens, 'code, 'path> {
 
 impl<'code> SyntaxTree<'_, 'code, '_> {
     #[inline]
-    fn new_expression(&mut self, expression: Expression<'code>) -> ExpressionIndex<'code> {
-        let index = ExpressionIndex::new(self.expressions.len());
+    fn new_expression(&mut self, expression: Expression<'code>) -> Index32<Expression<'code>> {
+        let index = Index32::new(self.expressions.len());
         self.expressions.push(expression);
         return index;
     }
@@ -606,7 +592,7 @@ pub struct Parser<'tokens, 'code: 'tokens, 'path> {
     errors: Vec<Msg<ErrorKind>>,
     syntax_tree: SyntaxTree<'tokens, 'code, 'path>,
 
-    token_index: TokenIndex<'code>,
+    token_index: Index32<Token<'code>>,
 
     loop_depth: u32,
     temp_array_items: Vec<ArrayItem<'code>>,
@@ -619,7 +605,7 @@ impl<'tokens, 'code: 'tokens, 'path> Parser<'tokens, 'code, 'path> {
     ) -> Result<SyntaxTree<'tokens, 'code, 'path>, Vec<Msg<ErrorKind>>> {
         let mut parser = Self {
             errors: Vec::new(),
-            token_index: TokenIndex::new(0),
+            token_index: Index32::new(0),
             loop_depth: 0,
             temp_array_items: Vec::new(),
             syntax_tree: SyntaxTree {
@@ -646,7 +632,7 @@ impl<'tokens, 'code: 'tokens, 'path> Parser<'tokens, 'code, 'path> {
                         match error.severity {
                             MsgSeverity::Error => {
                                 // consuming all remaining tokens until the end of the file
-                                parser.token_index = TokenIndex::new(parser.syntax_tree.tokens().len());
+                                parser.token_index = Index32::new(parser.syntax_tree.tokens().len());
                                 break 'parsing;
                             },
                             MsgSeverity::NonTerminalError | MsgSeverity::Warning => {},
@@ -896,7 +882,7 @@ impl<'tokens, 'code: 'tokens, 'path> Parser<'tokens, 'code, 'path> {
             TokenKind::Let => {
                 let (variable_definition, semicolon_column) = self.variable_definition(token)?;
                 let variable_definition_index =
-                    VariableDefinitionIndex::new(self.syntax_tree.variable_definitions.len());
+                    Index32::new(self.syntax_tree.variable_definitions.len());
                 self.syntax_tree.variable_definitions.push(variable_definition);
                 Ok(ParsedNode::Node(Node::LetVariableDefinition {
                     let_column: token.col,
@@ -907,7 +893,7 @@ impl<'tokens, 'code: 'tokens, 'path> Parser<'tokens, 'code, 'path> {
             TokenKind::Var => {
                 let (variable_definition, semicolon_column) = self.variable_definition(token)?;
                 let variable_definition_index =
-                    VariableDefinitionIndex::new(self.syntax_tree.variable_definitions.len());
+                    Index32::new(self.syntax_tree.variable_definitions.len());
                 self.syntax_tree.variable_definitions.push(variable_definition);
                 Ok(ParsedNode::Node(Node::VarVariableDefinition {
                     var_column: token.col,
@@ -922,13 +908,13 @@ impl<'tokens, 'code: 'tokens, 'path> Parser<'tokens, 'code, 'path> {
                     raw_nodes_in_scope_count: 0,
                     close_curly_bracket_column: 0,
                 };
-                let placeholder_scope_node_index = NodeIndex::new(self.syntax_tree.nodes.len());
+                let placeholder_scope_node_index = Index32::new(self.syntax_tree.nodes.len());
                 self.syntax_tree.nodes.push(placeholder_scope);
 
                 while let Some(peeked) = self.peek_next_token() {
                     self.token_index = peeked.index;
                     if let TokenKind::CloseCurlyBracket = peeked.token.kind {
-                        let last_scope_node_index = NodeIndex::new(self.syntax_tree.nodes.len() - 1);
+                        let last_scope_node_index = Index32::<Node<'_>>::new(self.syntax_tree.nodes.len() - 1);
                         let Node::Scope { raw_nodes_in_scope_count, close_curly_bracket_column, .. } =
                             &mut self.syntax_tree.nodes[placeholder_scope_node_index]
                         else {
@@ -1128,15 +1114,15 @@ impl<'tokens, 'code: 'tokens, 'path> Parser<'tokens, 'code, 'path> {
 #[must_use]
 struct Peeked<'code> {
     token: Token<'code>,
-    index: TokenIndex<'code>,
+    index: Index32<Token<'code>>,
 }
 
 impl<'code> Parser<'_, 'code, '_> {
     #[must_use]
     fn peek_next_token(&self) -> Option<Peeked<'code>> {
-        let token_index_end = TokenIndex::new(self.syntax_tree.tokens().len());
+        let token_index_end = Index32::<Token<'_>>::new(self.syntax_tree.tokens().len());
         for next_token_index in self.token_index.0..token_index_end.0 {
-            let next_token_index_index = TokenIndex::new_usize32(next_token_index);
+            let next_token_index_index = Index32::new_usize32(next_token_index);
             let next_token = self.syntax_tree.tokens()[next_token_index_index];
             match next_token.kind {
                 TokenKind::OpenRoundBracket
@@ -1173,7 +1159,7 @@ impl<'code> Parser<'_, 'code, '_> {
                 | TokenKind::Loop
                 | TokenKind::Break
                 | TokenKind::Continue => {
-                    let peeked_token_index_index = TokenIndex::new_usize32(next_token_index_index.0 + 1);
+                    let peeked_token_index_index = Index32::new_usize32(next_token_index_index.0 + 1);
                     return Some(Peeked { token: next_token, index: peeked_token_index_index });
                 },
                 TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {},
@@ -1208,7 +1194,7 @@ impl<'code> Parser<'_, 'code, '_> {
     /// Warning: should always be called with at least a previus token
     fn peek_previous_token(&self) -> Token<'code> {
         for previous_token_index in (0..self.token_index.0).rev() {
-            let previous_token_index_index = TokenIndex::new_usize32(previous_token_index);
+            let previous_token_index_index = Index32::new_usize32(previous_token_index);
             let previous_token = self.syntax_tree.tokens()[previous_token_index_index];
             match previous_token.kind {
                 TokenKind::OpenRoundBracket
@@ -1280,7 +1266,7 @@ impl<'code> Parser<'_, 'code, '_> {
         return None;
     }
 
-    fn primary_expression(&mut self, token: Token<'code>) -> Result<ExpressionIndex<'code>, ()> {
+    fn primary_expression(&mut self, token: Token<'code>) -> Result<Index32<Expression<'code>>, ()> {
         let mut expression = match token.kind {
             TokenKind::False => Expression::False { column: token.col },
             TokenKind::True => Expression::True { column: token.col },
@@ -1428,7 +1414,7 @@ impl<'code> Parser<'_, 'code, '_> {
                     self.temp_array_items.push(array_item);
                 };
 
-                let items_start = ArrayItemsIndex::new(self.syntax_tree.array_items.len());
+                let items_start = Index32::new(self.syntax_tree.array_items.len());
 
                 let array_expression = if let Some(last_item) = trailing_item {
                     self.temp_array_items.push(ArrayItem {
@@ -1552,7 +1538,7 @@ impl<'code> Parser<'_, 'code, '_> {
         return Ok(self.syntax_tree.new_expression(expression));
     }
 
-    fn exponentiative_expression(&mut self, token: Token<'code>) -> Result<ExpressionIndex<'code>, ()> {
+    fn exponentiative_expression(&mut self, token: Token<'code>) -> Result<Index32<Expression<'code>>, ()> {
         static OPS: [Op; 3] = [Op::Pow, Op::WrappingPow, Op::SaturatingPow];
 
         let mut left_operand = self.primary_expression(token)?;
@@ -1570,7 +1556,7 @@ impl<'code> Parser<'_, 'code, '_> {
         return Ok(left_operand);
     }
 
-    fn multiplicative_expression(&mut self, token: Token<'code>) -> Result<ExpressionIndex<'code>, ()> {
+    fn multiplicative_expression(&mut self, token: Token<'code>) -> Result<Index32<Expression<'code>>, ()> {
         static OPS: [Op; 7] = [
             Op::Times,
             Op::WrappingTimes,
@@ -1596,7 +1582,7 @@ impl<'code> Parser<'_, 'code, '_> {
         return Ok(left_operand);
     }
 
-    fn additive_expression(&mut self, token: Token<'code>) -> Result<ExpressionIndex<'code>, ()> {
+    fn additive_expression(&mut self, token: Token<'code>) -> Result<Index32<Expression<'code>>, ()> {
         static OPS: [Op; 6] = [
             Op::Plus,
             Op::WrappingPlus,
@@ -1621,7 +1607,7 @@ impl<'code> Parser<'_, 'code, '_> {
         return Ok(left_operand);
     }
 
-    fn shift_expression(&mut self, token: Token<'code>) -> Result<ExpressionIndex<'code>, ()> {
+    fn shift_expression(&mut self, token: Token<'code>) -> Result<Index32<Expression<'code>>, ()> {
         static OPS: [Op; 6] = [
             Op::LeftShift,
             Op::WrappingLeftShift,
@@ -1646,7 +1632,7 @@ impl<'code> Parser<'_, 'code, '_> {
         return Ok(left_operand);
     }
 
-    fn bitand_expression(&mut self, token: Token<'code>) -> Result<ExpressionIndex<'code>, ()> {
+    fn bitand_expression(&mut self, token: Token<'code>) -> Result<Index32<Expression<'code>>, ()> {
         static OPS: [Op; 1] = [Op::BitAnd];
 
         let mut left_operand = self.shift_expression(token)?;
@@ -1664,7 +1650,7 @@ impl<'code> Parser<'_, 'code, '_> {
         return Ok(left_operand);
     }
 
-    fn bitxor_expression(&mut self, token: Token<'code>) -> Result<ExpressionIndex<'code>, ()> {
+    fn bitxor_expression(&mut self, token: Token<'code>) -> Result<Index32<Expression<'code>>, ()> {
         static OPS: [Op; 1] = [Op::BitXor];
 
         let mut left_operand = self.bitand_expression(token)?;
@@ -1682,7 +1668,7 @@ impl<'code> Parser<'_, 'code, '_> {
         return Ok(left_operand);
     }
 
-    fn bitor_expression(&mut self, token: Token<'code>) -> Result<ExpressionIndex<'code>, ()> {
+    fn bitor_expression(&mut self, token: Token<'code>) -> Result<Index32<Expression<'code>>, ()> {
         static OPS: [Op; 1] = [Op::BitOr];
 
         let mut left_operand = self.bitxor_expression(token)?;
@@ -1700,7 +1686,7 @@ impl<'code> Parser<'_, 'code, '_> {
         return Ok(left_operand);
     }
 
-    fn comparison_expression(&mut self, token: Token<'code>) -> Result<ExpressionIndex<'code>, ()> {
+    fn comparison_expression(&mut self, token: Token<'code>) -> Result<Index32<Expression<'code>>, ()> {
         static OPS: [Op; 8] = [
             Op::Compare,
             Op::EqualsEquals,
@@ -1737,7 +1723,7 @@ impl<'code> Parser<'_, 'code, '_> {
         return Ok(left_operand);
     }
 
-    fn and_expression(&mut self, token: Token<'code>) -> Result<ExpressionIndex<'code>, ()> {
+    fn and_expression(&mut self, token: Token<'code>) -> Result<Index32<Expression<'code>>, ()> {
         static OPS: [Op; 1] = [Op::And];
 
         let mut left_operand = self.comparison_expression(token)?;
@@ -1755,7 +1741,7 @@ impl<'code> Parser<'_, 'code, '_> {
         return Ok(left_operand);
     }
 
-    fn or_expression(&mut self, token: Token<'code>) -> Result<ExpressionIndex<'code>, ()> {
+    fn or_expression(&mut self, token: Token<'code>) -> Result<Index32<Expression<'code>>, ()> {
         static OPS: [Op; 1] = [Op::Or];
 
         let mut left_operand = self.and_expression(token)?;
@@ -1773,7 +1759,7 @@ impl<'code> Parser<'_, 'code, '_> {
         return Ok(left_operand);
     }
 
-    fn expression(&mut self, token: Token<'code>) -> Result<ExpressionIndex<'code>, ()> {
+    fn expression(&mut self, token: Token<'code>) -> Result<Index32<Expression<'code>>, ()> {
         return self.or_expression(token);
     }
 }
@@ -1836,7 +1822,7 @@ impl<'code> Parser<'_, 'code, '_> {
             },
         };
 
-        let array_dimensions_start = ArrayDimensionIndex::new(self.syntax_tree.array_dimensions.len());
+        let array_dimensions_start = Index32::new(self.syntax_tree.array_dimensions.len());
         while let Some(Peeked {
             token: Token { kind: TokenKind::OpenSquareBracket, col: open_square_bracket_column },
             index: open_square_bracket_token_index,
@@ -2231,10 +2217,10 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
     fn info_if(
         &self,
         f: &mut core::fmt::Formatter<'_>,
-        node_index: &mut NodeIndex<'_>,
+        node_index: &mut Index32<Node<'_>>,
         indent: usize,
         if_column: usize32,
-        condition: ExpressionIndex<'_>,
+        condition: Index32<Expression<'_>>,
     ) -> core::fmt::Result {
         writeln!(f, "{:>indent$}If: {if_column} = if", "")?;
         let if_indent = indent + Self::INDENT_INCREMENT;
@@ -2245,7 +2231,7 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
     fn info_node(
         &self,
         f: &mut core::fmt::Formatter<'_>,
-        node_index: &mut NodeIndex<'_>,
+        node_index: &mut Index32<Node<'_>>,
         indent: usize,
     ) -> core::fmt::Result {
         let node = &self.syntax_tree.nodes[*node_index];
@@ -2373,7 +2359,7 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
     fn info_expression(
         &self,
         f: &mut core::fmt::Formatter<'_>,
-        expression_index: ExpressionIndex<'_>,
+        expression_index: Index32<Expression<'_>>,
         indent: usize,
     ) -> core::fmt::Result {
         let expression = &self.syntax_tree.expressions[expression_index];
@@ -2517,7 +2503,7 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
     fn info_variable_definition(
         &self,
         f: &mut core::fmt::Formatter<'_>,
-        variable_definition_index: VariableDefinitionIndex<'_>,
+        variable_definition_index: Index32<VariableDefinition<'_>>,
         indent: usize,
     ) -> core::fmt::Result {
         let VariableDefinition {
@@ -2563,7 +2549,7 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
 
 impl Display for SyntaxTreeDisplay<'_, '_, '_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let mut node_index = NodeIndex::new(0);
+        let mut node_index = Index32::new(0);
         while (node_index.0 as usize) < self.syntax_tree.nodes.len() {
             self.info_node(f, &mut node_index, 0)?;
         }

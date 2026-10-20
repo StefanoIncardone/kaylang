@@ -101,86 +101,86 @@ impl Op {
     #[must_use]
     pub(crate) const fn display_len(self) -> usize32 {
         return match self {
-            Self::Len => 3,
-            Self::Equals => 1,
-            Self::Not => 1,
-            Self::NotEquals => 2,
+            Self::Len                       => 3,
+            Self::Equals                    => 1,
+            Self::Not                       => 1,
+            Self::NotEquals                 => 2,
 
-            Self::Pow => 2,
-            Self::WrappingPow => 3,
-            Self::SaturatingPow => 3,
-            Self::PowEquals => 3,
-            Self::WrappingPowEquals => 4,
-            Self::SaturatingPowEquals => 4,
+            Self::Pow                       => 2,
+            Self::WrappingPow               => 3,
+            Self::SaturatingPow             => 3,
+            Self::PowEquals                 => 3,
+            Self::WrappingPowEquals         => 4,
+            Self::SaturatingPowEquals       => 4,
 
-            Self::Times => 1,
-            Self::WrappingTimes => 2,
-            Self::SaturatingTimes => 2,
-            Self::TimesEquals => 2,
-            Self::WrappingTimesEquals => 3,
-            Self::SaturatingTimesEquals => 3,
+            Self::Times                     => 1,
+            Self::WrappingTimes             => 2,
+            Self::SaturatingTimes           => 2,
+            Self::TimesEquals               => 2,
+            Self::WrappingTimesEquals       => 3,
+            Self::SaturatingTimesEquals     => 3,
 
-            Self::Divide => 1,
-            Self::WrappingDivide => 2,
-            Self::SaturatingDivide => 2,
-            Self::DivideEquals => 2,
-            Self::WrappingDivideEquals => 3,
-            Self::SaturatingDivideEquals => 3,
+            Self::Divide                    => 1,
+            Self::WrappingDivide            => 2,
+            Self::SaturatingDivide          => 2,
+            Self::DivideEquals              => 2,
+            Self::WrappingDivideEquals      => 3,
+            Self::SaturatingDivideEquals    => 3,
 
-            Self::Remainder => 1,
-            Self::RemainderEquals => 2,
+            Self::Remainder                 => 1,
+            Self::RemainderEquals           => 2,
 
-            Self::Plus => 1,
-            Self::WrappingPlus => 2,
-            Self::SaturatingPlus => 2,
-            Self::PlusEquals => 2,
-            Self::WrappingPlusEquals => 3,
-            Self::SaturatingPlusEquals => 3,
+            Self::Plus                      => 1,
+            Self::WrappingPlus              => 2,
+            Self::SaturatingPlus            => 2,
+            Self::PlusEquals                => 2,
+            Self::WrappingPlusEquals        => 3,
+            Self::SaturatingPlusEquals      => 3,
 
-            Self::Minus => 1,
-            Self::WrappingMinus => 2,
-            Self::SaturatingMinus => 2,
-            Self::MinusEquals => 2,
-            Self::WrappingMinusEquals => 3,
-            Self::SaturatingMinusEquals => 3,
+            Self::Minus                     => 1,
+            Self::WrappingMinus             => 2,
+            Self::SaturatingMinus           => 2,
+            Self::MinusEquals               => 2,
+            Self::WrappingMinusEquals       => 3,
+            Self::SaturatingMinusEquals     => 3,
 
-            Self::And => 2,
-            Self::AndEquals => 3,
+            Self::And                       => 2,
+            Self::AndEquals                 => 3,
 
-            Self::BitAnd => 1,
-            Self::BitAndEquals => 2,
+            Self::BitAnd                    => 1,
+            Self::BitAndEquals              => 2,
 
-            Self::Or => 2,
-            Self::OrEquals => 3,
+            Self::Or                        => 2,
+            Self::OrEquals                  => 3,
 
-            Self::BitOr => 1,
-            Self::BitOrEquals => 2,
+            Self::BitOr                     => 1,
+            Self::BitOrEquals               => 2,
 
-            Self::BitXor => 1,
-            Self::BitXorEquals => 2,
+            Self::BitXor                    => 1,
+            Self::BitXorEquals              => 2,
 
-            Self::LeftShift => 2,
-            Self::WrappingLeftShift => 3,
-            Self::SaturatingLeftShift => 3,
-            Self::LeftShiftEquals => 3,
-            Self::WrappingLeftShiftEquals => 4,
+            Self::LeftShift                 => 2,
+            Self::WrappingLeftShift         => 3,
+            Self::SaturatingLeftShift       => 3,
+            Self::LeftShiftEquals           => 3,
+            Self::WrappingLeftShiftEquals   => 4,
             Self::SaturatingLeftShiftEquals => 4,
 
-            Self::RightShift => 2,
-            Self::RightShiftEquals => 3,
+            Self::RightShift                => 2,
+            Self::RightShiftEquals          => 3,
 
-            Self::LeftRotate => 3,
-            Self::LeftRotateEquals => 4,
-            Self::RightRotate => 3,
-            Self::RightRotateEquals => 4,
+            Self::LeftRotate                => 3,
+            Self::LeftRotateEquals          => 4,
+            Self::RightRotate               => 3,
+            Self::RightRotateEquals         => 4,
 
-            Self::EqualsEquals => 2,
-            Self::NotEqualsEquals => 3,
-            Self::Greater => 1,
-            Self::GreaterOrEquals => 2,
-            Self::Less => 1,
-            Self::LessOrEquals => 2,
-            Self::Compare => 3,
+            Self::EqualsEquals              => 2,
+            Self::NotEqualsEquals           => 3,
+            Self::Greater                   => 1,
+            Self::GreaterOrEquals           => 2,
+            Self::Less                      => 1,
+            Self::LessOrEquals              => 2,
+            Self::Compare                   => 3,
         };
     }
 
@@ -297,7 +297,7 @@ pub(crate) struct EscapedAscii {
 impl Display for EscapedAscii {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self.ch {
-            control @ (b'\x00'..=b'\x1A') => {
+            control @ b'\x00'..=b'\x1A' => {
                 let caret = (b'@' + control) as utf32;
                 write!(f, "\\^{caret}")
             },
@@ -312,17 +312,14 @@ impl Display for EscapedAscii {
     }
 }
 
-
-pub(crate) type TextIndex<'code> = Index32<&'code str>;
-pub(crate) type TokenIndex<'code> = Index32<Token<'code>>;
-
+pub(crate) type Text<'code> = &'code str;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[must_use]
 pub(crate) enum TokenKind<'code> {
-    LineComment(TextIndex<'code>),
-    BlockComment(TextIndex<'code>),
-    Unexpected(TextIndex<'code>),
+    LineComment(Index32<Text<'code>>),
+    BlockComment(Index32<Text<'code>>),
+    Unexpected(Index32<Text<'code>>),
 
     // Symbols
     OpenRoundBracket,
@@ -342,19 +339,19 @@ pub(crate) enum TokenKind<'code> {
     True,
 
     // integer literals are never empty and always contain valid ascii digits
-    DecimalInteger(TextIndex<'code>),
-    DecimalIntegerPrefix(TextIndex<'code>),
-    BinaryInteger(TextIndex<'code>),
-    OctalInteger(TextIndex<'code>),
-    HexadecimalInteger(TextIndex<'code>),
+    DecimalInteger(Index32<Text<'code>>),
+    DecimalIntegerPrefix(Index32<Text<'code>>),
+    BinaryInteger(Index32<Text<'code>>),
+    OctalInteger(Index32<Text<'code>>),
+    HexadecimalInteger(Index32<Text<'code>>),
 
-    Ascii(TextIndex<'code>, ascii),
-    Str(TextIndex<'code>),
-    RawStr(TextIndex<'code>),
-    IdentifierStr(TextIndex<'code>),
+    Ascii(Index32<Text<'code>>, ascii),
+    Str(Index32<Text<'code>>),
+    RawStr(Index32<Text<'code>>),
+    IdentifierStr(Index32<Text<'code>>),
 
     // IDEA(stefano): extract base types from identifiers
-    Identifier(TextIndex<'code>),
+    Identifier(Index32<Text<'code>>),
 
     // Keywords
     /// temporary way of printing values to stdout
@@ -380,19 +377,6 @@ impl<'code> TokenKind<'code> {
     #[must_use]
     pub(crate) fn display_len(self, tokens: &Tokens<'code>) -> usize32 {
         return match self {
-            Self::LineComment(comment) => {
-                let text = tokens.text[comment];
-                text.display_len()
-            },
-            Self::BlockComment(comment) => {
-                let text = tokens.text[comment];
-                text.display_len()
-            },
-            Self::Unexpected(unexpected) => {
-                let text = tokens.text[unexpected];
-                text.display_len()
-            },
-
             Self::OpenRoundBracket
             | Self::CloseRoundBracket
             | Self::OpenSquareBracket
@@ -400,65 +384,49 @@ impl<'code> TokenKind<'code> {
             | Self::OpenCurlyBracket
             | Self::CloseCurlyBracket => 1,
 
-            Self::Colon => 1,
+            Self::Colon     => 1,
             Self::SemiColon => 1,
-            Self::Comma => 1,
-            Self::Op(op) => op.display_len(),
+            Self::Comma     => 1,
+            Self::Op(op)    => op.display_len(),
 
-            Self::True => 4,
+            Self::True  => 4,
             Self::False => 5,
 
-            Self::DecimalInteger(integer) | Self::DecimalIntegerPrefix(integer) => {
-                let text = tokens.text[integer];
-                text.len() as usize32
+            Self::LineComment(text_index)
+            | Self::BlockComment(text_index)
+            | Self::Unexpected(text_index) => {
+                let text = tokens.text[text_index];
+                text.display_len()
             },
-            Self::BinaryInteger(integer) => {
-                let text = tokens.text[integer];
-                text.len() as usize32
-            },
-            Self::OctalInteger(integer) => {
-                let text = tokens.text[integer];
-                text.len() as usize32
-            },
-            Self::HexadecimalInteger(integer) => {
-                let text = tokens.text[integer];
+
+            Self::DecimalInteger(text_index)
+            | Self::DecimalIntegerPrefix(text_index)
+            | Self::BinaryInteger(text_index)
+            | Self::OctalInteger(text_index)
+            | Self::HexadecimalInteger(text_index)
+
+
+            | Self::Ascii(text_index, _)
+            | Self::Str(text_index)
+            | Self::RawStr(text_index)
+            | Self::IdentifierStr(text_index)
+            | Self::Identifier(text_index) => {
+                let text = tokens.text[text_index];
                 text.len() as usize32
             },
 
-            Self::Ascii(ascii_char, _) => {
-                let text = tokens.text[ascii_char];
-                text.len() as usize32
-            },
-            Self::Str(string) => {
-                let text = tokens.text[string];
-                text.len() as usize32
-            },
-            Self::RawStr(string) => {
-                let text = tokens.text[string];
-                text.len() as usize32
-            },
-            Self::IdentifierStr(identifier) => {
-                let text = tokens.text[identifier];
-                text.len() as usize32
-            },
-
-            Self::Identifier(identifier) => {
-                let text = tokens.text[identifier];
-                text.len() as usize32
-            },
-
-            Self::Print => 5,
-            Self::PrintLn => 7,
-            Self::Eprint => 6,
+            Self::Print    => 5,
+            Self::PrintLn  => 7,
+            Self::Eprint   => 6,
             Self::EprintLn => 8,
 
-            Self::Let => 3,
-            Self::Var => 3,
-            Self::Do => 2,
-            Self::If => 2,
-            Self::Else => 4,
-            Self::Loop => 4,
-            Self::Break => 5,
+            Self::Let      => 3,
+            Self::Var      => 3,
+            Self::Do       => 2,
+            Self::If       => 2,
+            Self::Else     => 4,
+            Self::Loop     => 4,
+            Self::Break    => 5,
             Self::Continue => 8,
         };
     }
@@ -477,16 +445,13 @@ pub(crate) struct Token<'code> {
 #[must_use]
 pub struct Tokens<'code> {
     pub(crate) tokens: Vec<Token<'code>>,
-
-    // IDEA(stefano): store a Range<usize32> instead
-    pub(crate) text: Vec<&'code str>,
+    pub(crate) text: Vec<Text<'code>>, // IDEA(stefano): store a Range<usize32> instead
 }
 
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 #[must_use]
 pub struct TokenizationResult<'code, 'path> {
-    /// Valid even on tokenization errors
     pub src: SrcCode<'code, 'path>,
     pub result: Result<Tokens<'code>, Vec<Msg<ErrorKind<'code>>>>,
 }
@@ -505,9 +470,14 @@ impl<'code, 'path> TokenizedCode<'code, 'path> {
     #[must_use] #[inline(always)] pub(crate) const fn code(&self)   -> &'code str      { return self.src.code(); }
                 #[inline(always)] pub(crate) const fn lines(&self)  -> &[Line]         { return self.src.lines(); }
                 #[inline(always)] pub(crate) const fn tokens(&self) -> &[Token<'code>] { return self.tokens.tokens.as_slice(); }
-    #[must_use] #[inline(always)] pub(crate) const fn text(&self)   -> &[&'code str]   { return self.tokens.text.as_slice(); }
+    #[must_use] #[inline(always)] pub(crate) const fn text(&self)   -> &[Text<'code>]  { return self.tokens.text.as_slice(); }
 }
 
+#[must_use] #[repr(C)]
+union BackPatch<'code> {
+    token: Index32<Token<'code>>,
+    column: usize32,
+}
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 #[must_use]
@@ -515,17 +485,16 @@ pub struct Tokenizer<'code, 'path> {
     errors: Vec<Msg<ErrorKind<'code>>>,
     tokens: TokenizedCode<'code, 'path>,
 
-    line_start: usize32,
-
     col: usize32,
+    line_start_col: usize32,
     token_start_col: usize32,
 }
 
 // getters/setters
 #[rustfmt::skip]
 impl<'code, 'path> Tokenizer<'code, 'path> {
-    #[must_use] #[inline(always)] pub(crate) const fn path(&self)   -> &'path Path { return self.tokens.src.path(); }
-    #[must_use] #[inline(always)] pub(crate) const fn code(&self)   -> &'code str  { return self.tokens.src.code(); }
+    #[must_use] #[inline(always)] pub(crate) const fn path(&self) -> &'path Path { return self.tokens.src.path(); }
+    #[must_use] #[inline(always)] pub(crate) const fn code(&self) -> &'code str  { return self.tokens.src.code(); }
 
     #[inline(always)] fn push_token(&mut self, token: Token<'code>) {
         self.tokens.tokens.tokens.push(token);
@@ -535,24 +504,16 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
 impl<'code, 'path> Tokenizer<'code, 'path> {
     // IDEA(stefano): make into an iterator
     pub fn tokenize(src_file: &'code SrcFile<'path>) -> TokenizationResult<'code, 'path> {
-        #[repr(C)]
-        union BackPatch<'code> {
-            token: TokenIndex<'code>,
-            column: usize32,
-        }
-
-        let tokens = Tokens { tokens: Vec::new(), text: Vec::new() };
         let src = SrcCode { src_file, lines: Vec::new() };
+        let tokens = Tokens { tokens: Vec::new(), text: Vec::new() };
 
-        if src_file.code.len() == 0 {
-            return TokenizationResult { src, result: Ok(tokens) };
-        }
+        if src_file.code.len() == 0 { return TokenizationResult { src, result: Ok(tokens) }; }
 
         let mut tokenizer = Tokenizer {
             errors: Vec::new(),
             tokens: TokenizedCode { src, tokens },
 
-            line_start: 0,
+            line_start_col: 0,
 
             col: 0,
             token_start_col: 0,
@@ -561,6 +522,7 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
         let mut back_patches = Vec::<BackPatch<'_>>::new();
 
         'tokenization: while let Some(next_character) = tokenizer.current_ascii_multiline() {
+            // IDEA(stefano): have token_kind_result be directly the TokenKind to avoid checking if it's okay each time
             let token_kind_result = 'next_token: {
                 let next = match next_character {
                     Ok(next) => match next {
@@ -580,12 +542,6 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                                 continue 'tokenization;
                             }
 
-                            // tokenizer.errors.push(Error {
-                            //     severity: MsgKind::NonTerminalError,
-                            //     kind: ErrorKind::StrayCarriageReturn,
-                            //     col: tokenizer.line_start,
-                            //     pointers_count: 0,
-                            // });
                             tokenizer.new_line(LineEnd::CR);
                             continue 'tokenization;
                         },
@@ -596,7 +552,7 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                         },
                     },
                     Err(grapheme) => {
-                        tokenizer.push_utf8_error(grapheme);
+                        tokenizer.errors.push(tokenizer.utf8_error(grapheme));
                         tokenizer.col += grapheme.len() as usize32;
                         break 'next_token Err(());
                     },
@@ -722,7 +678,7 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                         },
                     },
                     b'(' => {
-                        let back_patch = BackPatch { token: TokenIndex::new(tokenizer.tokens.tokens().len()) };
+                        let back_patch = BackPatch { token: Index32::new(tokenizer.tokens.tokens().len()) };
                         back_patches.push(back_patch);
                         Ok(TokenKind::OpenRoundBracket)
                     },
@@ -766,7 +722,7 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                         }
                     },
                     b'[' => {
-                        let back_patch = BackPatch { token: TokenIndex::new(tokenizer.tokens.tokens().len()) };
+                        let back_patch = BackPatch { token: Index32::new(tokenizer.tokens.tokens().len()) };
                         back_patches.push(back_patch);
                         Ok(TokenKind::OpenSquareBracket)
                     },
@@ -810,7 +766,7 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                         }
                     },
                     b'{' => {
-                        let back_patch = BackPatch { token: TokenIndex::new(tokenizer.tokens.tokens().len()) };
+                        let back_patch = BackPatch { token: Index32::new(tokenizer.tokens.tokens().len()) };
                         back_patches.push(back_patch);
                         Ok(TokenKind::OpenCurlyBracket)
                     },
@@ -1176,7 +1132,6 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
             let kind = match token_kind_result {
                 Ok(kind) => kind,
                 Err(()) => {
-                    // TODO(stefano): check if the error is terminal or not
                     let unexpected_text = tokenizer.token_text();
                     let unexpected_index = tokenizer.new_token_text(unexpected_text);
                     TokenKind::Unexpected(unexpected_index)
@@ -1186,9 +1141,9 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
             tokenizer.push_token(Token { kind, col: tokenizer.token_start_col });
         }
 
-        if tokenizer.line_start != tokenizer.col {
+        if tokenizer.line_start_col != tokenizer.col {
             // file ended without a newline
-            let line = unsafe { Line::new_unchecked(tokenizer.line_start, tokenizer.col) };
+            let line = unsafe { Line::new_unchecked(tokenizer.line_start_col, tokenizer.col) };
             tokenizer.tokens.src.lines.push(line);
         }
 
@@ -1226,22 +1181,22 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
 impl<'code> Tokenizer<'code, '_> {
     #[inline]
     fn new_line(&mut self, line_end: LineEnd) {
-        let line = unsafe { Line::new_unchecked(self.line_start, self.col) };
+        let line = unsafe { Line::new_unchecked(self.line_start_col, self.col) };
         self.tokens.src.lines.push(line);
 
         self.col += line_end as usize32;
-        self.line_start = self.col;
+        self.line_start_col = self.col;
     }
 
     #[inline]
-    fn new_token_text(&mut self, text: &'code str) -> TextIndex<'code> {
-        let index = TextIndex::new(self.tokens.text().len());
+    fn new_token_text(&mut self, text: Text<'code>) -> Index32<Text<'code>> {
+        let index = Index32::new(self.tokens.text().len());
         self.tokens.tokens.text.push(text);
         return index;
     }
 
     #[must_use] #[inline(always)]
-    fn token_text(&self) -> &'code str {
+    fn token_text(&self) -> Text<'code> {
         return &self.code()[self.token_start_col as usize..self.col as usize];
     }
 
@@ -1280,12 +1235,6 @@ impl<'code> Tokenizer<'code, '_> {
                     return Some(b'\n');
                 }
 
-                // self.errors.push(Error {
-                //     severity: MsgSeverity::NonTerminalError,
-                //     kind: ErrorKind::StrayCarriageReturn,
-                //     col: self.line_start,
-                //     pointers_count: 0,
-                // });
                 self.new_line(LineEnd::CR);
                 Some(b'\n')
             },
@@ -1353,25 +1302,26 @@ impl<'code> Tokenizer<'code, '_> {
                 _utf8_ch => {
                     let grapheme = self.current_grapheme();
                     self.col += grapheme.len() as usize32;
-                    self.push_utf8_error(grapheme);
+                    self.errors.push(self.utf8_error(grapheme));
                 },
             }
         }
     }
 
-    fn push_utf8_error(&mut self, grapheme: &'code str) {
-        self.errors.push(Msg {
+    #[must_use] #[inline(always)]
+    fn utf8_error(&self, grapheme: &'code str) -> Msg<ErrorKind<'code>> {
+        return Msg {
             severity: MsgSeverity::NonTerminalError,
             kind: ErrorKind::Utf8Character { grapheme },
             col: self.col,
             pointers_count: grapheme.display_len(),
-        });
+        };
     }
 }
 
 // tokenization of numbers
 impl<'code> Tokenizer<'code, '_> {
-    fn check_digits(&mut self, base: digit::Base) -> Result<&'code str, ()> {
+    fn check_digits(&mut self, base: digit::Base) -> Result<Text<'code>, ()> {
         let previous_errors_len = self.errors.len();
 
         let check_fn = match base {
@@ -1402,7 +1352,7 @@ impl<'code> Tokenizer<'code, '_> {
         return Ok(literal_text);
     }
 
-    fn digits_text(&mut self, base: digit::Base) -> Result<TextIndex<'code>, ()> {
+    fn digits_text(&mut self, base: digit::Base) -> Result<Index32<Text<'code>>, ()> {
         let literal_text = self.check_digits(base)?;
         return Ok(self.new_token_text(literal_text));
     }
@@ -1440,7 +1390,7 @@ impl<'code> Tokenizer<'code, '_> {
             Some(Ok(current_character)) => current_character,
             Some(Err(grapheme)) => {
                 self.col += grapheme.len() as usize32;
-                self.push_utf8_error(grapheme);
+                self.errors.push(self.utf8_error(grapheme));
                 return EscapeSequence::ErrContinue;
             },
             None => {
@@ -1468,7 +1418,7 @@ impl<'code> Tokenizer<'code, '_> {
                 let caret_character = match self.current_ascii_singleline() {
                     Some(Ok(escape_character)) => escape_character,
                     Some(Err(grapheme)) => {
-                        self.push_utf8_error(grapheme);
+                        self.errors.push(self.utf8_error(grapheme));
                         self.col += grapheme.len() as usize32;
                         return EscapeSequence::ErrContinue;
                     },
@@ -1522,7 +1472,7 @@ impl<'code> Tokenizer<'code, '_> {
         return EscapeSequence::Ok(escaped_character);
     }
 
-    fn ascii_literal_characters(&mut self) -> Result<(&'code str, ascii), ()> {
+    fn ascii_literal_characters(&mut self) -> Result<(Text<'code>, ascii), ()> {
         let previous_errors_len = self.errors.len();
 
         let mut logical_character = b'\0';
@@ -1531,7 +1481,7 @@ impl<'code> Tokenizer<'code, '_> {
             let next_character = match self.current_ascii_singleline() {
                 Some(Ok(next_character)) => next_character,
                 Some(Err(grapheme)) => {
-                    self.push_utf8_error(grapheme);
+                    self.errors.push(self.utf8_error(grapheme));
                     self.col += grapheme.len() as usize32;
                     continue;
                 },
@@ -1603,14 +1553,14 @@ impl<'code> Tokenizer<'code, '_> {
         return Ok(TokenKind::Ascii(literal_index, ascii_value));
     }
 
-    fn str_literal_characters(&mut self) -> Result<&'code str, ()> {
+    fn str_literal_characters(&mut self) -> Result<Text<'code>, ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
             let next_character = match self.current_ascii_singleline() {
                 Some(Ok(next_character)) => next_character,
                 Some(Err(grapheme)) => {
-                    self.push_utf8_error(grapheme);
+                    self.errors.push(self.utf8_error(grapheme));
                     self.col += grapheme.len() as usize32;
                     continue;
                 },
@@ -1661,14 +1611,14 @@ impl<'code> Tokenizer<'code, '_> {
         return Ok(TokenKind::Str(literal_index));
     }
 
-    fn raw_str_literal_characters(&mut self) -> Result<&'code str, ()> {
+    fn raw_str_literal_characters(&mut self) -> Result<Text<'code>, ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
             let next_character = match self.current_ascii_singleline() {
                 Some(Ok(next_character)) => next_character,
                 Some(Err(grapheme)) => {
-                    self.push_utf8_error(grapheme);
+                    self.errors.push(self.utf8_error(grapheme));
                     self.col += grapheme.len() as usize32;
                     continue;
                 },
@@ -1690,7 +1640,7 @@ impl<'code> Tokenizer<'code, '_> {
                     let escape_character = match self.current_ascii_singleline() {
                         Some(Ok(escape_character)) => escape_character,
                         Some(Err(grapheme)) => {
-                            self.push_utf8_error(grapheme);
+                            self.errors.push(self.utf8_error(grapheme));
                             self.col += grapheme.len() as usize32;
                             continue;
                         },
@@ -1739,14 +1689,14 @@ impl<'code> Tokenizer<'code, '_> {
 impl<'code> Tokenizer<'code, '_> {
     const MAX_IDENTIFIER_LEN: usize32 = 63;
 
-    fn identifier_str_characters(&mut self) -> Result<&'code str, ()> {
+    fn identifier_str_characters(&mut self) -> Result<Text<'code>, ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
             let next_character = match self.current_ascii_singleline() {
                 Some(Ok(next_character)) => next_character,
                 Some(Err(grapheme)) => {
-                    self.push_utf8_error(grapheme);
+                    self.errors.push(self.utf8_error(grapheme));
                     self.col += grapheme.len() as usize32;
                     continue;
                 },
@@ -1963,10 +1913,6 @@ pub enum ErrorKind<'code> {
     ControlCharacter(ascii),
     Utf8Character { grapheme: &'code str },
     UnrecognizedCharacter(ascii),
-    // IDEA(stefano): report this as a warning instead of an error
-    // FIX(stefano): change `col` in lines ending in `\r` from `.line_start` to `.col` when pointers
-    // in errors are allowed to go past the end of the line, and make `pointers_count: 1`
-    // StrayCarriageReturn,
 }
 
 impl IntoMsgInfo for ErrorKind<'_> {
@@ -2135,10 +2081,6 @@ impl IntoMsgInfo for ErrorKind<'_> {
                     codepoint = unrecognized,
                 ).into(),
             ),
-            // Self::StrayCarriageReturn => (
-            //     "invalid line ending".into(),
-            //     "line ends in '\\r' without the following '\\n'".into()
-            // )
         };
 
         return MsgInfo { message: error_message, cause: error_cause_message };

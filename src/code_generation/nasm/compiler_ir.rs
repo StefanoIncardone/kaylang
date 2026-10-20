@@ -1,20 +1,20 @@
 use back_to_front::x86_64::Reg64;
 
-use crate::back_end::ir::{Expression, ExpressionIndex, Ir, Node, Operand, OperandIndex};
+use crate::{back_end::ir::{Expression, Ir, Node, Operand}, front_end::Index32};
 
 use core::fmt::Write as _;
 
 #[derive(Debug)]
 #[must_use]
 struct StackVariable<'ir, 'code: 'ir> {
-    inner: &'ir ExpressionIndex<'code>,
+    inner: &'ir Index32<Expression<'code>>,
     offset: usize,
 }
 
 #[derive(Debug)]
 #[must_use]
 struct RegisterVariable<'ir, 'code: 'ir> {
-    inner: &'ir ExpressionIndex<'code>,
+    inner: &'ir Index32<Expression<'code>>,
     reg: Reg64,
 }
 
@@ -357,7 +357,7 @@ impl<'ir, 'code: 'ir> Compiler<'ir, '_, '_, '_, 'code, '_> {
     }
 
     #[rustfmt::skip]
-    fn operand(&mut self, operand_index: OperandIndex<'code>) {
+    fn operand(&mut self, operand_index: Index32<Operand<'code>>) {
         let operand = &self.ir.operands[operand_index];
         match operand {
             Operand::False =>               _ = writeln!(self.asm, " mov rdi, false"),
@@ -370,7 +370,7 @@ impl<'ir, 'code: 'ir> Compiler<'ir, '_, '_, '_, 'code, '_> {
         }
     }
 
-    fn expression(&mut self, expression_index: ExpressionIndex<'code>) {
+    fn expression(&mut self, expression_index: Index32<Expression<'code>>) {
         let expression = &self.ir.expressions[expression_index];
         match expression {
             Expression::Operand { operand, .. } | Expression::TempOperand { operand } => self.operand(*operand),
@@ -383,7 +383,7 @@ impl<'ir, 'code: 'ir> Compiler<'ir, '_, '_, '_, 'code, '_> {
         }
     }
 
-    fn print(&mut self, argument_index: ExpressionIndex<'code>) {
+    fn print(&mut self, argument_index: Index32<Expression<'code>>) {
         let argument = &self.ir.expressions[argument_index];
         match argument {
             Expression::Operand { operand: operand_index, .. }
@@ -406,7 +406,7 @@ impl<'ir, 'code: 'ir> Compiler<'ir, '_, '_, '_, 'code, '_> {
         }
     }
 
-    fn eprint(&mut self, argument_index: ExpressionIndex<'code>) {
+    fn eprint(&mut self, argument_index: Index32<Expression<'code>>) {
         let argument = &self.ir.expressions[argument_index];
         match argument {
             Expression::Operand { operand: operand_index, .. }
