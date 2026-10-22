@@ -13,7 +13,6 @@ use super::{
     src_file::{Position, SrcCode},
     tokenizer::{Op, Token, TokenKind, Tokens},
 };
-use core::fmt::{Debug, Display};
 
 pub(crate) trait TypeOf {
     fn typ(&self) -> Type;
@@ -50,7 +49,7 @@ pub enum Type {
     },
 }
 
-impl Display for Type {
+impl core::fmt::Display for Type {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Base(typ) => write!(f, "{typ}"),
@@ -122,7 +121,7 @@ impl Into<Op> for UnaryOp {
     }
 }
 
-impl Display for UnaryOp {
+impl core::fmt::Display for UnaryOp {
     #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -164,7 +163,7 @@ impl Into<Op> for BooleanUnaryOp {
     }
 }
 
-impl Display for BooleanUnaryOp {
+impl core::fmt::Display for BooleanUnaryOp {
     #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -240,7 +239,7 @@ impl Into<Op> for BinaryOp {
     }
 }
 
-impl Display for BinaryOp {
+impl core::fmt::Display for BinaryOp {
     #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -284,7 +283,7 @@ impl Into<Op> for BooleanBinaryOp {
     }
 }
 
-impl Display for BooleanBinaryOp {
+impl core::fmt::Display for BooleanBinaryOp {
     #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -333,7 +332,7 @@ impl Into<Op> for ComparisonOp {
     }
 }
 
-impl Display for ComparisonOp {
+impl core::fmt::Display for ComparisonOp {
     #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -423,7 +422,7 @@ impl Into<Op> for AssignmentOp {
     }
 }
 
-impl Display for AssignmentOp {
+impl core::fmt::Display for AssignmentOp {
     #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -461,7 +460,7 @@ impl Into<Op> for PrefixAssignmentOp {
     }
 }
 
-impl Display for PrefixAssignmentOp {
+impl core::fmt::Display for PrefixAssignmentOp {
     #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -665,7 +664,7 @@ impl<'ast, 'code: 'ast> ExpressionDisplay<'ast, 'code> {
     }
 }
 
-impl Display for ExpressionDisplay<'_, '_> {
+impl core::fmt::Display for ExpressionDisplay<'_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return self.display(f, self.expr);
     }
@@ -3444,7 +3443,7 @@ pub enum Expected {
     LoopStatement,
 }
 
-impl Display for Expected {
+impl core::fmt::Display for Expected {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Semicolon => write!(f, "semicolon"),

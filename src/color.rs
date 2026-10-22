@@ -1,5 +1,3 @@
-use core::fmt::Display;
-
 use back_to_front::cli::{AnsiBg, AnsiCode, AnsiFg, AnsiFlag};
 
 pub type ansi_flag = u8;
@@ -8,7 +6,7 @@ pub type ansi_code = u8;
 // IDEA(stefano): make more "pure" by selecting the printing mode each time
 pub(super) static mut print: fn(
     f: &mut core::fmt::Formatter<'_>,
-    text: &dyn Display,
+    text: &dyn core::fmt::Display,
     fg: AnsiFg,
     bg: AnsiBg,
     flags: ansi_flag,
@@ -16,7 +14,7 @@ pub(super) static mut print: fn(
 
 pub(super) fn print_no_color(
     f: &mut core::fmt::Formatter<'_>,
-    text: &dyn Display,
+    text: &dyn core::fmt::Display,
     _: AnsiFg,
     _: AnsiBg,
     _: ansi_flag,
@@ -26,7 +24,7 @@ pub(super) fn print_no_color(
 
 pub(super) fn print_color(
     f: &mut core::fmt::Formatter<'_>,
-    text: &dyn Display,
+    text: &dyn core::fmt::Display,
     fg: AnsiFg,
     bg: AnsiBg,
     flags: ansi_flag,
@@ -116,14 +114,14 @@ pub(super) fn print_color(
 
 #[derive(Clone)]
 #[must_use]
-pub struct Colored<'text, Text: Display + ?Sized> {
+pub struct Colored<'text, Text: core::fmt::Display + ?Sized> {
     pub text: &'text Text,
     pub fg: AnsiFg,
     pub bg: AnsiBg,
     pub flags: ansi_flag,
 }
 
-impl<Text: Display + ?Sized> Display for Colored<'_, Text> {
+impl<Text: core::fmt::Display + ?Sized> core::fmt::Display for Colored<'_, Text> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return unsafe { print(f, &self.text, self.fg, self.bg, self.flags) };
     }

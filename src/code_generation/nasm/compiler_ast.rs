@@ -10,7 +10,7 @@ use back_to_front::usize32;
 #[expect(clippy::useless_attribute, reason = "false positive")]
 #[expect(clippy::pub_use)]
 pub use back_to_front::x86_64::Reg64;
-use core::fmt::{Display, Write as _};
+use core::fmt::Write as _;
 extern crate alloc;
 use alloc::borrow::Cow;
 
@@ -46,7 +46,7 @@ impl Base {
     }
 }
 
-impl Display for Base {
+impl core::fmt::Display for Base {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return f.write_str(self.to_str());

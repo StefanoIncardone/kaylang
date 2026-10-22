@@ -7,15 +7,20 @@ pub mod types;
 
 use self::src_file::{Position, SrcCode};
 use crate::{ERROR, error::MsgWithCauseUnderTextWithLocation};
-use core::fmt::{Debug, Display};
 extern crate alloc;
 use alloc::borrow::Cow;
 use back_to_front::usize32;
 
 // IDEA(stefano): move to back-to-front
-#[derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[must_use] #[repr(transparent)]
 pub(crate) struct Index32<T>(pub(crate) usize32, core::marker::PhantomData<T>);
+
+impl<T> core::fmt::Debug for Index32<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        return write!(f, "Index32({})", self.0);
+    }
+}
 
 #[expect(clippy::missing_trait_methods)]
 impl<T> Clone for Index32<T> {
@@ -105,6 +110,7 @@ pub enum MsgSeverity {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 #[must_use]
 pub struct Msg<K: IntoMsgInfo> {
+    // BUG(stefano): is ignored
     pub severity: MsgSeverity,
     pub kind: K,
     /// absolute source code byte position
@@ -141,7 +147,7 @@ pub struct MsgDisplay<'code, 'path> {
     pub error_cause_message: Cow<'static, str>,
 }
 
-impl Display for MsgDisplay<'_, '_> {
+impl core::fmt::Display for MsgDisplay<'_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let error = MsgWithCauseUnderTextWithLocation {
             severity: MsgSeverity::Error,

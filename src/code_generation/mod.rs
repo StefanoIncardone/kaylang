@@ -12,7 +12,7 @@ pub mod nasm;
 use cfg_if::cfg_if;
 
 use crate::{ERROR, error::MsgWithCause};
-use core::fmt::{Display, Write as _};
+use core::fmt::Write as _;
 use std::{
     path::{Path, PathBuf}, process::Command,
 };
@@ -180,7 +180,7 @@ pub enum Error {
     CouldNotCreateOutputDirectory { path: PathBuf, err: std::io::Error },
 }
 
-impl Display for Error {
+impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut message = String::new();
         let mut cause = String::new();

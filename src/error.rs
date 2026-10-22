@@ -1,7 +1,6 @@
 use crate::{
     AT, BAR, CAUSE, color::{Colored, ansi_flag}, front_end::{MsgSeverity, src_file::Position},
 };
-use core::fmt::Display;
 use back_to_front::{cli::{AnsiBg, AnsiFg, AnsiFlag}, usize32, ascii, utf32};
 use unicode_width::UnicodeWidthChar as _;
 
@@ -65,11 +64,11 @@ impl DisplayLen for ascii {
 #[derive(Clone)]
 #[must_use]
 pub struct MsgSimple<'kind, 'message> {
-    pub kind: &'kind dyn Display,
-    pub message: &'message dyn Display,
+    pub kind: &'kind dyn core::fmt::Display,
+    pub message: &'message dyn core::fmt::Display,
 }
 
-impl Display for MsgSimple<'_, '_> {
+impl core::fmt::Display for MsgSimple<'_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return write!(f, "{kind}: {message}", kind = self.kind, message = self.message);
     }
@@ -78,12 +77,12 @@ impl Display for MsgSimple<'_, '_> {
 #[derive(Clone)]
 #[must_use]
 pub struct MsgWithCause<'kind, 'message, 'cause> {
-    pub kind: &'kind dyn Display,
-    pub message: &'message dyn Display,
-    pub cause: &'cause dyn Display,
+    pub kind: &'kind dyn core::fmt::Display,
+    pub message: &'message dyn core::fmt::Display,
+    pub cause: &'cause dyn core::fmt::Display,
 }
 
-impl Display for MsgWithCause<'_, '_, '_> {
+impl core::fmt::Display for MsgWithCause<'_, '_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return write!(
             f,
@@ -99,15 +98,15 @@ impl Display for MsgWithCause<'_, '_, '_> {
 #[derive(Clone)]
 #[must_use]
 pub struct MsgWithCauseUnderText<'kind, 'message, 'cause, 'src> {
-    pub kind: &'kind dyn Display,
-    pub message: &'message dyn Display,
-    pub cause: &'cause dyn Display,
-    pub line_text: &'src dyn Display,
+    pub kind: &'kind dyn core::fmt::Display,
+    pub message: &'message dyn core::fmt::Display,
+    pub cause: &'cause dyn core::fmt::Display,
+    pub line_text: &'src dyn core::fmt::Display,
     pub pointers_count: usize32,
     pub pointers_offset: usize32,
 }
 
-impl Display for MsgWithCauseUnderText<'_, '_, '_, '_> {
+impl core::fmt::Display for MsgWithCauseUnderText<'_, '_, '_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let kind = Colored {
             text: self.kind,
@@ -152,16 +151,16 @@ impl Display for MsgWithCauseUnderText<'_, '_, '_, '_> {
 #[must_use]
 pub struct MsgWithCauseUnderTextWithLocation<'kind, 'message, 'cause, 'src, 'path> {
     pub severity: MsgSeverity,
-    pub kind: &'kind dyn Display,
-    pub message: &'message dyn Display,
-    pub cause: &'cause dyn Display,
+    pub kind: &'kind dyn core::fmt::Display,
+    pub message: &'message dyn core::fmt::Display,
+    pub cause: &'cause dyn core::fmt::Display,
     pub position: Position<'path>,
     pub line_text: &'src str,
     pub pointers_count: usize32,
 }
 
 // IDEA(stefano): add cli flag to control the amount of spaces (default 4) to display when printing tabs
-impl Display for MsgWithCauseUnderTextWithLocation<'_, '_, '_, '_, '_> {
+impl core::fmt::Display for MsgWithCauseUnderTextWithLocation<'_, '_, '_, '_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let error_message = Colored {
             text: &self.message,

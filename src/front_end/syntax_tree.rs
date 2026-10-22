@@ -6,7 +6,7 @@ use super::{
     tokenizer::{Op, Text, Token, TokenKind},
 };
 use crate::{ERROR, error::MsgWithCauseUnderTextWithLocation, front_end::{Index32, MsgSeverity, tokenizer::TokenizedCode}};
-use core::{fmt::Display, num::NonZero};
+use core::num::NonZero;
 use std::path::Path;
 use back_to_front::{ascii, src_code::Line, usize32};
 
@@ -41,7 +41,7 @@ impl Into<Op> for PrefixOp {
     }
 }
 
-impl Display for PrefixOp {
+impl core::fmt::Display for PrefixOp {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -129,7 +129,7 @@ impl Into<Op> for BinaryOp {
     }
 }
 
-impl Display for BinaryOp {
+impl core::fmt::Display for BinaryOp {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -205,7 +205,7 @@ impl Into<Op> for BinaryAssignmentOp {
     }
 }
 
-impl Display for BinaryAssignmentOp {
+impl core::fmt::Display for BinaryAssignmentOp {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -251,7 +251,7 @@ impl Into<Op> for PrefixAssignmentOp {
     }
 }
 
-impl Display for PrefixAssignmentOp {
+impl core::fmt::Display for PrefixAssignmentOp {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -2547,7 +2547,7 @@ impl SyntaxTreeDisplay<'_, '_, '_, '_> {
     }
 }
 
-impl Display for SyntaxTreeDisplay<'_, '_, '_, '_> {
+impl core::fmt::Display for SyntaxTreeDisplay<'_, '_, '_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut node_index = Index32::new(0);
         while (node_index.0 as usize) < self.syntax_tree.nodes.len() {
@@ -2578,7 +2578,7 @@ pub enum Expected {
     LoopStatement,
 }
 
-impl Display for Expected {
+impl core::fmt::Display for Expected {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Operand => write!(f, "operand"),

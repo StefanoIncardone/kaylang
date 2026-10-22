@@ -12,7 +12,6 @@ use super::{
     syntax_tree::{self as st, SyntaxTree},
     tokenizer::{Op, Text},
 };
-use core::fmt::Display;
 
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -46,7 +45,7 @@ impl Type {
     }
 }
 
-impl Display for Type {
+impl core::fmt::Display for Type {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Base(typ) => write!(f, "{typ}"),
@@ -105,7 +104,7 @@ impl Into<PrefixOp> for st::PrefixOp {
     }
 }
 
-impl Display for PrefixOp {
+impl core::fmt::Display for PrefixOp {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -163,7 +162,7 @@ impl Into<BooleanPrefixOp> for st::PrefixOp {
     }
 }
 
-impl Display for BooleanPrefixOp {
+impl core::fmt::Display for BooleanPrefixOp {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -254,7 +253,7 @@ impl Into<BinaryOp> for st::BinaryOp {
     }
 }
 
-impl Display for BinaryOp {
+impl core::fmt::Display for BinaryOp {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -313,7 +312,7 @@ impl Into<BooleanBinaryOp> for st::BinaryOp {
     }
 }
 
-impl Display for BooleanBinaryOp {
+impl core::fmt::Display for BooleanBinaryOp {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -371,7 +370,7 @@ impl Into<ComparisonOp> for st::BinaryOp {
     }
 }
 
-impl Display for ComparisonOp {
+impl core::fmt::Display for ComparisonOp {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -436,7 +435,7 @@ impl Into<BooleanComparisonOp> for st::BinaryOp {
     }
 }
 
-impl Display for BooleanComparisonOp {
+impl core::fmt::Display for BooleanComparisonOp {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -488,7 +487,7 @@ impl Into<AssignmentOp> for st::BinaryAssignmentOp {
     }
 }
 
-impl Display for AssignmentOp {
+impl core::fmt::Display for AssignmentOp {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -549,7 +548,7 @@ impl Into<PrefixAssignmentOp> for st::PrefixAssignmentOp {
     }
 }
 
-impl Display for PrefixAssignmentOp {
+impl core::fmt::Display for PrefixAssignmentOp {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -602,7 +601,7 @@ impl Into<BooleanPrefixAssignmentOp> for st::PrefixAssignmentOp {
     }
 }
 
-impl Display for BooleanPrefixAssignmentOp {
+impl core::fmt::Display for BooleanPrefixAssignmentOp {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -688,7 +687,7 @@ impl Into<BinaryAssignmentOp> for st::BinaryAssignmentOp {
     }
 }
 
-impl Display for BinaryAssignmentOp {
+impl core::fmt::Display for BinaryAssignmentOp {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -742,7 +741,7 @@ impl Into<BooleanBinaryAssignmentOp> for st::BinaryAssignmentOp {
     }
 }
 
-impl Display for BooleanBinaryAssignmentOp {
+impl core::fmt::Display for BooleanBinaryAssignmentOp {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let op: Op = (*self).into();
@@ -868,7 +867,7 @@ impl Expression<'_> {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 #[must_use]
 pub(crate) struct Scope<'code> {
-    pub(crate) parent: Index32<Scope<'code>>,
+    pub(crate) parent: Index32<Self>,
     // pub(crate) types: Vec<BaseType>,
     pub(crate) let_variables: Vec<Index32<VariableDefinition<'code>>>,
     pub(crate) var_variables: Vec<Index32<VariableDefinition<'code>>>,
@@ -3071,7 +3070,7 @@ impl TypedSyntaxTreeDisplay<'_, '_, '_, '_, '_> {
     }
 }
 
-impl Display for TypedSyntaxTreeDisplay<'_, '_, '_, '_, '_> {
+impl core::fmt::Display for TypedSyntaxTreeDisplay<'_, '_, '_, '_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut node_index = Index32::new(0);
         while (node_index.0 as usize) < self.tast.nodes.len() {

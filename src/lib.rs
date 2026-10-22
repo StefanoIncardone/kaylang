@@ -17,7 +17,7 @@ use back_to_front::{
     usize32,
 };
 use color::{Colored, ansi_flag};
-use core::fmt::{Display, Write as _};
+use core::fmt::Write as _;
 use error::MsgWithCauseUnderText;
 use std::{io::IsTerminal, path::Path, time::Instant};
 
@@ -133,7 +133,7 @@ impl Default for Logger {
 #[expect(clippy::print_stderr, reason = "it's a logger")]
 impl Logger {
     #[inline]
-    pub fn info(text: &dyn Display, path: &Path, verbosity: Verbosity) {
+    pub fn info(text: &dyn core::fmt::Display, path: &Path, verbosity: Verbosity) {
         if let Verbosity::Normal | Verbosity::Verbose = verbosity {
             eprintln!(
                 "{spaces:STEP_INDENT$}{text:>STEP_PADDING$}: {path}",
@@ -144,7 +144,7 @@ impl Logger {
     }
 
     #[inline]
-    pub fn done(self, text: &dyn Display, output: Option<&Path>, padding: usize) {
+    pub fn done(self, text: &dyn core::fmt::Display, output: Option<&Path>, padding: usize) {
         let elapsed_time = Colored {
             text: &format!("{:.06}s", self.start.elapsed().as_secs_f32()),
             fg: AnsiFg::White,
@@ -160,14 +160,14 @@ impl Logger {
     }
 
     #[inline]
-    pub fn step(self, text: &dyn Display, output: Option<&Path>, verbosity: Verbosity) {
+    pub fn step(self, text: &dyn core::fmt::Display, output: Option<&Path>, verbosity: Verbosity) {
         if let Verbosity::Normal | Verbosity::Verbose = verbosity {
             self.done(text, output, STEP_INDENT + STEP_PADDING);
         }
     }
 
     #[inline]
-    pub fn sub_step(self, text: &dyn Display, output: Option<&Path>, verbosity: Verbosity) {
+    pub fn sub_step(self, text: &dyn core::fmt::Display, output: Option<&Path>, verbosity: Verbosity) {
         if let Verbosity::Verbose = verbosity {
             self.done(text, output, SUBSTEP_INDENT + SUBSTEP_PADDING);
         }
@@ -211,7 +211,7 @@ impl ColorFlag {
     }
 }
 
-impl Display for ColorFlag {
+impl core::fmt::Display for ColorFlag {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return f.write_str(self.to_str());
@@ -244,7 +244,7 @@ impl Color {
     }
 }
 
-impl Display for Color {
+impl core::fmt::Display for Color {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return f.write_str(self.to_str());
@@ -322,7 +322,7 @@ impl Language {
     }
 }
 
-impl Display for Language {
+impl core::fmt::Display for Language {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return f.write_str(self.to_str());
@@ -350,7 +350,7 @@ impl LanguageFlag {
     }
 }
 
-impl Display for LanguageFlag {
+impl core::fmt::Display for LanguageFlag {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return f.write_str(self.to_str());
@@ -376,7 +376,7 @@ impl OutputFlag {
     }
 }
 
-impl Display for OutputFlag {
+impl core::fmt::Display for OutputFlag {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return f.write_str(self.to_str());
@@ -402,7 +402,7 @@ impl SrcFlag {
     }
 }
 
-impl Display for SrcFlag {
+impl core::fmt::Display for SrcFlag {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return f.write_str(self.to_str());
@@ -455,7 +455,7 @@ impl VerbosityFlag {
     }
 }
 
-impl Display for VerbosityFlag {
+impl core::fmt::Display for VerbosityFlag {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return f.write_str(self.to_str());
@@ -538,7 +538,7 @@ impl CommandFlag {
     }
 }
 
-impl Display for CommandFlag {
+impl core::fmt::Display for CommandFlag {
     #[inline(always)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return f.write_str(self.to_str());
@@ -563,7 +563,7 @@ pub enum Command<'args> {
 #[must_use] #[repr(transparent)]
 pub struct Version;
 
-impl Display for Version {
+impl core::fmt::Display for Version {
     #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         const fg: AnsiFg = AnsiFg::White;
@@ -596,7 +596,7 @@ impl Default for Help<'_> {
     }
 }
 
-impl Display for Help<'_> {
+impl core::fmt::Display for Help<'_> {
     #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         const fg_value:  AnsiFg = AnsiFg::White;
@@ -1507,7 +1507,7 @@ pub struct Errors<'executable_name, 'args, S: AsRef<str>> {
     pub errors: Vec<Error>,
 }
 
-impl<S: AsRef<str>> Display for Errors<'_, '_, S> {
+impl<S: AsRef<str>> core::fmt::Display for Errors<'_, '_, S> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut args_text = String::new();
 

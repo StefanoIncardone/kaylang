@@ -1,5 +1,4 @@
 use crate::{ERROR, error::MsgWithCause};
-use core::fmt::Display;
 use std::{fs::File, io::Read as _, path::Path};
 use back_to_front::src_code::Line;
 use unicode_width::UnicodeWidthChar as _;
@@ -41,7 +40,7 @@ impl<'path> Position<'path> {
     }
 }
 
-impl Display for Position<'_> {
+impl core::fmt::Display for Position<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let Self { file: file_raw, line, column, offset, .. } = self;
         let file = file_raw.display();
@@ -151,7 +150,7 @@ pub struct Error<'path> {
     pub kind: ErrorKind,
 }
 
-impl Display for Error<'_> {
+impl core::fmt::Display for Error<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let message = format!("could not read '{}'", self.path.display());
         let cause = match &self.kind {

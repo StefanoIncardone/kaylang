@@ -3,7 +3,7 @@ use crate::{error::DisplayLen as _, front_end::{Index32, MsgSeverity}};
 use back_to_front::{
     ascii, digit, src_code::{Line, LineEnd}, usize32, utf32
 };
-use core::fmt::{Display, Write as _};
+use core::fmt::Write as _;
 use std::path::Path;
 use unicode_segmentation::UnicodeSegmentation as _;
 
@@ -273,7 +273,7 @@ impl Op {
     }
 }
 
-impl Display for Op {
+impl core::fmt::Display for Op {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return f.write_str(self.to_str());
     }
@@ -294,7 +294,7 @@ pub(crate) struct EscapedAscii {
     pub(crate) ch: u8,
 }
 
-impl Display for EscapedAscii {
+impl core::fmt::Display for EscapedAscii {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self.ch {
             control @ b'\x00'..=b'\x1A' => {
@@ -432,14 +432,13 @@ impl<'code> TokenKind<'code> {
     }
 }
 
-
+// TODO(stefano): implement TokenDebug that resolves texts
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[must_use]
 pub(crate) struct Token<'code> {
     pub(crate) kind: TokenKind<'code>,
     pub(crate) col: usize32,
 }
-
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 #[must_use]
@@ -473,17 +472,28 @@ impl<'code, 'path> TokenizedCode<'code, 'path> {
     #[must_use] #[inline(always)] pub(crate) const fn text(&self)   -> &[Text<'code>]  { return self.tokens.text.as_slice(); }
 }
 
+#[derive(Clone, Copy)]
 #[must_use] #[repr(C)]
 union BackPatch<'code> {
     token: Index32<Token<'code>>,
     column: usize32,
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+impl core::fmt::Debug for BackPatch<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        return f.debug_struct("BackPatch")
+            .field("token", unsafe { &self.token })
+            .field("column", unsafe { &self.column })
+            .finish();
+    }
+}
+
+#[derive(Clone, Debug)]
 #[must_use]
 pub struct Tokenizer<'code, 'path> {
     errors: Vec<Msg<ErrorKind<'code>>>,
     tokens: TokenizedCode<'code, 'path>,
+    back_patches: Vec<BackPatch<'code>>,
 
     col: usize32,
     line_start_col: usize32,
@@ -492,13 +502,8 @@ pub struct Tokenizer<'code, 'path> {
 
 // getters/setters
 #[rustfmt::skip]
-impl<'code, 'path> Tokenizer<'code, 'path> {
-    #[must_use] #[inline(always)] pub(crate) const fn path(&self) -> &'path Path { return self.tokens.src.path(); }
-    #[must_use] #[inline(always)] pub(crate) const fn code(&self) -> &'code str  { return self.tokens.src.code(); }
-
-    #[inline(always)] fn push_token(&mut self, token: Token<'code>) {
-        self.tokens.tokens.tokens.push(token);
-    }
+impl<'code> Tokenizer<'code, '_> {
+    #[must_use] #[inline(always)] pub(crate) const fn code(&self) -> &'code str { return self.tokens.src.code(); }
 }
 
 impl<'code, 'path> Tokenizer<'code, 'path> {
@@ -512,18 +517,15 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
         let mut tokenizer = Tokenizer {
             errors: Vec::new(),
             tokens: TokenizedCode { src, tokens },
-
-            line_start_col: 0,
+            back_patches: Vec::new(),
 
             col: 0,
+            line_start_col: 0,
             token_start_col: 0,
         };
 
-        let mut back_patches = Vec::<BackPatch<'_>>::new();
-
         'tokenization: while let Some(next_character) = tokenizer.current_ascii_multiline() {
-            // IDEA(stefano): have token_kind_result be directly the TokenKind to avoid checking if it's okay each time
-            let token_kind_result = 'next_token: {
+            let kind = 'next_token: {
                 let next = match next_character {
                     Ok(next) => match next {
                         b' ' | b'\t' | b'\x0B' | b'\x0C' => {
@@ -531,7 +533,6 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                             tokenizer.col += 1;
                             continue 'tokenization;
                         },
-
                         b'\n' => {
                             tokenizer.new_line(LineEnd::LF);
                             continue 'tokenization;
@@ -545,6 +546,17 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                             tokenizer.new_line(LineEnd::CR);
                             continue 'tokenization;
                         },
+                        control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
+                            tokenizer.errors.push(Msg {
+                                severity: MsgSeverity::NonTerminalError,
+                                kind: ErrorKind::ControlCharacter(control),
+                                col: tokenizer.col,
+                                pointers_count: 1,
+                            });
+
+                            tokenizer.col += 1;
+                            break 'next_token tokenizer.unexpected_token_error();
+                        },
                         other => {
                             tokenizer.token_start_col = tokenizer.col;
                             tokenizer.col += 1;
@@ -554,7 +566,7 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                     Err(grapheme) => {
                         tokenizer.errors.push(tokenizer.utf8_error(grapheme));
                         tokenizer.col += grapheme.len() as usize32;
-                        break 'next_token Err(());
+                        break 'next_token tokenizer.unexpected_token_error();
                     },
                 };
 
@@ -562,57 +574,90 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                     b'r' => match tokenizer.current_byte_multiline() {
                         Some(b'"') => {
                             tokenizer.col += 1;
-                            tokenizer.raw_str_literal()
+
+                            match tokenizer.raw_str_literal() {
+                                Ok(text) => TokenKind::RawStr(tokenizer.new_token_text(text)),
+                                Err(()) => tokenizer.unexpected_token_error(),
+                            }
                         },
                         _ => tokenizer.identifier(),
                     },
                     b'a'..=b'z' | b'A'..=b'Z' | b'_' => tokenizer.identifier(),
+
                     b'0' => match tokenizer.current_byte_singleline() {
                         None => {
-                            let literal_text = tokenizer.token_text();
-                            let literal_index = tokenizer.new_token_text(literal_text);
-                            Ok(TokenKind::DecimalInteger(literal_index))
+                            let text = tokenizer.token_text();
+                            TokenKind::DecimalInteger(tokenizer.new_token_text(text))
                         },
                         Some(b'b') => {
                             tokenizer.col += 1;
-                            tokenizer.integer_binary()
+                            match tokenizer.digits_text(digit::Base::Binary) {
+                                Ok(text) => TokenKind::BinaryInteger(tokenizer.new_token_text(text)),
+                                Err(()) => tokenizer.unexpected_token_error(),
+                            }
                         },
                         Some(b'o') => {
                             tokenizer.col += 1;
-                            tokenizer.integer_octal()
+                            match tokenizer.digits_text(digit::Base::Octal) {
+                                Ok(text) => TokenKind::OctalInteger(tokenizer.new_token_text(text)),
+                                Err(()) => tokenizer.unexpected_token_error(),
+                            }
                         },
                         Some(b'd') => {
                             tokenizer.col += 1;
-                            tokenizer.integer_decimal_prefix()
+                            match tokenizer.digits_text(digit::Base::Decimal) {
+                                Ok(text) => TokenKind::DecimalIntegerPrefix(tokenizer.new_token_text(text)),
+                                Err(()) => tokenizer.unexpected_token_error(),
+                            }
                         },
                         Some(b'x') => {
                             tokenizer.col += 1;
-                            tokenizer.integer_hexadecimal()
+                            match tokenizer.digits_text(digit::Base::Hexadecimal) {
+                                Ok(text) => TokenKind::HexadecimalInteger(tokenizer.new_token_text(text)),
+                                Err(()) => tokenizer.unexpected_token_error(),
+                            }
                         },
-                        Some(_) => tokenizer.integer_decimal(),
+                        Some(_) => match tokenizer.digits_text(digit::Base::Decimal) {
+                            Ok(text) => TokenKind::DecimalInteger(tokenizer.new_token_text(text)),
+                            Err(()) => tokenizer.unexpected_token_error(),
+                        }
                     },
-                    b'1'..=b'9' => tokenizer.integer_decimal(),
-                    b'\'' => tokenizer.ascii_literal(),
-                    b'"' => tokenizer.str_literal(),
-                    b'`' => tokenizer.identifier_str(),
+                    b'1'..=b'9' => match tokenizer.digits_text(digit::Base::Decimal) {
+                        Ok(text) => TokenKind::DecimalInteger(tokenizer.new_token_text(text)),
+                        Err(()) => tokenizer.unexpected_token_error(),
+                    },
+
+                    b'\'' => match tokenizer.ascii_literal() {
+                        Ok((text, ascii_value)) => TokenKind::Ascii(tokenizer.new_token_text(text), ascii_value),
+                        Err(()) => tokenizer.unexpected_token_error(),
+                    },
+                    b'"' => match tokenizer.str_literal() {
+                        Ok(text) => TokenKind::Str(tokenizer.new_token_text(text)),
+                        Err(()) => tokenizer.unexpected_token_error(),
+                    },
+                    b'`' => match tokenizer.identifier_str() {
+                        Ok(text) => TokenKind::IdentifierStr(tokenizer.new_token_text(text)),
+                        Err(()) => tokenizer.unexpected_token_error(),
+                    },
+
                     b'#' => match tokenizer.get_next_byte_singleline() {
                         Some(b'*') => 'comment: {
-                            let previous_block_comments_token_start_len = back_patches.len();
+                            let previous_block_comments_token_start_len = tokenizer.back_patches.len();
                             'next_character: loop {
                                 match tokenizer.get_next_byte_multiline() {
                                     Some(b'*') => match tokenizer.get_next_byte_multiline() {
                                         Some(b'#') => {
                                             let comment_text = tokenizer.token_text();
                                             let comment_index = tokenizer.new_token_text(comment_text);
-                                            if back_patches.len() == previous_block_comments_token_start_len {
-                                                break 'comment Ok(TokenKind::BlockComment(comment_index));
+                                            if tokenizer.back_patches.len() == previous_block_comments_token_start_len {
+                                                break 'comment TokenKind::BlockComment(comment_index);
                                             }
-                                            let Some(token_start_col) = back_patches.pop() else {
+                                            let Some(token_start_col) = tokenizer.back_patches.pop() else {
                                                 unreachable!("unclosed block comment");
                                             };
 
                                             let kind = TokenKind::BlockComment(comment_index);
-                                            tokenizer.push_token(Token { kind, col: tokenizer.token_start_col });
+                                            tokenizer.tokens.tokens.tokens.push(Token { kind, col: tokenizer.token_start_col });
                                             tokenizer.token_start_col = unsafe { token_start_col.column };
                                         },
                                         Some(_) => {},
@@ -622,9 +667,8 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                                         let comment_start_col = tokenizer.col - 1;
                                         match tokenizer.get_next_byte_multiline() {
                                             Some(b'*') => {
-                                                let back_patch =
-                                                    BackPatch { column: tokenizer.token_start_col };
-                                                back_patches.push(back_patch);
+                                                let back_patch = BackPatch { column: tokenizer.token_start_col };
+                                                tokenizer.back_patches.push(back_patch);
                                                 tokenizer.token_start_col = comment_start_col;
                                             },
                                             Some(_) => {},
@@ -642,10 +686,9 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                                 col: tokenizer.token_start_col,
                                 pointers_count: 2,
                             });
-                            while back_patches.len() != previous_block_comments_token_start_len {
-                                let Some(block_comment_token_start) = back_patches.pop() else {
-                                    break;
-                                };
+                            while tokenizer.back_patches.len() != previous_block_comments_token_start_len {
+                                let Some(block_comment_token_start) = tokenizer.back_patches.pop() else { break; };
+
                                 tokenizer.errors.push(Msg {
                                     severity: MsgSeverity::NonTerminalError,
                                     kind: ErrorKind::UnclosedBlockComment,
@@ -653,7 +696,7 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                                     pointers_count: 2,
                                 });
                             }
-                            Err(())
+                            tokenizer.unexpected_token_error()
                         },
                         Some(b'#') => {
                             while let Some(_) = tokenizer.get_next_byte_singleline() {
@@ -661,7 +704,7 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                             }
                             let comment_text = tokenizer.token_text();
                             let comment_index = tokenizer.new_token_text(comment_text);
-                            Ok(TokenKind::LineComment(comment_index))
+                            TokenKind::LineComment(comment_index)
                         },
                         Some(_) | None => {
                             tokenizer.errors.push(Msg {
@@ -674,23 +717,24 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                             while let Some(_) = tokenizer.get_next_byte_singleline() {
                                 // consume next character
                             }
-                            Err(())
+                            tokenizer.unexpected_token_error()
                         },
                     },
+
                     b'(' => {
                         let back_patch = BackPatch { token: Index32::new(tokenizer.tokens.tokens().len()) };
-                        back_patches.push(back_patch);
-                        Ok(TokenKind::OpenRoundBracket)
+                        tokenizer.back_patches.push(back_patch);
+                        TokenKind::OpenRoundBracket
                     },
                     b')' => 'bracket: {
-                        let Some(bracket_index) = back_patches.pop() else {
+                        let Some(bracket_index) = tokenizer.back_patches.pop() else {
                             tokenizer.errors.push(Msg {
                                 severity: MsgSeverity::NonTerminalError,
                                 kind: ErrorKind::UnopenedRoundBracket,
                                 col: tokenizer.token_start_col,
                                 pointers_count: 1,
                             });
-                            break 'bracket Err(());
+                            break 'bracket tokenizer.unexpected_token_error();
                         };
 
                         let token = unsafe { bracket_index.token };
@@ -699,7 +743,7 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                             TokenKind::OpenRoundBracket
                             | TokenKind::CloseRoundBracket
                             | TokenKind::CloseCurlyBracket
-                            | TokenKind::CloseSquareBracket => Ok(TokenKind::CloseRoundBracket),
+                            | TokenKind::CloseSquareBracket => TokenKind::CloseRoundBracket,
                             TokenKind::OpenCurlyBracket => {
                                 tokenizer.errors.push(Msg {
                                     severity: MsgSeverity::NonTerminalError,
@@ -707,7 +751,7 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                                     col: tokenizer.token_start_col,
                                     pointers_count: 1,
                                 });
-                                Err(())
+                                tokenizer.unexpected_token_error()
                             },
                             TokenKind::OpenSquareBracket => {
                                 tokenizer.errors.push(Msg {
@@ -716,25 +760,25 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                                     col: tokenizer.token_start_col,
                                     pointers_count: 1,
                                 });
-                                Err(())
+                                tokenizer.unexpected_token_error()
                             },
                             _ => unreachable!("incorrect bracket index"),
                         }
                     },
                     b'[' => {
                         let back_patch = BackPatch { token: Index32::new(tokenizer.tokens.tokens().len()) };
-                        back_patches.push(back_patch);
-                        Ok(TokenKind::OpenSquareBracket)
+                        tokenizer.back_patches.push(back_patch);
+                        TokenKind::OpenSquareBracket
                     },
                     b']' => 'bracket: {
-                        let Some(bracket_index) = back_patches.pop() else {
+                        let Some(bracket_index) = tokenizer.back_patches.pop() else {
                             tokenizer.errors.push(Msg {
                                 severity: MsgSeverity::NonTerminalError,
                                 kind: ErrorKind::UnopenedSquareBracket,
                                 col: tokenizer.token_start_col,
                                 pointers_count: 1,
                             });
-                            break 'bracket Err(());
+                            break 'bracket tokenizer.unexpected_token_error();
                         };
 
                         let token = unsafe { bracket_index.token };
@@ -743,7 +787,7 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                             TokenKind::OpenSquareBracket
                             | TokenKind::CloseSquareBracket
                             | TokenKind::CloseCurlyBracket
-                            | TokenKind::CloseRoundBracket => Ok(TokenKind::CloseSquareBracket),
+                            | TokenKind::CloseRoundBracket => TokenKind::CloseSquareBracket,
                             TokenKind::OpenCurlyBracket => {
                                 tokenizer.errors.push(Msg {
                                     severity: MsgSeverity::NonTerminalError,
@@ -751,7 +795,7 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                                     col: tokenizer.token_start_col,
                                     pointers_count: 1,
                                 });
-                                Err(())
+                                tokenizer.unexpected_token_error()
                             },
                             TokenKind::OpenRoundBracket => {
                                 tokenizer.errors.push(Msg {
@@ -760,25 +804,25 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                                     col: tokenizer.token_start_col,
                                     pointers_count: 1,
                                 });
-                                Err(())
+                                tokenizer.unexpected_token_error()
                             },
                             _ => unreachable!("incorrect bracket index"),
                         }
                     },
                     b'{' => {
                         let back_patch = BackPatch { token: Index32::new(tokenizer.tokens.tokens().len()) };
-                        back_patches.push(back_patch);
-                        Ok(TokenKind::OpenCurlyBracket)
+                        tokenizer.back_patches.push(back_patch);
+                        TokenKind::OpenCurlyBracket
                     },
                     b'}' => 'bracket: {
-                        let Some(bracket_index) = back_patches.pop() else {
+                        let Some(bracket_index) = tokenizer.back_patches.pop() else {
                             tokenizer.errors.push(Msg {
                                 severity: MsgSeverity::NonTerminalError,
                                 kind: ErrorKind::UnopenedCurlyBracket,
                                 col: tokenizer.token_start_col,
                                 pointers_count: 1,
                             });
-                            break 'bracket Err(());
+                            break 'bracket tokenizer.unexpected_token_error();
                         };
 
                         let token = unsafe { bracket_index.token };
@@ -787,7 +831,7 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                             TokenKind::OpenCurlyBracket
                             | TokenKind::CloseCurlyBracket
                             | TokenKind::CloseRoundBracket
-                            | TokenKind::CloseSquareBracket => Ok(TokenKind::CloseCurlyBracket),
+                            | TokenKind::CloseSquareBracket => TokenKind::CloseCurlyBracket,
                             TokenKind::OpenRoundBracket => {
                                 tokenizer.errors.push(Msg {
                                     severity: MsgSeverity::NonTerminalError,
@@ -795,7 +839,7 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                                     col: tokenizer.token_start_col,
                                     pointers_count: 1,
                                 });
-                                Err(())
+                                tokenizer.unexpected_token_error()
                             },
                             TokenKind::OpenSquareBracket => {
                                 tokenizer.errors.push(Msg {
@@ -804,26 +848,28 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                                     col: tokenizer.token_start_col,
                                     pointers_count: 1,
                                 });
-                                Err(())
+                                tokenizer.unexpected_token_error()
                             },
                             _ => unreachable!("incorrect bracket index"),
                         }
                     },
-                    b':' => Ok(TokenKind::Colon),
-                    b';' => Ok(TokenKind::SemiColon),
-                    b',' => Ok(TokenKind::Comma),
+
+                    b':' => TokenKind::Colon,
+                    b';' => TokenKind::SemiColon,
+                    b',' => TokenKind::Comma,
+
                     b'!' => match tokenizer.current_byte_multiline() {
                         Some(b'=') => {
                             tokenizer.col += 1;
                             match tokenizer.current_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
-                                    Ok(TokenKind::Op(Op::NotEqualsEquals))
+                                    TokenKind::Op(Op::NotEqualsEquals)
                                 },
-                                _ => Ok(TokenKind::Op(Op::NotEquals)),
+                                _ => TokenKind::Op(Op::NotEquals),
                             }
                         },
-                        _ => Ok(TokenKind::Op(Op::Not)),
+                        _ => TokenKind::Op(Op::Not),
                     },
                     b'*' => match tokenizer.current_byte_multiline() {
                         Some(b'*') => {
@@ -831,16 +877,16 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                             match tokenizer.current_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
-                                    Ok(TokenKind::Op(Op::PowEquals))
+                                    TokenKind::Op(Op::PowEquals)
                                 },
                                 Some(b'\\') => {
                                     tokenizer.col += 1;
                                     match tokenizer.current_byte_multiline() {
                                         Some(b'=') => {
                                             tokenizer.col += 1;
-                                            Ok(TokenKind::Op(Op::WrappingPowEquals))
+                                            TokenKind::Op(Op::WrappingPowEquals)
                                         },
-                                        _ => Ok(TokenKind::Op(Op::WrappingPow)),
+                                        _ => TokenKind::Op(Op::WrappingPow),
                                     }
                                 },
                                 Some(b'|') => {
@@ -848,26 +894,26 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                                     match tokenizer.current_byte_multiline() {
                                         Some(b'=') => {
                                             tokenizer.col += 1;
-                                            Ok(TokenKind::Op(Op::SaturatingPowEquals))
+                                            TokenKind::Op(Op::SaturatingPowEquals)
                                         },
-                                        _ => Ok(TokenKind::Op(Op::SaturatingPow)),
+                                        _ => TokenKind::Op(Op::SaturatingPow),
                                     }
                                 },
-                                _ => Ok(TokenKind::Op(Op::Pow)),
+                                _ => TokenKind::Op(Op::Pow),
                             }
                         },
                         Some(b'=') => {
                             tokenizer.col += 1;
-                            Ok(TokenKind::Op(Op::TimesEquals))
+                            TokenKind::Op(Op::TimesEquals)
                         },
                         Some(b'\\') => {
                             tokenizer.col += 1;
                             match tokenizer.current_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
-                                    Ok(TokenKind::Op(Op::WrappingTimesEquals))
+                                    TokenKind::Op(Op::WrappingTimesEquals)
                                 },
-                                _ => Ok(TokenKind::Op(Op::WrappingTimes)),
+                                _ => TokenKind::Op(Op::WrappingTimes),
                             }
                         },
                         Some(b'|') => {
@@ -875,9 +921,9 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                             match tokenizer.current_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
-                                    Ok(TokenKind::Op(Op::SaturatingTimesEquals))
+                                    TokenKind::Op(Op::SaturatingTimesEquals)
                                 },
-                                _ => Ok(TokenKind::Op(Op::SaturatingTimes)),
+                                _ => TokenKind::Op(Op::SaturatingTimes),
                             }
                         },
                         Some(b'#') => {
@@ -888,23 +934,23 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                                 col: tokenizer.token_start_col,
                                 pointers_count: 2,
                             });
-                            Err(())
+                            tokenizer.unexpected_token_error()
                         }
-                        _ => Ok(TokenKind::Op(Op::Times)),
+                        _ => TokenKind::Op(Op::Times),
                     },
                     b'/' => match tokenizer.current_byte_multiline() {
                         Some(b'=') => {
                             tokenizer.col += 1;
-                            Ok(TokenKind::Op(Op::DivideEquals))
+                            TokenKind::Op(Op::DivideEquals)
                         },
                         Some(b'\\') => {
                             tokenizer.col += 1;
                             match tokenizer.current_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
-                                    Ok(TokenKind::Op(Op::WrappingDivideEquals))
+                                    TokenKind::Op(Op::WrappingDivideEquals)
                                 },
-                                _ => Ok(TokenKind::Op(Op::WrappingDivide)),
+                                _ => TokenKind::Op(Op::WrappingDivide),
                             }
                         },
                         Some(b'|') => {
@@ -912,33 +958,33 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                             match tokenizer.current_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
-                                    Ok(TokenKind::Op(Op::SaturatingDivideEquals))
+                                    TokenKind::Op(Op::SaturatingDivideEquals)
                                 },
-                                _ => Ok(TokenKind::Op(Op::SaturatingDivide)),
+                                _ => TokenKind::Op(Op::SaturatingDivide),
                             }
                         },
-                        _ => Ok(TokenKind::Op(Op::Divide)),
+                        _ => TokenKind::Op(Op::Divide),
                     },
                     b'%' => match tokenizer.current_byte_multiline() {
                         Some(b'=') => {
                             tokenizer.col += 1;
-                            Ok(TokenKind::Op(Op::RemainderEquals))
+                            TokenKind::Op(Op::RemainderEquals)
                         },
-                        _ => Ok(TokenKind::Op(Op::Remainder)),
+                        _ => TokenKind::Op(Op::Remainder),
                     },
                     b'+' => match tokenizer.current_byte_multiline() {
                         Some(b'=') => {
                             tokenizer.col += 1;
-                            Ok(TokenKind::Op(Op::PlusEquals))
+                            TokenKind::Op(Op::PlusEquals)
                         },
                         Some(b'\\') => {
                             tokenizer.col += 1;
                             match tokenizer.current_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
-                                    Ok(TokenKind::Op(Op::WrappingPlusEquals))
+                                    TokenKind::Op(Op::WrappingPlusEquals)
                                 },
-                                _ => Ok(TokenKind::Op(Op::WrappingPlus)),
+                                _ => TokenKind::Op(Op::WrappingPlus),
                             }
                         },
                         Some(b'|') => {
@@ -946,26 +992,26 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                             match tokenizer.current_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
-                                    Ok(TokenKind::Op(Op::SaturatingPlusEquals))
+                                    TokenKind::Op(Op::SaturatingPlusEquals)
                                 },
-                                _ => Ok(TokenKind::Op(Op::SaturatingPlus)),
+                                _ => TokenKind::Op(Op::SaturatingPlus),
                             }
                         },
-                        _ => Ok(TokenKind::Op(Op::Plus)),
+                        _ => TokenKind::Op(Op::Plus),
                     },
                     b'-' => match tokenizer.current_byte_multiline() {
                         Some(b'=') => {
                             tokenizer.col += 1;
-                            Ok(TokenKind::Op(Op::MinusEquals))
+                            TokenKind::Op(Op::MinusEquals)
                         },
                         Some(b'\\') => {
                             tokenizer.col += 1;
                             match tokenizer.current_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
-                                    Ok(TokenKind::Op(Op::WrappingMinusEquals))
+                                    TokenKind::Op(Op::WrappingMinusEquals)
                                 },
-                                _ => Ok(TokenKind::Op(Op::WrappingMinus)),
+                                _ => TokenKind::Op(Op::WrappingMinus),
                             }
                         },
                         Some(b'|') => {
@@ -973,12 +1019,12 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                             match tokenizer.current_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
-                                    Ok(TokenKind::Op(Op::SaturatingMinusEquals))
+                                    TokenKind::Op(Op::SaturatingMinusEquals)
                                 },
-                                _ => Ok(TokenKind::Op(Op::SaturatingMinus)),
+                                _ => TokenKind::Op(Op::SaturatingMinus),
                             }
                         },
-                        _ => Ok(TokenKind::Op(Op::Minus)),
+                        _ => TokenKind::Op(Op::Minus),
                     },
                     b'&' => match tokenizer.current_byte_multiline() {
                         Some(b'&') => {
@@ -986,23 +1032,23 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                             match tokenizer.current_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
-                                    Ok(TokenKind::Op(Op::AndEquals))
+                                    TokenKind::Op(Op::AndEquals)
                                 },
-                                _ => Ok(TokenKind::Op(Op::And)),
+                                _ => TokenKind::Op(Op::And),
                             }
                         },
                         Some(b'=') => {
                             tokenizer.col += 1;
-                            Ok(TokenKind::Op(Op::BitAndEquals))
+                            TokenKind::Op(Op::BitAndEquals)
                         },
-                        _ => Ok(TokenKind::Op(Op::BitAnd)),
+                        _ => TokenKind::Op(Op::BitAnd),
                     },
                     b'^' => match tokenizer.current_byte_multiline() {
                         Some(b'=') => {
                             tokenizer.col += 1;
-                            Ok(TokenKind::Op(Op::BitXorEquals))
+                            TokenKind::Op(Op::BitXorEquals)
                         },
-                        _ => Ok(TokenKind::Op(Op::BitXor)),
+                        _ => TokenKind::Op(Op::BitXor),
                     },
                     b'|' => match tokenizer.current_byte_multiline() {
                         Some(b'|') => {
@@ -1010,23 +1056,23 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                             match tokenizer.current_byte_multiline() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
-                                    Ok(TokenKind::Op(Op::OrEquals))
+                                    TokenKind::Op(Op::OrEquals)
                                 },
-                                _ => Ok(TokenKind::Op(Op::Or)),
+                                _ => TokenKind::Op(Op::Or),
                             }
                         },
                         Some(b'=') => {
                             tokenizer.col += 1;
-                            Ok(TokenKind::Op(Op::BitOrEquals))
+                            TokenKind::Op(Op::BitOrEquals)
                         },
-                        _ => Ok(TokenKind::Op(Op::BitOr)),
+                        _ => TokenKind::Op(Op::BitOr),
                     },
                     b'=' => match tokenizer.current_byte_multiline() {
                         Some(b'=') => {
                             tokenizer.col += 1;
-                            Ok(TokenKind::Op(Op::EqualsEquals))
+                            TokenKind::Op(Op::EqualsEquals)
                         },
-                        _ => Ok(TokenKind::Op(Op::Equals)),
+                        _ => TokenKind::Op(Op::Equals),
                     },
                     b'>' => match tokenizer.current_byte_multiline() {
                         Some(b'>') => {
@@ -1037,23 +1083,23 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                                     match tokenizer.current_byte_multiline() {
                                         Some(b'=') => {
                                             tokenizer.col += 1;
-                                            Ok(TokenKind::Op(Op::RightRotateEquals))
+                                            TokenKind::Op(Op::RightRotateEquals)
                                         },
-                                        _ => Ok(TokenKind::Op(Op::RightRotate)),
+                                        _ => TokenKind::Op(Op::RightRotate),
                                     }
                                 },
                                 Some(b'=') => {
                                     tokenizer.col += 1;
-                                    Ok(TokenKind::Op(Op::RightShiftEquals))
+                                    TokenKind::Op(Op::RightShiftEquals)
                                 },
-                                _ => Ok(TokenKind::Op(Op::RightShift)),
+                                _ => TokenKind::Op(Op::RightShift),
                             }
                         },
                         Some(b'=') => {
                             tokenizer.col += 1;
-                            Ok(TokenKind::Op(Op::GreaterOrEquals))
+                            TokenKind::Op(Op::GreaterOrEquals)
                         },
-                        _ => Ok(TokenKind::Op(Op::Greater)),
+                        _ => TokenKind::Op(Op::Greater),
                     },
                     b'<' => match tokenizer.current_byte_multiline() {
                         Some(b'<') => {
@@ -1064,23 +1110,23 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                                     match tokenizer.current_byte_multiline() {
                                         Some(b'=') => {
                                             tokenizer.col += 1;
-                                            Ok(TokenKind::Op(Op::LeftRotateEquals))
+                                            TokenKind::Op(Op::LeftRotateEquals)
                                         },
-                                        _ => Ok(TokenKind::Op(Op::LeftRotate)),
+                                        _ => TokenKind::Op(Op::LeftRotate),
                                     }
                                 },
                                 Some(b'=') => {
                                     tokenizer.col += 1;
-                                    Ok(TokenKind::Op(Op::LeftShiftEquals))
+                                    TokenKind::Op(Op::LeftShiftEquals)
                                 },
                                 Some(b'\\') => {
                                     tokenizer.col += 1;
                                     match tokenizer.current_byte_multiline() {
                                         Some(b'=') => {
                                             tokenizer.col += 1;
-                                            Ok(TokenKind::Op(Op::WrappingLeftShiftEquals))
+                                            TokenKind::Op(Op::WrappingLeftShiftEquals)
                                         },
-                                        _ => Ok(TokenKind::Op(Op::WrappingLeftShift)),
+                                        _ => TokenKind::Op(Op::WrappingLeftShift),
                                     }
                                 },
                                 Some(b'|') => {
@@ -1088,12 +1134,12 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                                     match tokenizer.current_byte_multiline() {
                                         Some(b'=') => {
                                             tokenizer.col += 1;
-                                            Ok(TokenKind::Op(Op::SaturatingLeftShiftEquals))
+                                            TokenKind::Op(Op::SaturatingLeftShiftEquals)
                                         },
-                                        _ => Ok(TokenKind::Op(Op::SaturatingLeftShift)),
+                                        _ => TokenKind::Op(Op::SaturatingLeftShift),
                                     }
                                 },
-                                _ => Ok(TokenKind::Op(Op::LeftShift)),
+                                _ => TokenKind::Op(Op::LeftShift),
                             }
                         },
                         Some(b'=') => {
@@ -1101,21 +1147,12 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                             match tokenizer.current_byte_multiline() {
                                 Some(b'>') => {
                                     tokenizer.col += 1;
-                                    Ok(TokenKind::Op(Op::Compare))
+                                    TokenKind::Op(Op::Compare)
                                 },
-                                _ => Ok(TokenKind::Op(Op::LessOrEquals)),
+                                _ => TokenKind::Op(Op::LessOrEquals),
                             }
                         },
-                        _ => Ok(TokenKind::Op(Op::Less)),
-                    },
-                    control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
-                        tokenizer.errors.push(Msg {
-                            severity: MsgSeverity::NonTerminalError,
-                            kind: ErrorKind::ControlCharacter(control),
-                            col: tokenizer.token_start_col,
-                            pointers_count: 1,
-                        });
-                        Err(())
+                        _ => TokenKind::Op(Op::Less),
                     },
                     unrecognized => {
                         tokenizer.errors.push(Msg {
@@ -1124,21 +1161,12 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                             col: tokenizer.token_start_col,
                             pointers_count: 1,
                         });
-                        Err(())
+                        tokenizer.unexpected_token_error()
                     },
                 }
             };
 
-            let kind = match token_kind_result {
-                Ok(kind) => kind,
-                Err(()) => {
-                    let unexpected_text = tokenizer.token_text();
-                    let unexpected_index = tokenizer.new_token_text(unexpected_text);
-                    TokenKind::Unexpected(unexpected_index)
-                },
-            };
-
-            tokenizer.push_token(Token { kind, col: tokenizer.token_start_col });
+            tokenizer.tokens.tokens.tokens.push(Token { kind, col: tokenizer.token_start_col });
         }
 
         if tokenizer.line_start_col != tokenizer.col {
@@ -1147,7 +1175,7 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
             tokenizer.tokens.src.lines.push(line);
         }
 
-        while let Some(bracket_index) = back_patches.pop() {
+        while let Some(bracket_index) = tokenizer.back_patches.pop() {
             let token = unsafe { bracket_index.token };
             // there can only be open brackets at this point
             let bracket_token = tokenizer.tokens.tokens()[token];
@@ -1174,6 +1202,12 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
             Err(tokenizer.errors)
         };
         return TokenizationResult { src: tokenizer.tokens.src, result };
+    }
+
+    fn unexpected_token_error(&mut self) -> TokenKind<'code> {
+        let unexpected_text = self.token_text();
+        let unexpected_index = self.new_token_text(unexpected_text);
+        return TokenKind::Unexpected(unexpected_index);
     }
 }
 
@@ -1202,17 +1236,13 @@ impl<'code> Tokenizer<'code, '_> {
 
     #[must_use] #[inline]
     const fn current_byte_multiline(&self) -> Option<u8> {
-        if self.col as usize >= self.code().len() {
-            return None;
-        }
+        if self.col as usize >= self.code().len() { return None; }
         return Some(self.code().as_bytes()[self.col as usize]);
     }
 
     #[must_use]
     const fn current_byte_singleline(&self) -> Option<u8> {
-        let Some(next) = self.current_byte_multiline() else {
-            return None;
-        };
+        let Some(next) = self.current_byte_multiline() else { return None; };
         return match next {
             b'\r' | b'\n' => None,
             other => Some(other),
@@ -1221,9 +1251,7 @@ impl<'code> Tokenizer<'code, '_> {
 
     #[must_use]
     fn get_next_byte_multiline(&mut self) -> Option<u8> {
-        let Some(next) = self.current_byte_multiline() else {
-            return None;
-        };
+        let Some(next) = self.current_byte_multiline() else { return None; };
         return match next {
             b'\n' => {
                 self.new_line(LineEnd::LF);
@@ -1249,17 +1277,13 @@ impl<'code> Tokenizer<'code, '_> {
     fn current_grapheme(&self) -> &'code str {
         let rest_of_code = &self.code()[self.col as usize..];
         let mut rest_of_line_graphemes = rest_of_code.graphemes(true);
-        let Some(grapheme) = rest_of_line_graphemes.next() else {
-            unreachable!("not a valid grapheme");
-        };
+        let Some(grapheme) = rest_of_line_graphemes.next() else { unreachable!("not a valid grapheme"); };
         return grapheme;
     }
 
     #[must_use]
     const fn get_next_byte_singleline(&mut self) -> Option<u8> {
-        let Some(next) = self.current_byte_multiline() else {
-            return None;
-        };
+        let Some(next) = self.current_byte_multiline() else { return None; };
         return match next {
             b'\r' | b'\n' => None,
             other => {
@@ -1271,9 +1295,7 @@ impl<'code> Tokenizer<'code, '_> {
 
     #[must_use]
     fn current_ascii_multiline(&self) -> Option<Result<ascii, &'code str>> {
-        let Some(next) = self.current_byte_multiline() else {
-            return None;
-        };
+        let Some(next) = self.current_byte_multiline() else { return None; };
         return match next {
             ascii_ch @ 0..=b'\x7F' => Some(Ok(ascii_ch)),
             _utf8_ch => Some(Err(self.current_grapheme())),
@@ -1282,9 +1304,7 @@ impl<'code> Tokenizer<'code, '_> {
 
     #[must_use]
     fn current_ascii_singleline(&self) -> Option<Result<ascii, &'code str>> {
-        let Some(next) = self.current_byte_singleline() else {
-            return None;
-        };
+        let Some(next) = self.current_byte_singleline() else { return None; };
         return match next {
             ascii_ch @ 0..=b'\x7F' => Some(Ok(ascii_ch)),
             _utf8_ch => Some(Err(self.current_grapheme())),
@@ -1294,9 +1314,7 @@ impl<'code> Tokenizer<'code, '_> {
     #[must_use]
     fn current_or_until_next_ascii_singleline(&mut self) -> Option<ascii> {
         loop {
-            let Some(next) = self.current_byte_singleline() else {
-                return None;
-            };
+            let Some(next) = self.current_byte_singleline() else { return None; };
             match next {
                 ascii_ch @ 0..=b'\x7F' => return Some(ascii_ch),
                 _utf8_ch => {
@@ -1308,7 +1326,7 @@ impl<'code> Tokenizer<'code, '_> {
         }
     }
 
-    #[must_use] #[inline(always)]
+    #[inline(always)]
     fn utf8_error(&self, grapheme: &'code str) -> Msg<ErrorKind<'code>> {
         return Msg {
             severity: MsgSeverity::NonTerminalError,
@@ -1319,9 +1337,9 @@ impl<'code> Tokenizer<'code, '_> {
     }
 }
 
-// tokenization of numbers
+// tokenization of numbers, strings and character literals
 impl<'code> Tokenizer<'code, '_> {
-    fn check_digits(&mut self, base: digit::Base) -> Result<Text<'code>, ()> {
+    fn digits_text(&mut self, base: digit::Base) -> Result<Text<'code>, ()> {
         let previous_errors_len = self.errors.len();
 
         let check_fn = match base {
@@ -1345,46 +1363,11 @@ impl<'code> Tokenizer<'code, '_> {
             self.col += 1;
         }
 
-        if previous_errors_len != self.errors.len() {
-            return Err(());
-        }
+        if previous_errors_len != self.errors.len() { return Err(()); }
         let literal_text = self.token_text();
         return Ok(literal_text);
     }
 
-    fn digits_text(&mut self, base: digit::Base) -> Result<Index32<Text<'code>>, ()> {
-        let literal_text = self.check_digits(base)?;
-        return Ok(self.new_token_text(literal_text));
-    }
-
-    fn integer_decimal(&mut self) -> Result<TokenKind<'code>, ()> {
-        let literal_index = self.digits_text(digit::Base::Decimal)?;
-        return Ok(TokenKind::DecimalInteger(literal_index));
-    }
-
-    fn integer_decimal_prefix(&mut self) -> Result<TokenKind<'code>, ()> {
-        let literal_index = self.digits_text(digit::Base::Decimal)?;
-        return Ok(TokenKind::DecimalIntegerPrefix(literal_index));
-    }
-
-    fn integer_binary(&mut self) -> Result<TokenKind<'code>, ()> {
-        let literal_index = self.digits_text(digit::Base::Binary)?;
-        return Ok(TokenKind::BinaryInteger(literal_index));
-    }
-
-    fn integer_octal(&mut self) -> Result<TokenKind<'code>, ()> {
-        let literal_index = self.digits_text(digit::Base::Octal)?;
-        return Ok(TokenKind::OctalInteger(literal_index));
-    }
-
-    fn integer_hexadecimal(&mut self) -> Result<TokenKind<'code>, ()> {
-        let literal_index = self.digits_text(digit::Base::Hexadecimal)?;
-        return Ok(TokenKind::HexadecimalInteger(literal_index));
-    }
-}
-
-// tokenization of strings and character literals
-impl<'code> Tokenizer<'code, '_> {
     fn escape_sequence(&mut self, start_of_character: usize32) -> EscapeSequence {
         let current_character = match self.current_ascii_singleline() {
             Some(Ok(current_character)) => current_character,
@@ -1472,7 +1455,7 @@ impl<'code> Tokenizer<'code, '_> {
         return EscapeSequence::Ok(escaped_character);
     }
 
-    fn ascii_literal_characters(&mut self) -> Result<(Text<'code>, ascii), ()> {
+    fn ascii_literal(&mut self) -> Result<(Text<'code>, ascii), ()> {
         let previous_errors_len = self.errors.len();
 
         let mut logical_character = b'\0';
@@ -1547,13 +1530,7 @@ impl<'code> Tokenizer<'code, '_> {
         return Ok((literal_text, logical_character));
     }
 
-    fn ascii_literal(&mut self) -> Result<TokenKind<'code>, ()> {
-        let (literal_text, ascii_value) = self.ascii_literal_characters()?;
-        let literal_index = self.new_token_text(literal_text);
-        return Ok(TokenKind::Ascii(literal_index, ascii_value));
-    }
-
-    fn str_literal_characters(&mut self) -> Result<Text<'code>, ()> {
+    fn str_literal(&mut self) -> Result<Text<'code>, ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
@@ -1605,13 +1582,7 @@ impl<'code> Tokenizer<'code, '_> {
         return Ok(literal_text);
     }
 
-    fn str_literal(&mut self) -> Result<TokenKind<'code>, ()> {
-        let literal_text = self.str_literal_characters()?;
-        let literal_index = self.new_token_text(literal_text);
-        return Ok(TokenKind::Str(literal_index));
-    }
-
-    fn raw_str_literal_characters(&mut self) -> Result<Text<'code>, ()> {
+    fn raw_str_literal(&mut self) -> Result<Text<'code>, ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
@@ -1677,19 +1648,13 @@ impl<'code> Tokenizer<'code, '_> {
         let literal_text = self.token_text();
         return Ok(literal_text);
     }
-
-    fn raw_str_literal(&mut self) -> Result<TokenKind<'code>, ()> {
-        let literal_text = self.raw_str_literal_characters()?;
-        let literal_index = self.new_token_text(literal_text);
-        return Ok(TokenKind::RawStr(literal_index));
-    }
 }
 
 // tokenization of identifiers
 impl<'code> Tokenizer<'code, '_> {
     const MAX_IDENTIFIER_LEN: usize32 = 63;
 
-    fn identifier_str_characters(&mut self) -> Result<Text<'code>, ()> {
+    fn identifier_str(&mut self) -> Result<Text<'code>, ()> {
         let previous_errors_len = self.errors.len();
 
         loop {
@@ -1746,13 +1711,7 @@ impl<'code> Tokenizer<'code, '_> {
         return Ok(identifier);
     }
 
-    fn identifier_str(&mut self) -> Result<TokenKind<'code>, ()> {
-        let literal_text = self.identifier_str_characters()?;
-        let literal_index = self.new_token_text(literal_text);
-        return Ok(TokenKind::IdentifierStr(literal_index));
-    }
-
-    fn identifier(&mut self) -> Result<TokenKind<'code>, ()> {
+    fn identifier(&mut self) -> TokenKind<'code> {
         let previous_errors_len = self.errors.len();
 
         while let Some(letter) = self.current_or_until_next_ascii_singleline() {
@@ -1765,7 +1724,7 @@ impl<'code> Tokenizer<'code, '_> {
         }
 
         if previous_errors_len != self.errors.len() {
-            return Err(());
+            return self.unexpected_token_error();
         }
 
         let identifier = match self.token_text() {
@@ -1793,7 +1752,7 @@ impl<'code> Tokenizer<'code, '_> {
                         col: self.token_start_col,
                         pointers_count: identifier_len,
                     });
-                    return Err(());
+                    return self.unexpected_token_error();
                 }
 
                 let identifier_index = self.new_token_text(identifier);
@@ -1801,7 +1760,7 @@ impl<'code> Tokenizer<'code, '_> {
             },
         };
 
-        return Ok(identifier);
+        return identifier;
     }
 }
 

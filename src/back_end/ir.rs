@@ -1,4 +1,3 @@
-use core::fmt::Display;
 use back_to_front::{ascii, usize32};
 use crate::front_end::{
     Index32, src_file::Position, tokenizer::{EscapedAscii, Text}, typed_abstract_syntax_tree::{self as tast, TypedSyntaxTree}, types::BaseType,
@@ -17,7 +16,7 @@ pub enum Type {
     },
 }
 
-impl Display for Type {
+impl core::fmt::Display for Type {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return match self {
             Self::Base(typ) => write!(f, "{typ}"),
@@ -160,7 +159,7 @@ pub struct TempVariableDisplay<'code> {
     pub(crate) value: Index32<Expression<'code>>,
 }
 
-impl Display for TempVariableDisplay<'_> {
+impl core::fmt::Display for TempVariableDisplay<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         return write!(f, "t{}", self.value.0);
     }
@@ -650,7 +649,7 @@ impl IrDebug<'_, '_, '_, '_, '_, '_> {
     }
 }
 
-impl Display for IrDebug<'_, '_, '_, '_, '_, '_> {
+impl core::fmt::Display for IrDebug<'_, '_, '_, '_, '_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut node_index = Index32::new(0);
         while (node_index.0 as usize) < self.ir.nodes.len() {
@@ -674,7 +673,7 @@ impl<'path> SrcAttribute<'path> {
     }
 }
 
-impl Display for SrcAttribute<'_> {
+impl core::fmt::Display for SrcAttribute<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         // BUG(stefano): i may have found a bug in VsCode: when two file locations appear on the same line
             // any location following the first point to first instead of at the correct location
@@ -891,7 +890,7 @@ impl IrDisplay<'_, '_, '_, '_, '_, '_> {
     }
 }
 
-impl Display for IrDisplay<'_, '_, '_, '_, '_, '_> {
+impl core::fmt::Display for IrDisplay<'_, '_, '_, '_, '_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut node_index = Index32::new(0);
         while (node_index.0 as usize) < self.ir.nodes.len() {
