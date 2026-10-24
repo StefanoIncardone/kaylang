@@ -5,7 +5,7 @@
 use back_to_front::{digit, usize32, ascii};
 
 use crate::front_end::{
-    Index32, MsgSeverity, tokenizer::{self, EscapedAscii}, types::{BaseType, SizeOf},
+    Index32, MsgSeverity, src_file::SrcFile, tokenizer::{self, EscapedAscii}, types::{BaseType, SizeOf},
 };
 
 use super::{
@@ -749,7 +749,7 @@ pub struct Parser<'tokens, 'src: 'tokens, 'code: 'src, 'path> {
     src: &'src SrcCode<'code, 'path>,
     errors: Vec<Msg<ErrorKind>>,
 
-    token: Index32<Token<'code>>,
+    token: Index32<Token>,
     tokens: &'tokens Tokens<'code>,
 
     loop_depth: u32,
@@ -788,7 +788,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path> Parser<'tokens, 'src, 'code, 'p
         let mut token = Index32::new(0);
         while (token.0 as usize) < tokens.tokens.len() {
             let current = tokens.tokens[token];
-            let (TokenKind::LineComment(_) | TokenKind::BlockComment(_)) = current.kind else {
+            let (TokenKind::LineComment { .. } | TokenKind::BlockComment { .. }) = current.kind else {
                 break;
             };
 
@@ -823,7 +823,7 @@ impl<'tokens, 'src: 'tokens, 'code: 'src, 'path> Parser<'tokens, 'src, 'code, 'p
 }
 
 // parsing of statements
-impl<'code> Parser<'_, '_, 'code, '_> {
+impl Parser<'_, '_, '_, '_> {
     fn semicolon(&mut self) -> Result<(), Msg<ErrorKind>> {
         let semicolon_token = self.current_token(Expected::Semicolon)?;
         let TokenKind::SemiColon = semicolon_token.kind else {
@@ -832,7 +832,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::MissingSemicolon,
                 col: previous_token.col,
-                pointers_count: previous_token.kind.display_len(self.tokens),
+                pointers_count: previous_token.display_len(self.src.src_file),
             });
         };
 
@@ -863,7 +863,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         }
     }
 
-    fn statement(&mut self, token: Token<'code>) -> Result<Node, Msg<ErrorKind>> {
+    fn statement(&mut self, token: Token) -> Result<Node, Msg<ErrorKind>> {
         return match token.kind {
             TokenKind::Op(
                 op @ (Op::NotEquals
@@ -885,16 +885,16 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
             TokenKind::False
             | TokenKind::True
-            | TokenKind::BinaryInteger(_)
-            | TokenKind::OctalInteger(_)
-            | TokenKind::DecimalInteger(_)
-            | TokenKind::DecimalIntegerPrefix(_)
-            | TokenKind::HexadecimalInteger(_)
-            | TokenKind::Ascii(_, _)
-            | TokenKind::Str(_)
-            | TokenKind::RawStr(_)
-            | TokenKind::Identifier(_)
-            | TokenKind::IdentifierStr(_)
+            | TokenKind::BinaryInteger { .. }
+            | TokenKind::OctalInteger { .. }
+            | TokenKind::DecimalInteger { .. }
+            | TokenKind::DecimalIntegerPrefix { .. }
+            | TokenKind::HexadecimalInteger { .. }
+            | TokenKind::Ascii { .. }
+            | TokenKind::Str { .. }
+            | TokenKind::RawStr { .. }
+            | TokenKind::Identifier { .. }
+            | TokenKind::IdentifierStr { .. }
             | TokenKind::OpenRoundBracket
             | TokenKind::OpenSquareBracket
             | TokenKind::Op(
@@ -978,16 +978,16 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     | TokenKind::Op(_)
                     | TokenKind::False
                     | TokenKind::True
-                    | TokenKind::BinaryInteger(_)
-                    | TokenKind::OctalInteger(_)
-                    | TokenKind::DecimalInteger(_)
-                    | TokenKind::DecimalIntegerPrefix(_)
-                    | TokenKind::HexadecimalInteger(_)
-                    | TokenKind::Ascii(_, _)
-                    | TokenKind::Str(_)
-                    | TokenKind::RawStr(_)
-                    | TokenKind::Identifier(_)
-                    | TokenKind::IdentifierStr(_)
+                    | TokenKind::BinaryInteger { .. }
+                    | TokenKind::OctalInteger { .. }
+                    | TokenKind::DecimalInteger { .. }
+                    | TokenKind::DecimalIntegerPrefix { .. }
+                    | TokenKind::HexadecimalInteger { .. }
+                    | TokenKind::Ascii { .. }
+                    | TokenKind::Str { .. }
+                    | TokenKind::RawStr { .. }
+                    | TokenKind::Identifier { .. }
+                    | TokenKind::IdentifierStr { .. }
                     | TokenKind::Print
                     | TokenKind::PrintLn
                     | TokenKind::Eprint
@@ -1005,13 +1005,13 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             severity: MsgSeverity::Error,
                             kind: ErrorKind::MissingSemicolon,
                             col: previous_token.col,
-                            pointers_count: previous_token.kind.display_len(self.tokens),
+                            pointers_count: previous_token.display_len(self.src.src_file),
                         })
                     },
-                    TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {
+                    TokenKind::LineComment { .. } | TokenKind::BlockComment { .. } => {
                         unreachable!("should be skipped by the token iterator")
                     },
-                    TokenKind::Unexpected(_) => unreachable!("only valid tokens should be present"),
+                    TokenKind::Unexpected { .. } => unreachable!("only valid tokens should be present"),
                 }
             },
             TokenKind::Let => {
@@ -1065,7 +1065,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::StrayElseBlock,
                     col: token.col,
-                    pointers_count: token.kind.display_len(self.tokens),
+                    pointers_count: token.display_len(self.src.src_file),
                 })
             },
             TokenKind::Do | TokenKind::Loop => {
@@ -1081,7 +1081,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::StrayBreakStatement,
                         col: token.col,
-                        pointers_count: token.kind.display_len(self.tokens),
+                        pointers_count: token.display_len(self.src.src_file),
                     });
                 }
 
@@ -1095,7 +1095,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::StrayContinueStatement,
                         col: token.col,
-                        pointers_count: token.kind.display_len(self.tokens),
+                        pointers_count: token.display_len(self.src.src_file),
                     });
                 }
 
@@ -1120,7 +1120,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::StrayColon,
                     col: token.col,
-                    pointers_count: token.kind.display_len(self.tokens),
+                    pointers_count: token.display_len(self.src.src_file),
                 })
             },
             TokenKind::Comma => {
@@ -1129,7 +1129,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::StrayComma,
                     col: token.col,
-                    pointers_count: token.kind.display_len(self.tokens),
+                    pointers_count: token.display_len(self.src.src_file),
                 })
             },
             TokenKind::Op(op) => {
@@ -1138,17 +1138,17 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::StrayOperator(op),
                     col: token.col,
-                    pointers_count: token.kind.display_len(self.tokens),
+                    pointers_count: token.display_len(self.src.src_file),
                 })
             },
-            TokenKind::LineComment(_) | TokenKind::BlockComment(_) => {
+            TokenKind::LineComment { .. } | TokenKind::BlockComment { .. } => {
                 unreachable!("should be skipped by the token iterator")
             },
-            TokenKind::Unexpected(_) => unreachable!("only valid tokens should be present"),
+            TokenKind::Unexpected { .. } => unreachable!("only valid tokens should be present"),
         };
     }
 
-    fn any(&mut self, token: Token<'code>) -> Result<Node, Msg<ErrorKind>> {
+    fn any(&mut self, token: Token) -> Result<Node, Msg<ErrorKind>> {
         return match token.kind {
             TokenKind::OpenCurlyBracket => {
                 let new_scope_index = self.scopes.len() as ScopeIndex;
@@ -1174,25 +1174,25 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             | TokenKind::CloseRoundBracket
             | TokenKind::OpenSquareBracket
             | TokenKind::CloseSquareBracket
-            | TokenKind::LineComment(_)
-            | TokenKind::BlockComment(_)
-            | TokenKind::Unexpected(_)
+            | TokenKind::LineComment { .. }
+            | TokenKind::BlockComment { .. }
+            | TokenKind::Unexpected { .. }
             | TokenKind::Colon
             | TokenKind::SemiColon
             | TokenKind::Comma
             | TokenKind::Op(_)
             | TokenKind::False
             | TokenKind::True
-            | TokenKind::BinaryInteger(_)
-            | TokenKind::OctalInteger(_)
-            | TokenKind::DecimalInteger(_)
-            | TokenKind::DecimalIntegerPrefix(_)
-            | TokenKind::HexadecimalInteger(_)
-            | TokenKind::Ascii(_, _)
-            | TokenKind::Str(_)
-            | TokenKind::RawStr(_)
-            | TokenKind::Identifier(_)
-            | TokenKind::IdentifierStr(_)
+            | TokenKind::BinaryInteger { .. }
+            | TokenKind::OctalInteger { .. }
+            | TokenKind::DecimalInteger { .. }
+            | TokenKind::DecimalIntegerPrefix { .. }
+            | TokenKind::HexadecimalInteger { .. }
+            | TokenKind::Ascii { .. }
+            | TokenKind::Str { .. }
+            | TokenKind::RawStr { .. }
+            | TokenKind::Identifier { .. }
+            | TokenKind::IdentifierStr { .. }
             | TokenKind::Let
             | TokenKind::Var
             | TokenKind::Print
@@ -1210,23 +1210,23 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 }
 
 // iteration over tokens
-impl<'code> Parser<'_, '_, 'code, '_> {
+impl Parser<'_, '_, '_, '_> {
     // IDEA(stefano): remove self.current_token method and pass the current token around
-    fn current_token(&self, expected: Expected) -> Result<Token<'code>, Msg<ErrorKind>> {
+    fn current_token(&self, expected: Expected) -> Result<Token, Msg<ErrorKind>> {
         let Some(token) = self.token.get(&self.tokens.tokens) else {
             let previous = self.peek_previous_token();
             return Err(Msg {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::PrematureEndOfFile(expected),
                 col: previous.col,
-                pointers_count: previous.kind.display_len(self.tokens),
+                pointers_count: previous.display_len(self.src.src_file),
             });
         };
 
         return Ok(*token);
     }
 
-    fn next_token(&mut self) -> Option<Token<'code>> {
+    fn next_token(&mut self) -> Option<Token> {
         loop {
             let tokens_len = self.tokens.tokens.len() as usize32;
             if self.token.0 >= tokens_len - 1 {
@@ -1236,13 +1236,13 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
             self.token.0 += 1;
             let next = self.tokens.tokens[self.token];
-            let (TokenKind::LineComment(_) | TokenKind::BlockComment(_)) = next.kind else {
+            let (TokenKind::LineComment { .. } | TokenKind::BlockComment { .. }) = next.kind else {
                 return Some(next);
             };
         }
     }
 
-    fn next_token_bounded(&mut self, expected: Expected) -> Result<Token<'code>, Msg<ErrorKind>> {
+    fn next_token_bounded(&mut self, expected: Expected) -> Result<Token, Msg<ErrorKind>> {
         loop {
             let tokens_len = self.tokens.tokens.len() as usize32;
             if self.token.0 >= tokens_len - 1 {
@@ -1252,19 +1252,19 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::PrematureEndOfFile(expected),
                     col: previous.col,
-                    pointers_count: previous.kind.display_len(self.tokens),
+                    pointers_count: previous.display_len(self.src.src_file),
                 });
             }
 
             self.token.0 += 1;
             let next = self.tokens.tokens[self.token];
-            let (TokenKind::LineComment(_) | TokenKind::BlockComment(_)) = next.kind else {
+            let (TokenKind::LineComment { .. } | TokenKind::BlockComment { .. }) = next.kind else {
                 return Ok(next);
             };
         }
     }
 
-    fn peek_next_token(&self) -> Option<Token<'code>> {
+    fn peek_next_token(&self) -> Option<Token> {
         let mut current_token = self.token;
         loop {
             if current_token.0 >= self.tokens.tokens.len() as usize32 - 1 {
@@ -1273,7 +1273,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
             current_token.0 += 1;
             let next = self.tokens.tokens[current_token];
-            let (TokenKind::LineComment(_) | TokenKind::BlockComment(_)) = next.kind else {
+            let (TokenKind::LineComment { .. } | TokenKind::BlockComment { .. }) = next.kind else {
                 return Some(next);
             };
         }
@@ -1281,12 +1281,12 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
     // Note: this function is always called when underflowing the tokens array is never the case,
     // so there is no need for bounds checking
-    fn peek_previous_token(&self) -> Token<'code> {
+    fn peek_previous_token(&self) -> Token {
         let mut current_token = self.token;
         loop {
             current_token.0 -= 1;
             let previous = self.tokens.tokens[current_token];
-            let (TokenKind::LineComment(_) | TokenKind::BlockComment(_)) = previous.kind else {
+            let (TokenKind::LineComment { .. } | TokenKind::BlockComment { .. }) = previous.kind else {
                 return previous;
             };
         }
@@ -1303,7 +1303,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
     fn assert_lhs_is_not_string_or_array(
         &self,
-        op_token: Token<'code>,
+        op_token: Token,
         lhs: &Expression,
     ) -> Result<(), Msg<ErrorKind>> {
         let lhs_type = lhs.typ();
@@ -1312,7 +1312,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::LeftOperandTypeMismatch(lhs_type),
                 col: op_token.col,
-                pointers_count: op_token.kind.display_len(self.tokens),
+                pointers_count: op_token.display_len(self.src.src_file),
             });
         }
 
@@ -1321,7 +1321,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
     fn assert_rhs_is_not_string_or_array(
         &self,
-        op_token: Token<'code>,
+        op_token: Token,
         rhs: &Expression,
     ) -> Result<(), Msg<ErrorKind>> {
         let rhs_type = rhs.typ();
@@ -1330,42 +1330,42 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::RightOperandTypeMismatch(rhs_type),
                 col: op_token.col,
-                pointers_count: op_token.kind.display_len(self.tokens),
+                pointers_count: op_token.display_len(self.src.src_file),
             });
         }
 
         return Ok(());
     }
 
-    fn assert_lhs_is_bool(&self, op_token: Token<'code>, lhs: &Expression) -> Result<(), Msg<ErrorKind>> {
+    fn assert_lhs_is_bool(&self, op_token: Token, lhs: &Expression) -> Result<(), Msg<ErrorKind>> {
         let lhs_type = lhs.typ();
         let Type::Base(BaseType::Bool) = lhs_type else {
             return Err(Msg {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::LeftOperandTypeMismatch(lhs_type),
                 col: op_token.col,
-                pointers_count: op_token.kind.display_len(self.tokens),
+                pointers_count: op_token.display_len(self.src.src_file),
             });
         };
 
         return Ok(());
     }
 
-    fn assert_rhs_is_bool(&self, op_token: Token<'code>, rhs: &Expression) -> Result<(), Msg<ErrorKind>> {
+    fn assert_rhs_is_bool(&self, op_token: Token, rhs: &Expression) -> Result<(), Msg<ErrorKind>> {
         let rhs_type = rhs.typ();
         let Type::Base(BaseType::Bool) = rhs_type else {
             return Err(Msg {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::RightOperandTypeMismatch(rhs_type),
                 col: op_token.col,
-                pointers_count: op_token.kind.display_len(self.tokens),
+                pointers_count: op_token.display_len(self.src.src_file),
             });
         };
 
         return Ok(());
     }
 
-    fn operator(&mut self, ops: &[Op]) -> Result<Option<(Token<'code>, Op)>, Msg<ErrorKind>> {
+    fn operator(&mut self, ops: &[Op]) -> Result<Option<(Token, Op)>, Msg<ErrorKind>> {
         let current_token = self.current_token(Expected::OperatorOrSemicolon)?;
         let TokenKind::Op(op) = current_token.kind else {
             return Ok(None);
@@ -1446,85 +1446,85 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         let expression_result = match current_token.kind {
             TokenKind::False => Ok(Expression::False),
             TokenKind::True => Ok(Expression::True),
-            TokenKind::BinaryInteger(literal_index) => {
-                let literal = self.tokens.text[literal_index];
+            TokenKind::BinaryInteger { text_end } => {
+                let literal = self.src.src_file.text(current_token.col, text_end);
                 match Self::parse_positive_i64(literal, digit::Base::Binary, false) {
                     Some(integer) => Ok(Expression::I64(integer)),
                     None => Err(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::BinaryIntegerOverflow,
                         col: current_token.col,
-                        pointers_count: current_token.kind.display_len(self.tokens),
+                        pointers_count: current_token.display_len(self.src.src_file),
                     }),
                 }
             },
-            TokenKind::OctalInteger(literal_index) => {
-                let literal = self.tokens.text[literal_index];
+            TokenKind::OctalInteger { text_end } => {
+                let literal = self.src.src_file.text(current_token.col, text_end);
                 match Self::parse_positive_i64(literal, digit::Base::Octal, false) {
                     Some(integer) => Ok(Expression::I64(integer)),
                     None => Err(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::OctalIntegerOverflow,
                         col: current_token.col,
-                        pointers_count: current_token.kind.display_len(self.tokens),
+                        pointers_count: current_token.display_len(self.src.src_file),
                     }),
                 }
             },
-            TokenKind::DecimalInteger(literal_index) => {
-                let literal = self.tokens.text[literal_index];
+            TokenKind::DecimalInteger { text_end } => {
+                let literal = self.src.src_file.text(current_token.col, text_end);
                 match Self::parse_positive_i64(literal, digit::Base::Decimal, false) {
                     Some(integer) => Ok(Expression::I64(integer)),
                     None => Err(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::DecimalIntegerOverflow,
                         col: current_token.col,
-                        pointers_count: current_token.kind.display_len(self.tokens),
+                        pointers_count: current_token.display_len(self.src.src_file),
                     }),
                 }
             },
-            TokenKind::DecimalIntegerPrefix(literal_index) => {
-                let literal = self.tokens.text[literal_index];
+            TokenKind::DecimalIntegerPrefix { text_end } => {
+                let literal = self.src.src_file.text(current_token.col, text_end);
                 match Self::parse_positive_i64(literal, digit::Base::Decimal, true) {
                     Some(integer) => Ok(Expression::I64(integer)),
                     None => Err(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::DecimalIntegerOverflow,
                         col: current_token.col,
-                        pointers_count: current_token.kind.display_len(self.tokens),
+                        pointers_count: current_token.display_len(self.src.src_file),
                     }),
                 }
             },
-            TokenKind::HexadecimalInteger(literal_index) => {
-                let literal = self.tokens.text[literal_index];
+            TokenKind::HexadecimalInteger { text_end } => {
+                let literal = self.src.src_file.text(current_token.col, text_end);
                 match Self::parse_positive_i64(literal, digit::Base::Hexadecimal, false) {
                     Some(integer) => Ok(Expression::I64(integer)),
                     None => Err(Msg {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::HexadecimalIntegerOverflow,
                         col: current_token.col,
-                        pointers_count: current_token.kind.display_len(self.tokens),
+                        pointers_count: current_token.display_len(self.src.src_file),
                     }),
                 }
             },
-            TokenKind::Ascii(_, value) => Ok(Expression::Ascii(value)),
-            TokenKind::Str(string_index) => {
+            TokenKind::Ascii { value, .. } => Ok(Expression::Ascii(value)),
+            TokenKind::Str { text_end } => {
                 let string_label = self.string_label;
-                let string = self.tokens.text[string_index];
+                let string = self.src.src_file.text(current_token.col, text_end);
                 self.ast.string_labels.push((string_label, &string[1..string.len() - 1]));
                 self.string_label += 1;
 
                 Ok(Expression::Str { label: string_label })
             },
-            TokenKind::RawStr(string_index) => {
+            TokenKind::RawStr { text_end } => {
                 let string_label = self.string_label;
-                let string = self.tokens.text[string_index];
+                let string = self.src.src_file.text(current_token.col, text_end);
                 self.ast.raw_string_labels.push((string_label, &string[2..string.len() - 1]));
                 self.string_label += 1;
 
                 Ok(Expression::Str { label: string_label })
             },
-            TokenKind::Identifier(name_index) | TokenKind::IdentifierStr(name_index) => {
-                let name = self.tokens.text[name_index];
+            TokenKind::Identifier { text_end } | TokenKind::IdentifierStr { text_end } => {
+                let name = self.src.src_file.text(current_token.col, text_end);
                 match self.resolve_type(name) {
                     None => match self.resolve_variable(name) {
                         Some(variable_index) => {
@@ -1535,7 +1535,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             severity: MsgSeverity::Error,
                             kind: ErrorKind::VariableNotPreviouslyDefined,
                             col: current_token.col,
-                            pointers_count: current_token.kind.display_len(self.tokens),
+                            pointers_count: current_token.display_len(self.src.src_file),
                         }),
                     },
                     Some(_) => 'type_in_expression: {
@@ -1544,7 +1544,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                 severity: MsgSeverity::Error,
                                 kind: ErrorKind::TypeInExpression,
                                 col: current_token.col,
-                                pointers_count: current_token.kind.display_len(self.tokens),
+                                pointers_count: current_token.display_len(self.src.src_file),
                             });
                         };
 
@@ -1553,7 +1553,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                 severity: MsgSeverity::Error,
                                 kind: ErrorKind::TypeInExpression,
                                 col: current_token.col,
-                                pointers_count: current_token.kind.display_len(self.tokens),
+                                pointers_count: current_token.display_len(self.src.src_file),
                             });
                         };
 
@@ -1591,7 +1591,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::TypeInVariableReassignment,
                                     col: current_token.col,
-                                    pointers_count: current_token.kind.display_len(self.tokens),
+                                    pointers_count: current_token.display_len(self.src.src_file),
                                 });
                             },
 
@@ -1635,7 +1635,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::TypeInExpression,
                                     col: current_token.col,
-                                    pointers_count: current_token.kind.display_len(self.tokens),
+                                    pointers_count: current_token.display_len(self.src.src_file),
                                 });
                             },
                         }
@@ -1650,7 +1650,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::EmptyExpression,
                         col: expression_start_token.col,
-                        pointers_count: expression_start_token.kind.display_len(self.tokens),
+                        pointers_count: expression_start_token.display_len(self.src.src_file),
                     });
                 }
 
@@ -1662,7 +1662,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::UnclosedRoundBracket,
                         col: current_token.col,
-                        pointers_count: current_token.kind.display_len(self.tokens),
+                        pointers_count: current_token.display_len(self.src.src_file),
                     });
                 };
 
@@ -1681,7 +1681,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::ArrayOfZeroElements,
                         col: current_token.col,
-                        pointers_count: current_token.kind.display_len(self.tokens),
+                        pointers_count: current_token.display_len(self.src.src_file),
                     });
                 }
 
@@ -1694,7 +1694,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::UseSemicolonInsteadOfComma,
                         col: bracket_or_semicolon_token.col,
-                        pointers_count: bracket_or_semicolon_token.kind.display_len(self.tokens),
+                        pointers_count: bracket_or_semicolon_token.display_len(self.src.src_file),
                     });
                 }
                 if let TokenKind::SemiColon = bracket_or_semicolon_token.kind {
@@ -1709,7 +1709,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             severity: MsgSeverity::Error,
                             kind: ErrorKind::NestedArrayNotSupportedYet,
                             col: current_token.col,
-                            pointers_count: current_token.kind.display_len(self.tokens),
+                            pointers_count: current_token.display_len(self.src.src_file),
                         });
                     },
                 };
@@ -1734,7 +1734,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                 expected: Type::Base(items_type),
                             },
                             col: bracket_or_semicolon_token.col,
-                            pointers_count: bracket_or_semicolon_token.kind.display_len(self.tokens),
+                            pointers_count: bracket_or_semicolon_token.display_len(self.src.src_file),
                         });
                     }
 
@@ -1743,7 +1743,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             severity: MsgSeverity::Error,
                             kind: ErrorKind::NestedArrayNotSupportedYet,
                             col: current_token.col,
-                            pointers_count: current_token.kind.display_len(self.tokens),
+                            pointers_count: current_token.display_len(self.src.src_file),
                         });
                     }
 
@@ -1757,7 +1757,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             severity: MsgSeverity::Error,
                             kind: ErrorKind::UseSemicolonInsteadOfComma,
                             col: bracket_or_semicolon_token.col,
-                            pointers_count: bracket_or_semicolon_token.kind.display_len(self.tokens),
+                            pointers_count: bracket_or_semicolon_token.display_len(self.src.src_file),
                         });
                     }
                     if let TokenKind::SemiColon = bracket_or_semicolon_token.kind {
@@ -1787,7 +1787,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             severity: MsgSeverity::Error,
                             kind: ErrorKind::CannotTakeLenOf(operand_typ),
                             col: current_token.col,
-                            pointers_count: current_token.kind.display_len(self.tokens),
+                            pointers_count: current_token.display_len(self.src.src_file),
                         });
                     },
                 };
@@ -1824,7 +1824,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotTakeAbsoluteValueOf(invalid_type),
                         col: current_token.col,
-                        pointers_count: current_token.kind.display_len(self.tokens),
+                        pointers_count: current_token.display_len(self.src.src_file),
                     }),
                 };
             },
@@ -1843,22 +1843,22 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 let start_of_expression = self.tokens.tokens[self.token];
                 #[expect(clippy::wildcard_enum_match_arm)]
                 match start_of_expression.kind {
-                    TokenKind::BinaryInteger(literal_index) => {
-                        let literal = self.tokens.text[literal_index];
+                    TokenKind::BinaryInteger { text_end } => {
+                        let literal = self.src.src_file.text(current_token.col, text_end);
                         if should_be_negated {
                             match Self::parse_negative_i64(literal, digit::Base::Binary, false) {
                                 Some(0) => Err(Msg {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                    pointers_count: start_of_expression.display_len(self.src.src_file),
                                 }),
                                 Some(integer) => Ok(Expression::I64(integer)),
                                 None => Err(Msg {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::BinaryIntegerUnderflow,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                    pointers_count: start_of_expression.display_len(self.src.src_file),
                                 }),
                             }
                         } else {
@@ -1868,27 +1868,27 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::BinaryIntegerOverflow,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                    pointers_count: start_of_expression.display_len(self.src.src_file),
                                 }),
                             }
                         }
                     },
-                    TokenKind::OctalInteger(literal_index) => {
-                        let literal = self.tokens.text[literal_index];
+                    TokenKind::OctalInteger { text_end } => {
+                        let literal = self.src.src_file.text(current_token.col, text_end);
                         if should_be_negated {
                             match Self::parse_negative_i64(literal, digit::Base::Octal, false) {
                                 Some(0) => Err(Msg {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                    pointers_count: start_of_expression.display_len(self.src.src_file),
                                 }),
                                 Some(integer) => Ok(Expression::I64(integer)),
                                 None => Err(Msg {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::OctalIntegerUnderflow,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                    pointers_count: start_of_expression.display_len(self.src.src_file),
                                 }),
                             }
                         } else {
@@ -1898,27 +1898,27 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::OctalIntegerOverflow,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                    pointers_count: start_of_expression.display_len(self.src.src_file),
                                 }),
                             }
                         }
                     },
-                    TokenKind::DecimalInteger(literal_index) => {
-                        let literal = self.tokens.text[literal_index];
+                    TokenKind::DecimalInteger { text_end } => {
+                        let literal = self.src.src_file.text(current_token.col, text_end);
                         if should_be_negated {
                             match Self::parse_negative_i64(literal, digit::Base::Decimal, false) {
                                 Some(0) => Err(Msg {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                    pointers_count: start_of_expression.display_len(self.src.src_file),
                                 }),
                                 Some(integer) => Ok(Expression::I64(integer)),
                                 None => Err(Msg {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::DecimalIntegerUnderflow,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                    pointers_count: start_of_expression.display_len(self.src.src_file),
                                 }),
                             }
                         } else {
@@ -1928,27 +1928,27 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::DecimalIntegerOverflow,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                    pointers_count: start_of_expression.display_len(self.src.src_file),
                                 }),
                             }
                         }
                     },
-                    TokenKind::DecimalIntegerPrefix(literal_index) => {
-                        let literal = self.tokens.text[literal_index];
+                    TokenKind::DecimalIntegerPrefix { text_end } => {
+                        let literal = self.src.src_file.text(current_token.col, text_end);
                         if should_be_negated {
                             match Self::parse_negative_i64(literal, digit::Base::Decimal, true) {
                                 Some(0) => Err(Msg {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                    pointers_count: start_of_expression.display_len(self.src.src_file),
                                 }),
                                 Some(integer) => Ok(Expression::I64(integer)),
                                 None => Err(Msg {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::DecimalIntegerUnderflow,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                    pointers_count: start_of_expression.display_len(self.src.src_file),
                                 }),
                             }
                         } else {
@@ -1958,27 +1958,27 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::DecimalIntegerOverflow,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                    pointers_count: start_of_expression.display_len(self.src.src_file),
                                 }),
                             }
                         }
                     },
-                    TokenKind::HexadecimalInteger(literal_index) => {
-                        let literal = self.tokens.text[literal_index];
+                    TokenKind::HexadecimalInteger { text_end } => {
+                        let literal = self.src.src_file.text(current_token.col, text_end);
                         if should_be_negated {
                             match Self::parse_negative_i64(literal, digit::Base::Hexadecimal, false) {
                                 Some(0) => Err(Msg {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::MinusZeroInteger,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                    pointers_count: start_of_expression.display_len(self.src.src_file),
                                 }),
                                 Some(integer) => Ok(Expression::I64(integer)),
                                 None => Err(Msg {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::HexadecimalIntegerUnderflow,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                    pointers_count: start_of_expression.display_len(self.src.src_file),
                                 }),
                             }
                         } else {
@@ -1988,7 +1988,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                     severity: MsgSeverity::Error,
                                     kind: ErrorKind::HexadecimalIntegerOverflow,
                                     col: start_of_expression.col,
-                                    pointers_count: start_of_expression.kind.display_len(self.tokens),
+                                    pointers_count: start_of_expression.display_len(self.src.src_file),
                                 }),
                             }
                         }
@@ -2014,7 +2014,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                                 severity: MsgSeverity::Error,
                                 kind: ErrorKind::CannotNegate(invalid_typ),
                                 col: current_token.col,
-                                pointers_count: current_token.kind.display_len(self.tokens),
+                                pointers_count: current_token.display_len(self.src.src_file),
                             }),
                         };
                     },
@@ -2058,7 +2058,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotInvert(invalid_typ),
                         col: current_token.col,
-                        pointers_count: current_token.kind.display_len(self.tokens),
+                        pointers_count: current_token.display_len(self.src.src_file),
                     }),
                 };
             },
@@ -2077,23 +2077,23 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::KeywordInExpression,
                 col: current_token.col,
-                pointers_count: current_token.kind.display_len(self.tokens),
+                pointers_count: current_token.display_len(self.src.src_file),
             }),
             TokenKind::CloseRoundBracket
             | TokenKind::CloseSquareBracket
             | TokenKind::OpenCurlyBracket
             | TokenKind::CloseCurlyBracket
             | TokenKind::Op(_)
-            | TokenKind::LineComment(_)
-            | TokenKind::BlockComment(_)
-            | TokenKind::Unexpected(_)
+            | TokenKind::LineComment { .. }
+            | TokenKind::BlockComment { .. }
+            | TokenKind::Unexpected { .. }
             | TokenKind::Colon
             | TokenKind::SemiColon
             | TokenKind::Comma => Err(Msg {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::ExpectedOperand,
                 col: current_token.col,
-                pointers_count: current_token.kind.display_len(self.tokens),
+                pointers_count: current_token.display_len(self.src.src_file),
             }),
         };
 
@@ -2108,7 +2108,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::ExpectedNumberLiteralInArrayIndex,
                     col: open_bracket_token.col,
-                    pointers_count: open_bracket_token.kind.display_len(self.tokens),
+                    pointers_count: open_bracket_token.display_len(self.src.src_file),
                 });
             };
 
@@ -2120,7 +2120,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::MissingClosingSquareBracketInIndex,
                     col: before_index_token.col,
-                    pointers_count: before_index_token.kind.display_len(self.tokens),
+                    pointers_count: before_index_token.display_len(self.src.src_file),
                 });
             };
 
@@ -2129,7 +2129,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::CannotIndexIntoExpression,
                     col: open_bracket_token.col,
-                    pointers_count: open_bracket_token.kind.display_len(self.tokens),
+                    pointers_count: open_bracket_token.display_len(self.src.src_file),
                 });
             };
 
@@ -2147,7 +2147,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             severity: MsgSeverity::Error,
                             kind: ErrorKind::CannotIndexNonArrayType(expression_type),
                             col: open_bracket_token.col,
-                            pointers_count: open_bracket_token.kind.display_len(self.tokens),
+                            pointers_count: open_bracket_token.display_len(self.src.src_file),
                         });
                     },
                 },
@@ -2370,7 +2370,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::CannotCompareOperands { lhs_type, rhs_type },
                     col: op_token.col,
-                    pointers_count: op_token.kind.display_len(self.tokens),
+                    pointers_count: op_token.display_len(self.src.src_file),
                 });
             }
 
@@ -2379,7 +2379,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::CannotChainComparisons,
                     col: op_token.col,
-                    pointers_count: op_token.kind.display_len(self.tokens),
+                    pointers_count: op_token.display_len(self.src.src_file),
                 });
             }
             is_chained = true;
@@ -2501,7 +2501,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         }
     }
 
-    fn type_annotation(&mut self) -> Result<Option<(Token<'code>, Type)>, Msg<ErrorKind>> {
+    fn type_annotation(&mut self) -> Result<Option<(Token, Type)>, Msg<ErrorKind>> {
         let colon_token = self.next_token_bounded(Expected::TypeAnnotationOrVariableDefinition)?;
 
         let TokenKind::Colon = colon_token.kind else {
@@ -2510,16 +2510,16 @@ impl<'code> Parser<'_, '_, 'code, '_> {
         };
 
         let type_token = self.next_token_bounded(Expected::TypeAnnotation)?;
-        let TokenKind::Identifier(type_name_index) = type_token.kind else {
+        let TokenKind::Identifier { text_end: type_name_end } = type_token.kind else {
             return Err(Msg {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::ExpectedType,
                 col: colon_token.col,
-                pointers_count: colon_token.kind.display_len(self.tokens),
+                pointers_count: colon_token.display_len(self.src.src_file),
             });
         };
 
-        let type_name = self.tokens.text[type_name_index];
+        let type_name = self.src.src_file.text(type_token.col, type_name_end);
         let Some(base_type) = self.resolve_type(type_name) else {
             // REMOVE(stefano): remove possibility of emulating `typeof` using other variables as type annotation
             return match self.resolve_variable(type_name) {
@@ -2531,7 +2531,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::VariableNotPreviouslyDefined,
                     col: type_token.col,
-                    pointers_count: type_token.kind.display_len(self.tokens),
+                    pointers_count: type_token.display_len(self.src.src_file),
                 }),
             };
         };
@@ -2553,7 +2553,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::ExpectedNumberLiteralInArrayType,
                 col: open_square_bracket_token.col,
-                pointers_count: open_square_bracket_token.kind.display_len(self.tokens),
+                pointers_count: open_square_bracket_token.display_len(self.src.src_file),
             });
         };
 
@@ -2562,7 +2562,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::ArrayOfNegativeLength,
                 col: len_token.col,
-                pointers_count: len_token.kind.display_len(self.tokens),
+                pointers_count: len_token.display_len(self.src.src_file),
             });
         }
 
@@ -2574,7 +2574,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::ArrayOfZeroElements,
                 col: len_token.col,
-                pointers_count: len_token.kind.display_len(self.tokens),
+                pointers_count: len_token.display_len(self.src.src_file),
             });
         }
 
@@ -2584,7 +2584,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::MissingClosingSquareBracketInArrayType,
                 col: open_square_bracket_token.col,
-                pointers_count: open_square_bracket_token.kind.display_len(self.tokens),
+                pointers_count: open_square_bracket_token.display_len(self.src.src_file),
             });
         };
 
@@ -2595,8 +2595,8 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     fn variable_definition(&mut self) -> Result<Variable<'code>, Msg<ErrorKind>> {
         let name_token = self.next_token_bounded(Expected::Identifier)?;
         let name = match name_token.kind {
-            TokenKind::Identifier(name_index) | TokenKind::IdentifierStr(name_index) => {
-                let name = self.tokens.text[name_index];
+            TokenKind::Identifier { text_end } | TokenKind::IdentifierStr { text_end } => {
+                let name = self.src.src_file.text(name_token.col, text_end);
                 match self.resolve_type(name) {
                     None => name,
                     Some(_) => {
@@ -2604,14 +2604,14 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             severity: MsgSeverity::Error,
                             kind: ErrorKind::TypeInVariableName,
                             col: name_token.col,
-                            pointers_count: name_token.kind.display_len(self.tokens),
+                            pointers_count: name_token.display_len(self.src.src_file),
                         });
                     },
                 }
             },
-            TokenKind::LineComment(_)
-            | TokenKind::BlockComment(_)
-            | TokenKind::Unexpected(_)
+            TokenKind::LineComment { .. }
+            | TokenKind::BlockComment { .. }
+            | TokenKind::Unexpected { .. }
             | TokenKind::OpenRoundBracket
             | TokenKind::CloseRoundBracket
             | TokenKind::OpenSquareBracket
@@ -2624,19 +2624,19 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             | TokenKind::Op(_)
             | TokenKind::False
             | TokenKind::True
-            | TokenKind::BinaryInteger(_)
-            | TokenKind::OctalInteger(_)
-            | TokenKind::DecimalInteger(_)
-            | TokenKind::DecimalIntegerPrefix(_)
-            | TokenKind::HexadecimalInteger(_)
-            | TokenKind::Ascii(_, _)
-            | TokenKind::Str(_)
-            | TokenKind::RawStr(_) => {
+            | TokenKind::BinaryInteger { .. }
+            | TokenKind::OctalInteger { .. }
+            | TokenKind::DecimalInteger { .. }
+            | TokenKind::DecimalIntegerPrefix { .. }
+            | TokenKind::HexadecimalInteger { .. }
+            | TokenKind::Ascii { .. }
+            | TokenKind::Str { .. }
+            | TokenKind::RawStr { .. } => {
                 return Err(Msg {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::ExpectedVariableName,
                     col: name_token.col,
-                    pointers_count: name_token.kind.display_len(self.tokens),
+                    pointers_count: name_token.display_len(self.src.src_file),
                 });
             },
             TokenKind::Let
@@ -2655,7 +2655,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::KeywordInVariableName,
                     col: name_token.col,
-                    pointers_count: name_token.kind.display_len(self.tokens),
+                    pointers_count: name_token.display_len(self.src.src_file),
                 });
             },
         };
@@ -2671,9 +2671,9 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             },
             TokenKind::SemiColon => None,
             TokenKind::Op(_)
-            | TokenKind::LineComment(_)
-            | TokenKind::BlockComment(_)
-            | TokenKind::Unexpected(_)
+            | TokenKind::LineComment { .. }
+            | TokenKind::BlockComment { .. }
+            | TokenKind::Unexpected { .. }
             | TokenKind::OpenRoundBracket
             | TokenKind::CloseRoundBracket
             | TokenKind::OpenSquareBracket
@@ -2684,16 +2684,16 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             | TokenKind::Comma
             | TokenKind::False
             | TokenKind::True
-            | TokenKind::BinaryInteger(_)
-            | TokenKind::OctalInteger(_)
-            | TokenKind::DecimalInteger(_)
-            | TokenKind::DecimalIntegerPrefix(_)
-            | TokenKind::HexadecimalInteger(_)
-            | TokenKind::Ascii(_, _)
-            | TokenKind::Str(_)
-            | TokenKind::RawStr(_)
-            | TokenKind::Identifier(_)
-            | TokenKind::IdentifierStr(_)
+            | TokenKind::BinaryInteger { .. }
+            | TokenKind::OctalInteger { .. }
+            | TokenKind::DecimalInteger { .. }
+            | TokenKind::DecimalIntegerPrefix { .. }
+            | TokenKind::HexadecimalInteger { .. }
+            | TokenKind::Ascii { .. }
+            | TokenKind::Str { .. }
+            | TokenKind::RawStr { .. }
+            | TokenKind::Identifier { .. }
+            | TokenKind::IdentifierStr { .. }
             | TokenKind::Let
             | TokenKind::Var
             | TokenKind::Print
@@ -2711,7 +2711,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::ExpectedEqualsOrSemicolonAfterVariableName,
                         col: name_token.col,
-                        pointers_count: name_token.kind.display_len(self.tokens),
+                        pointers_count: name_token.display_len(self.src.src_file),
                     });
                 },
                 Some((annotation_token, _)) => {
@@ -2719,7 +2719,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::ExpectedEqualsOrSemicolonAfterTypeAnnotation,
                         col: annotation_token.col,
-                        pointers_count: annotation_token.kind.display_len(self.tokens),
+                        pointers_count: annotation_token.display_len(self.src.src_file),
                     });
                 },
             },
@@ -2731,14 +2731,14 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::CannotInferTypeOfVariable,
                     col: name_token.col,
-                    pointers_count: name_token.kind.display_len(self.tokens),
+                    pointers_count: name_token.display_len(self.src.src_file),
                 });
             };
             return Err(Msg {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::VariablesMustBeInitialized,
                 col: name_token.col,
-                pointers_count: name_token.kind.display_len(self.tokens),
+                pointers_count: name_token.display_len(self.src.src_file),
             });
         };
 
@@ -2747,7 +2747,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::VariableAlreadyDefined,
                 col: name_token.col,
-                pointers_count: name_token.kind.display_len(self.tokens),
+                pointers_count: name_token.display_len(self.src.src_file),
             });
         };
 
@@ -2762,7 +2762,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     actual: expression_typ,
                 },
                 col: token.col,
-                pointers_count: token.kind.display_len(self.tokens),
+                pointers_count: token.display_len(self.src.src_file),
             });
         }
         self.semicolon()?;
@@ -2773,9 +2773,9 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     fn reassignment(
         &mut self,
         target: Expression,
-        target_token: Token<'code>,
+        target_token: Token,
         op: AssignmentOp,
-        op_token: Token<'code>,
+        op_token: Token,
     ) -> Result<Node, Msg<ErrorKind>> {
         let (error_token, target_type) = match &target {
             Expression::ArrayIndex { base_type, indexable_index, .. } => {
@@ -2793,18 +2793,18 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotAssignToExpression,
                         col: op_token.col,
-                        pointers_count: op_token.kind.display_len(self.tokens),
+                        pointers_count: op_token.display_len(self.src.src_file),
                     });
                 };
 
-                let error_token = if let TokenKind::Identifier(name_index) = target_token.kind {
-                    let name = self.tokens.text[name_index];
+                let error_token = if let TokenKind::Identifier { text_end } = target_token.kind {
+                    let name = self.src.src_file.text(target_token.col, text_end);
                     if let Some(_) = self.resolve_let_variable(name) {
                         return Err(Msg {
                             severity: MsgSeverity::Error,
                             kind: ErrorKind::CannotMutateVariable,
                             col: target_token.col,
-                            pointers_count: target_token.kind.display_len(self.tokens),
+                            pointers_count: target_token.display_len(self.src.src_file),
                         });
                     }
 
@@ -2815,7 +2815,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             severity: MsgSeverity::Error,
                             kind: ErrorKind::CannotMutateStringCharacters,
                             col: target_token.col,
-                            pointers_count: target_token.kind.display_len(self.tokens),
+                            pointers_count: target_token.display_len(self.src.src_file),
                         });
                     }
 
@@ -2833,7 +2833,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotMutateVariable,
                         col: target_token.col,
-                        pointers_count: target_token.kind.display_len(self.tokens),
+                        pointers_count: target_token.display_len(self.src.src_file),
                     });
                 }
 
@@ -2857,7 +2857,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::CannotAssignToExpression,
                     col: op_token.col,
-                    pointers_count: op_token.kind.display_len(self.tokens),
+                    pointers_count: op_token.display_len(self.src.src_file),
                 });
             },
         };
@@ -2876,7 +2876,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             actual: new_value_type,
                         },
                         col: error_token.col,
-                        pointers_count: error_token.kind.display_len(self.tokens),
+                        pointers_count: error_token.display_len(self.src.src_file),
                     });
                 }
                 Ok(Node::Reassignment { target, op, op_col: op_token.col, new_value })
@@ -2922,7 +2922,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotModifyInplace(target_type),
                         col: op_token.col,
-                        pointers_count: op_token.kind.display_len(self.tokens),
+                        pointers_count: op_token.display_len(self.src.src_file),
                     }),
                     _ => Err(Msg {
                         severity: MsgSeverity::Error,
@@ -2931,7 +2931,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             actual: new_value_type,
                         },
                         col: error_token.col,
-                        pointers_count: error_token.kind.display_len(self.tokens),
+                        pointers_count: error_token.display_len(self.src.src_file),
                     }),
                 }
             },
@@ -2945,7 +2945,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             actual: target_type,
                         },
                         col: op_token.col,
-                        pointers_count: op_token.kind.display_len(self.tokens),
+                        pointers_count: op_token.display_len(self.src.src_file),
                     });
                 };
                 let Type::Base(BaseType::Bool) = new_value_type else {
@@ -2956,7 +2956,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             actual: new_value_type,
                         },
                         col: op_token.col,
-                        pointers_count: op_token.kind.display_len(self.tokens),
+                        pointers_count: op_token.display_len(self.src.src_file),
                     });
                 };
                 Ok(Node::Reassignment { target, op, op_col: op_token.col, new_value })
@@ -2967,9 +2967,9 @@ impl<'code> Parser<'_, '_, 'code, '_> {
     fn prefix_reassignment(
         &self,
         target: Expression,
-        target_token: Token<'code>,
+        target_token: Token,
         op: PrefixAssignmentOp,
-        op_token: Token<'code>,
+        op_token: Token,
     ) -> Result<Node, Msg<ErrorKind>> {
         let (error_token, target_type) = match &target {
             Expression::ArrayIndex { base_type, indexable_index, .. } => {
@@ -2987,18 +2987,18 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotAssignToExpression,
                         col: op_token.col,
-                        pointers_count: op_token.kind.display_len(self.tokens),
+                        pointers_count: op_token.display_len(self.src.src_file),
                     });
                 };
 
-                let error_token = if let TokenKind::Identifier(name_index) = target_token.kind {
-                    let name = self.tokens.text[name_index];
+                let error_token = if let TokenKind::Identifier { text_end } = target_token.kind {
+                    let name = self.src.src_file.text(target_token.col, text_end);
                     if let Some(_) = self.resolve_let_variable(name) {
                         return Err(Msg {
                             severity: MsgSeverity::Error,
                             kind: ErrorKind::CannotMutateVariable,
                             col: target_token.col,
-                            pointers_count: target_token.kind.display_len(self.tokens),
+                            pointers_count: target_token.display_len(self.src.src_file),
                         });
                     }
 
@@ -3009,7 +3009,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                             severity: MsgSeverity::Error,
                             kind: ErrorKind::CannotMutateStringCharacters,
                             col: target_token.col,
-                            pointers_count: target_token.kind.display_len(self.tokens),
+                            pointers_count: target_token.display_len(self.src.src_file),
                         });
                     }
 
@@ -3027,7 +3027,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotMutateVariable,
                         col: target_token.col,
-                        pointers_count: target_token.kind.display_len(self.tokens),
+                        pointers_count: target_token.display_len(self.src.src_file),
                     });
                 }
 
@@ -3051,7 +3051,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::CannotAssignToExpression,
                     col: op_token.col,
-                    pointers_count: op_token.kind.display_len(self.tokens),
+                    pointers_count: op_token.display_len(self.src.src_file),
                 });
             },
         };
@@ -3065,7 +3065,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::CannotInvert(invalid_typ),
                     col: error_token.col,
-                    pointers_count: error_token.kind.display_len(self.tokens),
+                    pointers_count: error_token.display_len(self.src.src_file),
                 }),
             },
             PrefixAssignmentOp::Plus
@@ -3079,7 +3079,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::CannotTakeAbsoluteValueOf(invalid_type),
                     col: error_token.col,
-                    pointers_count: error_token.kind.display_len(self.tokens),
+                    pointers_count: error_token.display_len(self.src.src_file),
                 }),
             },
             PrefixAssignmentOp::Minus
@@ -3093,7 +3093,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::CannotNegate(invalid_type),
                         col: error_token.col,
-                        pointers_count: error_token.kind.display_len(self.tokens),
+                        pointers_count: error_token.display_len(self.src.src_file),
                     })
                 },
             },
@@ -3132,7 +3132,7 @@ impl Parser<'_, '_, '_, '_> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::IfMustBeFollowedByBooleanExpression,
                     col: if_token.col,
-                    pointers_count: if_token.kind.display_len(self.tokens),
+                    pointers_count: if_token.display_len(self.src.src_file),
                 });
             };
 
@@ -3147,25 +3147,25 @@ impl Parser<'_, '_, '_, '_> {
                 | TokenKind::OpenSquareBracket
                 | TokenKind::CloseSquareBracket
                 | TokenKind::CloseCurlyBracket
-                | TokenKind::LineComment(_)
-                | TokenKind::BlockComment(_)
-                | TokenKind::Unexpected(_)
+                | TokenKind::LineComment { .. }
+                | TokenKind::BlockComment { .. }
+                | TokenKind::Unexpected { .. }
                 | TokenKind::Colon
                 | TokenKind::SemiColon
                 | TokenKind::Comma
                 | TokenKind::Op(_)
                 | TokenKind::False
                 | TokenKind::True
-                | TokenKind::BinaryInteger(_)
-                | TokenKind::OctalInteger(_)
-                | TokenKind::DecimalInteger(_)
-                | TokenKind::DecimalIntegerPrefix(_)
-                | TokenKind::HexadecimalInteger(_)
-                | TokenKind::Ascii(_, _)
-                | TokenKind::Str(_)
-                | TokenKind::RawStr(_)
-                | TokenKind::Identifier(_)
-                | TokenKind::IdentifierStr(_)
+                | TokenKind::BinaryInteger { .. }
+                | TokenKind::OctalInteger { .. }
+                | TokenKind::DecimalInteger { .. }
+                | TokenKind::DecimalIntegerPrefix { .. }
+                | TokenKind::HexadecimalInteger { .. }
+                | TokenKind::Ascii { .. }
+                | TokenKind::Str { .. }
+                | TokenKind::RawStr { .. }
+                | TokenKind::Identifier { .. }
+                | TokenKind::IdentifierStr { .. }
                 | TokenKind::Let
                 | TokenKind::Var
                 | TokenKind::Print
@@ -3183,7 +3183,7 @@ impl Parser<'_, '_, '_, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::IfMustBeFollowedByBlock,
                         col: before_curly_bracket_token.col,
-                        pointers_count: before_curly_bracket_token.kind.display_len(self.tokens),
+                        pointers_count: before_curly_bracket_token.display_len(self.src.src_file),
                     });
                 },
             };
@@ -3194,9 +3194,9 @@ impl Parser<'_, '_, '_, '_> {
             while let Some(else_token) = self.token.get(&self.tokens.tokens) {
                 let after_else_token = match else_token.kind {
                     TokenKind::Else => self.next_token_bounded(Expected::BlockOrIfStatement)?,
-                    TokenKind::LineComment(_)
-                    | TokenKind::BlockComment(_)
-                    | TokenKind::Unexpected(_)
+                    TokenKind::LineComment { .. }
+                    | TokenKind::BlockComment { .. }
+                    | TokenKind::Unexpected { .. }
                     | TokenKind::OpenRoundBracket
                     | TokenKind::CloseRoundBracket
                     | TokenKind::OpenSquareBracket
@@ -3209,16 +3209,16 @@ impl Parser<'_, '_, '_, '_> {
                     | TokenKind::Op(_)
                     | TokenKind::False
                     | TokenKind::True
-                    | TokenKind::BinaryInteger(_)
-                    | TokenKind::OctalInteger(_)
-                    | TokenKind::DecimalInteger(_)
-                    | TokenKind::DecimalIntegerPrefix(_)
-                    | TokenKind::HexadecimalInteger(_)
-                    | TokenKind::Ascii(_, _)
-                    | TokenKind::Str(_)
-                    | TokenKind::RawStr(_)
-                    | TokenKind::Identifier(_)
-                    | TokenKind::IdentifierStr(_)
+                    | TokenKind::BinaryInteger { .. }
+                    | TokenKind::OctalInteger { .. }
+                    | TokenKind::DecimalInteger { .. }
+                    | TokenKind::DecimalIntegerPrefix { .. }
+                    | TokenKind::HexadecimalInteger { .. }
+                    | TokenKind::Ascii { .. }
+                    | TokenKind::Str { .. }
+                    | TokenKind::RawStr { .. }
+                    | TokenKind::Identifier { .. }
+                    | TokenKind::IdentifierStr { .. }
                     | TokenKind::Let
                     | TokenKind::Var
                     | TokenKind::Print
@@ -3245,25 +3245,25 @@ impl Parser<'_, '_, '_, '_> {
                     | TokenKind::OpenSquareBracket
                     | TokenKind::CloseSquareBracket
                     | TokenKind::CloseCurlyBracket
-                    | TokenKind::LineComment(_)
-                    | TokenKind::BlockComment(_)
-                    | TokenKind::Unexpected(_)
+                    | TokenKind::LineComment { .. }
+                    | TokenKind::BlockComment { .. }
+                    | TokenKind::Unexpected { .. }
                     | TokenKind::Colon
                     | TokenKind::SemiColon
                     | TokenKind::Comma
                     | TokenKind::Op(_)
                     | TokenKind::False
                     | TokenKind::True
-                    | TokenKind::BinaryInteger(_)
-                    | TokenKind::OctalInteger(_)
-                    | TokenKind::DecimalInteger(_)
-                    | TokenKind::DecimalIntegerPrefix(_)
-                    | TokenKind::HexadecimalInteger(_)
-                    | TokenKind::Ascii(_, _)
-                    | TokenKind::Str(_)
-                    | TokenKind::RawStr(_)
-                    | TokenKind::Identifier(_)
-                    | TokenKind::IdentifierStr(_)
+                    | TokenKind::BinaryInteger { .. }
+                    | TokenKind::OctalInteger { .. }
+                    | TokenKind::DecimalInteger { .. }
+                    | TokenKind::DecimalIntegerPrefix { .. }
+                    | TokenKind::HexadecimalInteger { .. }
+                    | TokenKind::Ascii { .. }
+                    | TokenKind::Str { .. }
+                    | TokenKind::RawStr { .. }
+                    | TokenKind::Identifier { .. }
+                    | TokenKind::IdentifierStr { .. }
                     | TokenKind::Let
                     | TokenKind::Var
                     | TokenKind::Print
@@ -3278,7 +3278,7 @@ impl Parser<'_, '_, '_, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::MustBeFollowedByBlockOrIfStatement,
                         col: else_token.col,
-                        pointers_count: else_token.kind.display_len(self.tokens),
+                        pointers_count: else_token.display_len(self.src.src_file),
                     }),
                 };
 
@@ -3304,15 +3304,15 @@ impl Parser<'_, '_, '_, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::DoMustBeFollowedByLoop,
                         col: do_token.col,
-                        pointers_count: do_token.kind.display_len(self.tokens),
+                        pointers_count: do_token.display_len(self.src.src_file),
                     });
                 };
 
                 loop_token
             },
-            TokenKind::LineComment(_)
-            | TokenKind::BlockComment(_)
-            | TokenKind::Unexpected(_)
+            TokenKind::LineComment { .. }
+            | TokenKind::BlockComment { .. }
+            | TokenKind::Unexpected { .. }
             | TokenKind::OpenRoundBracket
             | TokenKind::CloseRoundBracket
             | TokenKind::OpenSquareBracket
@@ -3325,16 +3325,16 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::Op(_)
             | TokenKind::False
             | TokenKind::True
-            | TokenKind::BinaryInteger(_)
-            | TokenKind::OctalInteger(_)
-            | TokenKind::DecimalInteger(_)
-            | TokenKind::DecimalIntegerPrefix(_)
-            | TokenKind::HexadecimalInteger(_)
-            | TokenKind::Ascii(_, _)
-            | TokenKind::Str(_)
-            | TokenKind::RawStr(_)
-            | TokenKind::Identifier(_)
-            | TokenKind::IdentifierStr(_)
+            | TokenKind::BinaryInteger { .. }
+            | TokenKind::OctalInteger { .. }
+            | TokenKind::DecimalInteger { .. }
+            | TokenKind::DecimalIntegerPrefix { .. }
+            | TokenKind::HexadecimalInteger { .. }
+            | TokenKind::Ascii { .. }
+            | TokenKind::Str { .. }
+            | TokenKind::RawStr { .. }
+            | TokenKind::Identifier { .. }
+            | TokenKind::IdentifierStr { .. }
             | TokenKind::Let
             | TokenKind::Var
             | TokenKind::Print
@@ -3355,7 +3355,7 @@ impl Parser<'_, '_, '_, '_> {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::LoopMustBeFollowedByBooleanExpression,
                 col: loop_token.col,
-                pointers_count: loop_token.kind.display_len(self.tokens),
+                pointers_count: loop_token.display_len(self.src.src_file),
             });
         };
 
@@ -3370,25 +3370,25 @@ impl Parser<'_, '_, '_, '_> {
             | TokenKind::OpenSquareBracket
             | TokenKind::CloseSquareBracket
             | TokenKind::CloseCurlyBracket
-            | TokenKind::LineComment(_)
-            | TokenKind::BlockComment(_)
-            | TokenKind::Unexpected(_)
+            | TokenKind::LineComment { .. }
+            | TokenKind::BlockComment { .. }
+            | TokenKind::Unexpected { .. }
             | TokenKind::Colon
             | TokenKind::SemiColon
             | TokenKind::Comma
             | TokenKind::Op(_)
             | TokenKind::False
             | TokenKind::True
-            | TokenKind::BinaryInteger(_)
-            | TokenKind::OctalInteger(_)
-            | TokenKind::DecimalInteger(_)
-            | TokenKind::DecimalIntegerPrefix(_)
-            | TokenKind::HexadecimalInteger(_)
-            | TokenKind::Ascii(_, _)
-            | TokenKind::Str(_)
-            | TokenKind::RawStr(_)
-            | TokenKind::Identifier(_)
-            | TokenKind::IdentifierStr(_)
+            | TokenKind::BinaryInteger { .. }
+            | TokenKind::OctalInteger { .. }
+            | TokenKind::DecimalInteger { .. }
+            | TokenKind::DecimalIntegerPrefix { .. }
+            | TokenKind::HexadecimalInteger { .. }
+            | TokenKind::Ascii { .. }
+            | TokenKind::Str { .. }
+            | TokenKind::RawStr { .. }
+            | TokenKind::Identifier { .. }
+            | TokenKind::IdentifierStr { .. }
             | TokenKind::Let
             | TokenKind::Var
             | TokenKind::Print
@@ -3406,7 +3406,7 @@ impl Parser<'_, '_, '_, '_> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::LoopMustBeFollowedByBlock,
                     col: before_curly_bracket_token.col,
-                    pointers_count: before_curly_bracket_token.kind.display_len(self.tokens),
+                    pointers_count: before_curly_bracket_token.display_len(self.src.src_file),
                 })
             },
         };
@@ -3550,7 +3550,7 @@ pub enum ErrorKind {
 }
 
 impl IntoMsgInfo for ErrorKind {
-    fn info(&self) -> MsgInfo {
+    fn info(&self, _col: usize32, _src: &SrcFile<'_>) -> MsgInfo {
         let (error_message, error_cause_message) = match self {
             Self::PrematureEndOfFile(expected) => {
                 ("premature end of file".into(), format!("expected {expected} after here").into())

@@ -6,10 +6,10 @@ pub mod typed_abstract_syntax_tree;
 pub mod types;
 
 use self::src_file::{Position, SrcCode};
-use crate::{ERROR, error::MsgWithCauseUnderTextWithLocation};
+use crate::{ERROR, error::MsgWithCauseUnderTextWithLocation, front_end::src_file::SrcFile};
 extern crate alloc;
 use alloc::borrow::Cow;
-use back_to_front::usize32;
+use back_to_front::{text, usize32};
 
 // IDEA(stefano): move to back-to-front
 #[derive(Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -88,7 +88,12 @@ impl<T> core::ops::IndexMut<Index32<T>> for Vec<T> {
 }
 
 pub trait IntoMsgInfo {
-    fn info(&self) -> MsgInfo;
+    fn info(
+        &self,
+        // HACK(stefano): this col is passes just because `ErrorKind`'s don't contain column information, but only `Msg`'s do
+        col: usize32,
+        src: &SrcFile<'_>,
+    ) -> MsgInfo;
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -122,9 +127,9 @@ impl<K: IntoMsgInfo> Msg<K> {
     pub fn display<'code, 'path>(&self, src: &SrcCode<'code, 'path>) -> MsgDisplay<'code, 'path> {
         let position = Position::new(src, self.col);
         let line_span = src.lines[position.line as usize - 1];
-        let line_text = &src.code()[line_span.start() as usize..line_span.end() as usize];
+        let line_text = text::span(src.code(), line_span);
 
-        let MsgInfo { message: error_message, cause: error_cause_message } = self.kind.info();
+        let MsgInfo { message: error_message, cause: error_cause_message } = self.kind.info(self.col, src.src_file);
         return MsgDisplay {
             severity: self.severity,
             error_message,

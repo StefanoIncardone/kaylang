@@ -176,3 +176,8 @@ doc_paragraphs_missing_punctuation = "allow"
 partial_pub_fields = "allow"
 let_underscore_must_use = "allow"
 enum_variant_names = "allow"
+
+# keeps consistency with these two cases:
+# - `if foo { return None; }`
+# - `if foo { panic!(); }`
+manual_assert = "allow"

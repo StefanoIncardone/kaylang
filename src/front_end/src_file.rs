@@ -1,6 +1,6 @@
 use crate::{ERROR, error::MsgWithCause};
 use std::{fs::File, io::Read as _, path::Path};
-use back_to_front::src_code::Line;
+use back_to_front::{slice, src_code::Line, text};
 use unicode_width::UnicodeWidthChar as _;
 
 #[expect(clippy::useless_attribute, reason = "false positive")]
@@ -26,7 +26,7 @@ impl<'path> Position<'path> {
     pub(crate) fn new(src: &SrcCode<'_, 'path>, offset: usize32) -> Self {
         let line_index = src.line_index(offset);
         let line = src.lines[line_index as usize];
-        let line_text_before_error = &src.code()[line.start() as usize..offset as usize];
+        let line_text_before_error = text::slice(src.code(), line.start() as usize, offset as usize);
 
         let mut width = 1;
         let mut column = 1;
@@ -61,6 +61,11 @@ pub struct SrcFile<'path> {
 impl<'path> SrcFile<'path> {
     #[must_use] #[inline(always)] pub const fn path(&self) -> &'path Path { return self.path; }
     #[must_use] #[inline(always)] pub const fn code(&self) -> &str        { return self.code.as_str(); }
+
+    #[must_use] #[inline(always)] #[track_caller]
+    pub const fn text(&self, start: usize32, end: usize32) -> &str {
+        return text::slice(self.code(), start as usize, end as usize);
+    }
 }
 
 impl<'path> SrcFile<'path> {
@@ -104,6 +109,8 @@ impl<'path> SrcFile<'path> {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct SrcCode<'code, 'path> {
     pub(crate) src_file: &'code SrcFile<'path>,
+    /// Consecutive ranges of line start and end columns, excluding new line characters
+    // IDEA(stefano): only store line ends, include line terminators and extract visible characters only when needed
     pub(crate) lines: Vec<Line>,
 }
 
@@ -117,12 +124,14 @@ impl<'code, 'path> SrcCode<'code, 'path> {
 
 impl SrcCode<'_, '_> {
     #[must_use]
-    fn line_index(&self, column: usize32) -> usize32 {
+    const fn line_index(&self, column: usize32) -> usize32 {
         let mut left: usize32 = 0;
         let mut right = self.lines.len() as usize32 - 1;
         while left < right {
             let middle = left + (right - left) / 2;
-            if column <= self.lines[middle as usize].end() {
+
+            let line_end = unsafe { slice::at_unchecked(self.lines.as_slice(), middle as usize ) }.end();
+            if column <= line_end {
                 right = middle;
             } else {
                 left = middle + 1;

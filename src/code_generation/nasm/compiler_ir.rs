@@ -6,15 +6,15 @@ use core::fmt::Write as _;
 
 #[derive(Debug)]
 #[must_use]
-struct StackVariable<'ir, 'code: 'ir> {
-    inner: &'ir Index32<Expression<'code>>,
+struct StackVariable {
+    inner: Index32<Expression>,
     offset: usize,
 }
 
 #[derive(Debug)]
 #[must_use]
-struct RegisterVariable<'ir, 'code: 'ir> {
-    inner: &'ir Index32<Expression<'code>>,
+struct RegisterVariable {
+    inner: Index32<Expression>,
     reg: Reg64,
 }
 
@@ -55,7 +55,7 @@ pub struct Compiler<'ir, 'tast: 'ir, 'st: 'tast, 'tokens: 'tast, 'code: 'tokens,
 
     asm: String,
 
-    register_variables: Vec<RegisterVariable<'ir, 'code>>,
+    register_variables: Vec<RegisterVariable>,
 
     // if_counter: u32,
 
@@ -340,11 +340,11 @@ section .rodata
 }
 
 impl<'ir, 'code: 'ir> Compiler<'ir, '_, '_, '_, 'code, '_> {
-    fn node(&mut self, node: &'ir Node<'code>) {
+    fn node(&mut self, node: &'ir Node) {
         match node {
-            Node::Expression { value } => unimplemented!(),
-            Node::TempVariable { value } => unimplemented!(),
-            Node::Variable { value, .. } => unimplemented!(),
+            Node::Expression { .. } => unimplemented!(),
+            Node::TempVariable { .. } => unimplemented!(),
+            Node::Variable { .. } => unimplemented!(),
             Node::Print { argument, .. } => {
                 self.expression(*argument);
                 self.print(*argument);
@@ -357,20 +357,20 @@ impl<'ir, 'code: 'ir> Compiler<'ir, '_, '_, '_, 'code, '_> {
     }
 
     #[rustfmt::skip]
-    fn operand(&mut self, operand_index: Index32<Operand<'code>>) {
+    fn operand(&mut self, operand_index: Index32<Operand>) {
         let operand = &self.ir.operands[operand_index];
         match operand {
             Operand::False =>               _ = writeln!(self.asm, " mov rdi, false"),
             Operand::True =>                _ = writeln!(self.asm, " mov rdi, true"),
             Operand::I64 { value } =>       _ = writeln!(self.asm, " mov rdi, {value}"),
             Operand::Ascii { character } => _ = writeln!(self.asm, " mov rdi, {character}"),
-            Operand::Str { literal } => unimplemented!(),
-            Operand::TempVariable { value } => unimplemented!(),
-            Operand::Variable { value, name } => unimplemented!(),
+            Operand::Str { .. } => unimplemented!(),
+            Operand::TempVariable { .. } => unimplemented!(),
+            Operand::Variable { .. } => unimplemented!(),
         }
     }
 
-    fn expression(&mut self, expression_index: Index32<Expression<'code>>) {
+    fn expression(&mut self, expression_index: Index32<Expression>) {
         let expression = &self.ir.expressions[expression_index];
         match expression {
             Expression::Operand { operand, .. } | Expression::TempOperand { operand } => self.operand(*operand),
@@ -383,7 +383,7 @@ impl<'ir, 'code: 'ir> Compiler<'ir, '_, '_, '_, 'code, '_> {
         }
     }
 
-    fn print(&mut self, argument_index: Index32<Expression<'code>>) {
+    fn print(&mut self, argument_index: Index32<Expression>) {
         let argument = &self.ir.expressions[argument_index];
         match argument {
             Expression::Operand { operand: operand_index, .. }
@@ -395,8 +395,8 @@ impl<'ir, 'code: 'ir> Compiler<'ir, '_, '_, '_, 'code, '_> {
                     Operand::I64 { .. } =>   _ = writeln!(self.asm, " call i64_print"),
                     Operand::Ascii { .. } => _ = writeln!(self.asm, " call ascii_print"),
                     Operand::Str { .. } => _ = unimplemented!(),
-                    Operand::TempVariable { value } => unimplemented!(),
-                    Operand::Variable { value, .. } => unimplemented!(),
+                    Operand::TempVariable { .. } => unimplemented!(),
+                    Operand::Variable { .. } => unimplemented!(),
                     // Operand::Variable { variable } => {
                     //     let variable = &self.ir.variables[*variable_index];
                     //     self.print(variable.value);
@@ -406,7 +406,7 @@ impl<'ir, 'code: 'ir> Compiler<'ir, '_, '_, '_, 'code, '_> {
         }
     }
 
-    fn eprint(&mut self, argument_index: Index32<Expression<'code>>) {
+    fn eprint(&mut self, argument_index: Index32<Expression>) {
         let argument = &self.ir.expressions[argument_index];
         match argument {
             Expression::Operand { operand: operand_index, .. }
@@ -417,9 +417,9 @@ impl<'ir, 'code: 'ir> Compiler<'ir, '_, '_, '_, 'code, '_> {
                     | Operand::True =>       _ = writeln!(self.asm, " call bool_eprint"),
                     Operand::I64 { .. } =>   _ = writeln!(self.asm, " call i64_eprint"),
                     Operand::Ascii { .. } => _ = writeln!(self.asm, " call ascii_eprint"),
-                    Operand::Str { .. } => _ = unimplemented!(),
-                    Operand::TempVariable { value } => unimplemented!(),
-                    Operand::Variable { value, .. } => unimplemented!(),
+                    Operand::Str { .. } => unimplemented!(),
+                    Operand::TempVariable { .. } => unimplemented!(),
+                    Operand::Variable { .. } => unimplemented!(),
                     // Operand::Variable { variable } => {
                     //     let variable = &self.ir.variables[*variable_index];
                     //     self.print(variable.value);
