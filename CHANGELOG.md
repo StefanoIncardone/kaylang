@@ -33,6 +33,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 #### Changed
 
 - Started implementing platforms and compilation targets
+- Refactored tokenization and related API
 
 ### Fixed
 
@@ -92,7 +93,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 - `Help` now takes `&Path`
 - Allowed repeated output path options
 <!--  -->
-- [Syntax specification](SYNTAX.ebnf) only considers syntax and not typing
+- [Syntax specification](docs/SYNTAX.ebnf) only considers syntax and not typing
 <!--  -->
 - String and raw string literals now contain a null terminator by default
 
@@ -265,7 +266,7 @@ but may switch to [CalVer Versioning](https://calver.org/) in the future.
 
 #### Fixed
 
-- Added missing `break` and `continue` statements to the [syntax specification](SYNTAX.ebnf)
+- Added missing `break` and `continue` statements to the [syntax specification](docs/SYNTAX.ebnf)
 
 ### Compiler
 
