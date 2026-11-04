@@ -3,7 +3,7 @@
 
 use kaylang::{
     Args, ArgsParser, Command, Help, Language, Logger, TRANSFORMING, Version, back_end::ir, code_generation::{Artifacts, Platform, nasm }, error::MsgSimple, front_end::{
-        src_file::SrcFile, syntax_tree, tokenizer::{TokenizationResult, TokenizedCode, Tokenizer}, typed_abstract_syntax_tree,
+        src_file::SrcFile, syntax_tree, tokenizer::{TokenizationResult, Tokens, Tokenizer}, typed_abstract_syntax_tree,
     },
 };
 use kaylang::{
@@ -86,17 +86,15 @@ fn main() -> ExitCode {
 
         let tokens = {
             let logger = Logger::new();
-            let TokenizationResult { src, result } = Tokenizer::tokenize(&src_file);
+            let TokenizationResult { src, tokens, errors } = Tokenizer::tokenize(&src_file);
             logger.sub_step(&TOKENIZATION, None, verbosity);
-            match result {
-                Ok(tokens) => TokenizedCode { src, tokens },
-                Err(errors) => {
-                    for error in errors {
-                        eprintln!("{}\n", error.display(&src));
-                    }
-                    return ExitCode::FAILURE;
-                },
+            if errors.len() > 0 {
+                for error in errors {
+                    eprintln!("{}\n", error.display(&src));
+                }
+                return ExitCode::FAILURE;
             }
+            Tokens { src, tokens }
         };
 
         let st = {

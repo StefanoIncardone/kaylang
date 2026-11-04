@@ -5,10 +5,9 @@ use super::{
     src_file::Position,
     tokenizer::{Op, Token, TokenKind},
 };
-use crate::{ERROR, error::MsgWithCauseUnderTextWithLocation, front_end::{Index32, MsgSeverity, src_file::SrcFile, tokenizer::TokenizedCode}};
+use crate::{ERROR, error::MsgWithCauseUnderTextWithLocation, front_end::{Index32, MsgSeverity, src_file::SrcFile, tokenizer::Tokens}};
 use core::num::NonZero;
-use std::path::Path;
-use back_to_front::{ascii, src_code::Line, usize32};
+use back_to_front::{ascii, usize32};
 
 
 #[rustfmt::skip]
@@ -556,7 +555,7 @@ enum ParsedNode {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 #[must_use]
 pub struct SyntaxTree<'tokens, 'code: 'tokens, 'path> {
-    pub(crate) tokens: &'tokens TokenizedCode<'code, 'path>,
+    pub(crate) tokens: &'tokens Tokens<'code, 'path>,
 
     pub(crate) nodes: Vec<Node>,
 
@@ -567,19 +566,10 @@ pub struct SyntaxTree<'tokens, 'code: 'tokens, 'path> {
     pub(crate) array_dimensions: Vec<ArrayDimension>,
 }
 
-// getters
-#[rustfmt::skip]
-impl<'tokens, 'code: 'tokens, 'path> SyntaxTree<'tokens, 'code, 'path> {
-    #[must_use] #[inline(always)] pub(crate) const fn path(&self)   -> &'path Path   { return self.tokens.path(); }
-    #[must_use] #[inline(always)] pub(crate) const fn code(&self)   -> &'code str    { return self.tokens.code(); }
-                #[inline(always)] pub(crate) const fn lines(&self)  -> &[Line]       { return self.tokens.lines(); }
-                #[inline(always)] pub(crate) const fn tokens(&self) -> &[Token]      { return self.tokens.tokens(); }
-}
-
 impl SyntaxTree<'_, '_, '_> {
     #[inline]
     fn new_expression(&mut self, expression: Expression) -> Index32<Expression> {
-        let index = Index32::new(self.expressions.len());
+        let index = Index32::new(self.expressions.len() as usize32);
         self.expressions.push(expression);
         return index;
     }
@@ -599,9 +589,7 @@ pub struct Parser<'tokens, 'code: 'tokens, 'path> {
 
 impl<'tokens, 'code: 'tokens, 'path> Parser<'tokens, 'code, 'path> {
     #[expect(clippy::missing_errors_doc)]
-    pub fn parse(
-        tokens: &'tokens TokenizedCode<'code, 'path>,
-    ) -> Result<SyntaxTree<'tokens, 'code, 'path>, Vec<Msg<ErrorKind>>> {
+    pub fn parse(tokens: &'tokens Tokens<'code, 'path>) -> Result<SyntaxTree<'tokens, 'code, 'path>, Vec<Msg<ErrorKind>>> {
         let mut parser = Self {
             errors: Vec::new(),
             token_index: Index32::new(0),
@@ -631,7 +619,7 @@ impl<'tokens, 'code: 'tokens, 'path> Parser<'tokens, 'code, 'path> {
                         match error.severity {
                             MsgSeverity::Error => {
                                 // consuming all remaining tokens until the end of the file
-                                parser.token_index = Index32::new(parser.syntax_tree.tokens().len());
+                                parser.token_index = Index32::new(parser.syntax_tree.tokens.tokens.len() as usize32);
                                 break 'parsing;
                             },
                             MsgSeverity::NonTerminalError | MsgSeverity::Warning => {},
@@ -823,7 +811,7 @@ impl<'tokens, 'code: 'tokens, 'path> Parser<'tokens, 'code, 'path> {
                             severity: MsgSeverity::NonTerminalError,
                             kind: ErrorKind::MissingSemicolon,
                             col: end_of_expression_token.col,
-                            pointers_count: end_of_expression_token.display_len(self.syntax_tree.tokens.src.src_file),
+                            pointers_count: end_of_expression_token.display_len(self.syntax_tree.tokens),
                         });
                         Err(())
                     },
@@ -881,7 +869,7 @@ impl<'tokens, 'code: 'tokens, 'path> Parser<'tokens, 'code, 'path> {
             TokenKind::Let => {
                 let (variable_definition, semicolon_column) = self.variable_definition(token)?;
                 let variable_definition_index =
-                    Index32::new(self.syntax_tree.variable_definitions.len());
+                    Index32::new(self.syntax_tree.variable_definitions.len() as usize32);
                 self.syntax_tree.variable_definitions.push(variable_definition);
                 Ok(ParsedNode::Node(Node::LetVariableDefinition {
                     let_column: token.col,
@@ -892,7 +880,7 @@ impl<'tokens, 'code: 'tokens, 'path> Parser<'tokens, 'code, 'path> {
             TokenKind::Var => {
                 let (variable_definition, semicolon_column) = self.variable_definition(token)?;
                 let variable_definition_index =
-                    Index32::new(self.syntax_tree.variable_definitions.len());
+                    Index32::new(self.syntax_tree.variable_definitions.len() as usize32);
                 self.syntax_tree.variable_definitions.push(variable_definition);
                 Ok(ParsedNode::Node(Node::VarVariableDefinition {
                     var_column: token.col,
@@ -907,13 +895,13 @@ impl<'tokens, 'code: 'tokens, 'path> Parser<'tokens, 'code, 'path> {
                     raw_nodes_in_scope_count: 0,
                     close_curly_bracket_column: 0,
                 };
-                let placeholder_scope_node_index = Index32::new(self.syntax_tree.nodes.len());
+                let placeholder_scope_node_index = Index32::new(self.syntax_tree.nodes.len() as usize32);
                 self.syntax_tree.nodes.push(placeholder_scope);
 
                 while let Some(peeked) = self.peek_next_token() {
                     self.token_index = peeked.index;
                     if let TokenKind::CloseCurlyBracket = peeked.token.kind {
-                        let last_scope_node_index = Index32::<Node>::new(self.syntax_tree.nodes.len() - 1);
+                        let last_scope_node_index = Index32::<Node>::new(self.syntax_tree.nodes.len() as usize32 - 1);
                         let Node::Scope { raw_nodes_in_scope_count, close_curly_bracket_column, .. } =
                             &mut self.syntax_tree.nodes[placeholder_scope_node_index]
                         else {
@@ -943,7 +931,7 @@ impl<'tokens, 'code: 'tokens, 'path> Parser<'tokens, 'code, 'path> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::DoMustBeFollowedByLoop,
                         col: token.col,
-                        pointers_count: token.display_len(self.syntax_tree.tokens.src.src_file),
+                        pointers_count: token.display_len(self.syntax_tree.tokens),
                     });
                     return Err(());
                 };
@@ -971,7 +959,7 @@ impl<'tokens, 'code: 'tokens, 'path> Parser<'tokens, 'code, 'path> {
                         severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::StrayBreak,
                         col: token.col,
-                        pointers_count: token.display_len(self.syntax_tree.tokens.src.src_file),
+                        pointers_count: token.display_len(self.syntax_tree.tokens),
                     });
                     return Err(());
                 }
@@ -986,7 +974,7 @@ impl<'tokens, 'code: 'tokens, 'path> Parser<'tokens, 'code, 'path> {
                         severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::StrayContinue,
                         col: token.col,
-                        pointers_count: token.display_len(self.syntax_tree.tokens.src.src_file),
+                        pointers_count: token.display_len(self.syntax_tree.tokens),
                     });
                     return Err(());
                 }
@@ -999,7 +987,7 @@ impl<'tokens, 'code: 'tokens, 'path> Parser<'tokens, 'code, 'path> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::StrayElse,
                     col: token.col,
-                    pointers_count: token.display_len(self.syntax_tree.tokens.src.src_file),
+                    pointers_count: token.display_len(self.syntax_tree.tokens),
                 });
                 Err(())
             },
@@ -1008,7 +996,7 @@ impl<'tokens, 'code: 'tokens, 'path> Parser<'tokens, 'code, 'path> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::StrayColon,
                     col: token.col,
-                    pointers_count: token.display_len(self.syntax_tree.tokens.src.src_file),
+                    pointers_count: token.display_len(self.syntax_tree.tokens),
                 });
                 Err(())
             },
@@ -1017,7 +1005,7 @@ impl<'tokens, 'code: 'tokens, 'path> Parser<'tokens, 'code, 'path> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::StrayComma,
                     col: token.col,
-                    pointers_count: token.display_len(self.syntax_tree.tokens.src.src_file),
+                    pointers_count: token.display_len(self.syntax_tree.tokens),
                 });
                 Err(())
             },
@@ -1026,7 +1014,7 @@ impl<'tokens, 'code: 'tokens, 'path> Parser<'tokens, 'code, 'path> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::StrayOperator(op),
                     col: token.col,
-                    pointers_count: token.display_len(self.syntax_tree.tokens.src.src_file),
+                    pointers_count: token.display_len(self.syntax_tree.tokens),
                 });
                 Err(())
             },
@@ -1047,7 +1035,7 @@ impl<'tokens, 'code: 'tokens, 'path> Parser<'tokens, 'code, 'path> {
                 severity: MsgSeverity::NonTerminalError,
                 kind: ErrorKind::MissingSemicolon,
                 col: previous_token.col,
-                pointers_count: previous_token.display_len(self.syntax_tree.tokens.src.src_file),
+                pointers_count: previous_token.display_len(self.syntax_tree.tokens),
             });
             return Err(());
         };
@@ -1065,9 +1053,8 @@ impl<'tokens, 'code: 'tokens, 'path> Parser<'tokens, 'code, 'path> {
         error_cause_message: &str,
     ) -> ! {
         let position = Position::new(&self.syntax_tree.tokens.src, token.col);
-        let line_span = self.syntax_tree.lines()[position.line as usize - 1];
-        let line_text = &self.syntax_tree.code()[line_span.start() as usize..line_span.end() as usize];
-        let pointers_count = token.display_len(self.syntax_tree.tokens.src.src_file);
+        let line_text = self.syntax_tree.tokens.src.line_text(Index32::new(position.line - 1));
+        let pointers_count = token.display_len(self.syntax_tree.tokens);
 
         let error = MsgWithCauseUnderTextWithLocation {
             severity: MsgSeverity::Error,
@@ -1119,10 +1106,10 @@ struct Peeked {
 impl Parser<'_, '_, '_> {
     #[must_use]
     fn peek_next_token(&self) -> Option<Peeked> {
-        let token_index_end = Index32::<Token>::new(self.syntax_tree.tokens().len());
+        let token_index_end = Index32::<Token>::new(self.syntax_tree.tokens.tokens.len() as usize32);
         for next_token_index in self.token_index.0..token_index_end.0 {
-            let next_token_index_index = Index32::new_usize32(next_token_index);
-            let next_token = self.syntax_tree.tokens()[next_token_index_index];
+            let next_token_index_index = Index32::new(next_token_index);
+            let next_token = self.syntax_tree.tokens.tokens[next_token_index_index];
             match next_token.kind {
                 TokenKind::OpenRoundBracket
                 | TokenKind::CloseRoundBracket
@@ -1158,7 +1145,7 @@ impl Parser<'_, '_, '_> {
                 | TokenKind::Loop
                 | TokenKind::Break
                 | TokenKind::Continue => {
-                    let peeked_token_index_index = Index32::new_usize32(next_token_index_index.0 + 1);
+                    let peeked_token_index_index = Index32::new(next_token_index_index.0 + 1);
                     return Some(Peeked { token: next_token, index: peeked_token_index_index });
                 },
                 TokenKind::LineComment { .. } | TokenKind::BlockComment { .. } => {},
@@ -1176,7 +1163,7 @@ impl Parser<'_, '_, '_> {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::PrematureEndOfFile(expected),
                 col: previous_token.col,
-                pointers_count: previous_token.display_len(self.syntax_tree.tokens.src.src_file),
+                pointers_count: previous_token.display_len(self.syntax_tree.tokens),
             });
             return Err(());
         };
@@ -1193,8 +1180,8 @@ impl Parser<'_, '_, '_> {
     /// Warning: should always be called with at least a previus token
     fn peek_previous_token(&self) -> Token {
         for previous_token_index in (0..self.token_index.0).rev() {
-            let previous_token_index_index = Index32::new_usize32(previous_token_index);
-            let previous_token = self.syntax_tree.tokens()[previous_token_index_index];
+            let previous_token_index_index = Index32::new(previous_token_index);
+            let previous_token = self.syntax_tree.tokens.tokens[previous_token_index_index];
             match previous_token.kind {
                 TokenKind::OpenRoundBracket
                 | TokenKind::CloseRoundBracket
@@ -1305,7 +1292,7 @@ impl Parser<'_, '_, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::ExpectedCloseRoundBracket,
                         col: close_round_bracket_token.col,
-                        pointers_count: close_round_bracket_token.display_len(self.syntax_tree.tokens.src.src_file),
+                        pointers_count: close_round_bracket_token.display_len(self.syntax_tree.tokens),
                     });
                     return Err(());
                 };
@@ -1351,7 +1338,7 @@ impl Parser<'_, '_, '_> {
                                 severity: MsgSeverity::NonTerminalError,
                                 kind: ErrorKind::UseSemicolonInsteadOfComma,
                                 col: semicolon_or_close_square_bracket_token.col,
-                                pointers_count: semicolon_or_close_square_bracket_token.display_len(self.syntax_tree.tokens.src.src_file),
+                                pointers_count: semicolon_or_close_square_bracket_token.display_len(self.syntax_tree.tokens),
                             });
                             ArrayItem {
                                 expression: item,
@@ -1395,7 +1382,7 @@ impl Parser<'_, '_, '_> {
                                 severity: MsgSeverity::Error,
                                 kind: ErrorKind::ExpectedSemicolonOrCloseSquareBracket,
                                 col: semicolon_or_close_square_bracket_token.col,
-                                pointers_count: semicolon_or_close_square_bracket_token.display_len(self.syntax_tree.tokens.src.src_file),
+                                pointers_count: semicolon_or_close_square_bracket_token.display_len(self.syntax_tree.tokens),
                             });
                             return Err(());
                         },
@@ -1407,7 +1394,7 @@ impl Parser<'_, '_, '_> {
                     self.temp_array_items.push(array_item);
                 };
 
-                let items_start = Index32::new(self.syntax_tree.array_items.len());
+                let items_start = Index32::new(self.syntax_tree.array_items.len() as usize32);
 
                 let array_expression = if let Some(last_item) = trailing_item {
                     self.temp_array_items.push(ArrayItem {
@@ -1473,7 +1460,7 @@ impl Parser<'_, '_, '_> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::KeywordInExpression,
                     col: token.col,
-                    pointers_count: token.display_len(self.syntax_tree.tokens.src.src_file),
+                    pointers_count: token.display_len(self.syntax_tree.tokens),
                 });
                 return Err(());
             },
@@ -1489,7 +1476,7 @@ impl Parser<'_, '_, '_> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::ExpectedOperand,
                     col: token.col,
-                    pointers_count: token.display_len(self.syntax_tree.tokens.src.src_file),
+                    pointers_count: token.display_len(self.syntax_tree.tokens),
                 });
                 return Err(());
             },
@@ -1515,7 +1502,7 @@ impl Parser<'_, '_, '_> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::MissingCloseSquareBracketInIndex,
                     col: end_of_index_expression_token.col,
-                    pointers_count: end_of_index_expression_token.display_len(self.syntax_tree.tokens.src.src_file),
+                    pointers_count: end_of_index_expression_token.display_len(self.syntax_tree.tokens),
                 });
                 return Err(());
             };
@@ -1786,7 +1773,7 @@ impl Parser<'_, '_, '_> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::ExpectedTypeName,
                     col: type_name_token.col,
-                    pointers_count: type_name_token.display_len(self.syntax_tree.tokens.src.src_file),
+                    pointers_count: type_name_token.display_len(self.syntax_tree.tokens),
                 });
                 return Err(());
             },
@@ -1806,7 +1793,7 @@ impl Parser<'_, '_, '_> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::KeywordInTypeName,
                     col: type_name_token.col,
-                    pointers_count: type_name_token.display_len(self.syntax_tree.tokens.src.src_file),
+                    pointers_count: type_name_token.display_len(self.syntax_tree.tokens),
                 });
                 return Err(());
             },
@@ -1815,7 +1802,7 @@ impl Parser<'_, '_, '_> {
             },
         };
 
-        let array_dimensions_start = Index32::new(self.syntax_tree.array_dimensions.len());
+        let array_dimensions_start = Index32::new(self.syntax_tree.array_dimensions.len() as usize32);
         while let Some(Peeked {
             token: Token { kind: TokenKind::OpenSquareBracket, col: open_square_bracket_column },
             index: open_square_bracket_token_index,
@@ -1835,7 +1822,7 @@ impl Parser<'_, '_, '_> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::MissingCloseSquareBracketInArrayType,
                     col: dimension_expression_token.col,
-                    pointers_count: dimension_expression_token.display_len(self.syntax_tree.tokens.src.src_file),
+                    pointers_count: dimension_expression_token.display_len(self.syntax_tree.tokens),
                 });
                 return Err(());
             };
@@ -1888,7 +1875,7 @@ impl Parser<'_, '_, '_> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::ExpectedVariableName,
                     col: mutability_token.col,
-                    pointers_count: mutability_token.display_len(self.syntax_tree.tokens.src.src_file),
+                    pointers_count: mutability_token.display_len(self.syntax_tree.tokens),
                 });
                 return Err(());
             },
@@ -1908,7 +1895,7 @@ impl Parser<'_, '_, '_> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::KeywordInVariableName,
                     col: mutability_token.col,
-                    pointers_count: mutability_token.display_len(self.syntax_tree.tokens.src.src_file),
+                    pointers_count: mutability_token.display_len(self.syntax_tree.tokens),
                 });
                 return Err(());
             },
@@ -1925,7 +1912,7 @@ impl Parser<'_, '_, '_> {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::MissingTypeAnnotation,
                 col: variable_name_token.col,
-                pointers_count: variable_name_token.display_len(self.syntax_tree.tokens.src.src_file),
+                pointers_count: variable_name_token.display_len(self.syntax_tree.tokens),
             });
             return Err(());
         };
@@ -1939,7 +1926,7 @@ impl Parser<'_, '_, '_> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::MissingTypeAnnotation,
                     col: variable_name_token.col,
-                    pointers_count: variable_name_token.display_len(self.syntax_tree.tokens.src.src_file) as usize32,
+                    pointers_count: variable_name_token.display_len(self.syntax_tree.tokens) as usize32,
                 });
                 Err(())
             },
@@ -2006,7 +1993,7 @@ impl Parser<'_, '_, '_> {
                     severity: MsgSeverity::Error,
                     kind: ErrorKind::MissingSemicolon,
                     col: equals_token.col,
-                    pointers_count: equals_token.display_len(self.syntax_tree.tokens.src.src_file),
+                    pointers_count: equals_token.display_len(self.syntax_tree.tokens),
                 });
                 Err(())
             },
@@ -2030,7 +2017,7 @@ impl Parser<'_, '_, '_> {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::IfMustBeFollowedByBlock,
                 col: end_of_condition_token.col,
-                pointers_count: end_of_condition_token.display_len(self.syntax_tree.tokens.src.src_file),
+                pointers_count: end_of_condition_token.display_len(self.syntax_tree.tokens),
             });
             return Err(());
         };
@@ -2069,7 +2056,7 @@ impl Parser<'_, '_, '_> {
                             severity: MsgSeverity::Error,
                             kind: ErrorKind::IfMustBeFollowedByBlock,
                             col: end_of_else_if_condition_token.col,
-                            pointers_count: end_of_else_if_condition_token.display_len(self.syntax_tree.tokens.src.src_file),
+                            pointers_count: end_of_else_if_condition_token.display_len(self.syntax_tree.tokens),
                         });
                         return Err(());
                     };
@@ -2120,7 +2107,7 @@ impl Parser<'_, '_, '_> {
                         severity: MsgSeverity::Error,
                         kind: ErrorKind::ElseMustBeFollowedByBlockOrIf,
                         col: else_token.col,
-                        pointers_count: else_token.display_len(self.syntax_tree.tokens.src.src_file),
+                        pointers_count: else_token.display_len(self.syntax_tree.tokens),
                     });
                     return Err(());
                 },
@@ -2148,7 +2135,7 @@ impl Parser<'_, '_, '_> {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::LoopMustBeFollowedByBlock,
                 col: end_of_condition_token.col,
-                pointers_count: end_of_condition_token.display_len(self.syntax_tree.tokens.src.src_file),
+                pointers_count: end_of_condition_token.display_len(self.syntax_tree.tokens),
             });
             return Err(());
         };
@@ -2172,7 +2159,7 @@ impl Parser<'_, '_, '_> {
                 severity: MsgSeverity::Error,
                 kind: ErrorKind::LoopMustBeFollowedByBlock,
                 col: end_of_condition_token.col,
-                pointers_count: end_of_condition_token.display_len(self.syntax_tree.tokens.src.src_file),
+                pointers_count: end_of_condition_token.display_len(self.syntax_tree.tokens),
             });
             return Err(());
         };

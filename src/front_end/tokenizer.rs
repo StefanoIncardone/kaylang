@@ -1,12 +1,17 @@
 use super::{IntoMsgInfo, Msg, MsgInfo, src_file::{SrcCode, SrcFile}};
-use crate::{error::DisplayLen as _, front_end::{Index32, MsgSeverity}};
+use crate::{error::PointersCount as _, front_end::{Index32, MsgSeverity}};
 use back_to_front::{
-    ascii, digit, src_code::{Line, LineEnd}, text, usize32, utf32
+    ascii, digit, src_code::LineEnd, text, usize32, utf32
 };
 use core::fmt::Write as _;
-use std::path::Path;
-use core::marker::PhantomData;
 use unicode_segmentation::UnicodeSegmentation as _;
+
+macro_rules! ascii_whitespace_common  { () => { b' ' | b'\t' } }
+macro_rules! ascii_whitespace_uncommon{ () => { b'\x0B' | b'\x0C' } }
+macro_rules! ascii_newlines           { () => { b'\n' | b'\r' } }
+macro_rules! ascii_controls           { () => { b'\x00'..=b'\x1F' | b'\x7F' } }
+macro_rules! ascii_range              { () => { 0..=b'\x7F' } }
+#[expect(unused_macros)] macro_rules! ascii_out_of_range       { () => { b'\x80'.. } }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[must_use] #[repr(u8)]
@@ -280,11 +285,11 @@ impl core::fmt::Display for Op {
     }
 }
 
-
 #[derive(Clone, Copy)]
 #[must_use]
 enum EscapeSequence {
     Ok(ascii),
+    // REMOVE(stefano): only happens with unterminated escape sequences
     ErrBreak,
     ErrContinue,
 }
@@ -313,14 +318,14 @@ impl core::fmt::Display for EscapedAscii {
     }
 }
 
-pub(crate) type Text<'code> = &'code str;
+pub type Text<'code> = &'code str;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[must_use]
-pub(crate) enum TokenKind {
-    LineComment { text_end: usize32 },
+pub enum TokenKind {
+    LineComment  { text_end: usize32 },
     BlockComment { text_end: usize32 },
-    Unexpected { text_end: usize32 },
+    Unexpected   { text_end: usize32 },
 
     // Symbols
     OpenRoundBracket,
@@ -340,15 +345,15 @@ pub(crate) enum TokenKind {
     True,
 
     // integer literals are never empty and always contain valid ascii digits
-    DecimalInteger { text_end: usize32 },
+    DecimalInteger       { text_end: usize32 },
     DecimalIntegerPrefix { text_end: usize32 },
-    BinaryInteger { text_end: usize32 },
-    OctalInteger { text_end: usize32 },
-    HexadecimalInteger { text_end: usize32 },
+    BinaryInteger        { text_end: usize32 },
+    OctalInteger         { text_end: usize32 },
+    HexadecimalInteger   { text_end: usize32 },
 
-    Ascii { text_end: usize32, value: ascii },
-    Str { text_end: usize32 },
-    RawStr { text_end: usize32 },
+    Ascii         { text_end: usize32, value: ascii },
+    Str           { text_end: usize32 },
+    RawStr        { text_end: usize32 },
     IdentifierStr { text_end: usize32 },
 
     // IDEA(stefano): extract base types from identifiers
@@ -377,14 +382,14 @@ pub(crate) enum TokenKind {
 // TODO(stefano): implement TokenDebug that resolves texts
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[must_use]
-pub(crate) struct Token {
-    pub(crate) kind: TokenKind,
-    pub(crate) col: usize32,
+pub struct Token {
+    pub kind: TokenKind,
+    pub col: usize32,
 }
 
 impl Token {
     #[must_use]
-    pub(crate) fn display_len(self, src: &SrcFile<'_>) -> usize32 {
+    pub fn display_len(self, tokens: &Tokens<'_, '_>) -> usize32 {
         return match self.kind {
             TokenKind::OpenRoundBracket
             | TokenKind::CloseRoundBracket
@@ -404,8 +409,8 @@ impl Token {
             TokenKind::LineComment { text_end }
             | TokenKind::BlockComment { text_end }
             | TokenKind::Unexpected { text_end } => {
-                let text = src.text(self.col, text_end);
-                text.display_len()
+                let text = tokens.src.src_file.text(self.col, text_end);
+                text.pointers_count()
             },
 
             TokenKind::DecimalInteger { text_end }
@@ -419,7 +424,7 @@ impl Token {
             | TokenKind::RawStr { text_end }
             | TokenKind::IdentifierStr { text_end }
             | TokenKind::Identifier { text_end } => {
-                let text = src.text(self.col, text_end);
+                let text = tokens.src.src_file.text(self.col, text_end);
                 text.len() as usize32
             },
 
@@ -441,33 +446,18 @@ impl Token {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-#[must_use] #[repr(transparent)]
-pub struct Tokens<'code> {
-    pub(crate) tokens: Vec<Token>,
-    src: PhantomData<Text<'code>>
-}
-
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 #[must_use]
 pub struct TokenizationResult<'code, 'path> {
     pub src: SrcCode<'code, 'path>,
-    pub result: Result<Tokens<'code>, Vec<Msg<ErrorKind>>>,
+    pub tokens: Vec<Token>,
+    pub errors: Vec<Msg<ErrorKind>>,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 #[must_use]
-pub struct TokenizedCode<'code, 'path> {
+pub struct Tokens<'code, 'path> {
     pub src: SrcCode<'code, 'path>,
-    pub tokens: Tokens<'code>,
-}
-
-// getters
-#[rustfmt::skip]
-impl<'code, 'path> TokenizedCode<'code, 'path> {
-    #[must_use] #[inline(always)] pub(crate) const fn path(&self)   -> &'path Path { return self.src.path(); }
-    #[must_use] #[inline(always)] pub(crate) const fn code(&self)   -> &'code str  { return self.src.code(); }
-                #[inline(always)] pub(crate) const fn lines(&self)  -> &[Line]     { return self.src.lines(); }
-                #[inline(always)] pub(crate) const fn tokens(&self) -> &[Token]    { return self.tokens.tokens.as_slice(); }
+    pub tokens: Vec<Token>,
 }
 
 #[derive(Clone, Copy)]
@@ -489,13 +479,13 @@ impl core::fmt::Debug for BackPatch {
 #[derive(Clone, Debug)]
 #[must_use]
 pub struct Tokenizer<'code, 'path> {
-    errors: Vec<Msg<ErrorKind>>,
-    tokens: TokenizedCode<'code, 'path>,
+    tokens: TokenizationResult<'code, 'path>,
     back_patches: Vec<BackPatch>,
 
     col: usize32,
-    line_start_col: usize32,
     token_start_col: usize32,
+
+    logical_characters_count: usize32,
 }
 
 // getters/setters
@@ -507,173 +497,159 @@ impl<'code> Tokenizer<'code, '_> {
 impl<'code, 'path> Tokenizer<'code, 'path> {
     // IDEA(stefano): make into an iterator
     pub fn tokenize(src_file: &'code SrcFile<'path>) -> TokenizationResult<'code, 'path> {
-        let src = SrcCode { src_file, lines: Vec::new() };
-        let tokens = Tokens { tokens: Vec::new(), src: PhantomData };
+        let tokens = TokenizationResult {
+            src: SrcCode { src_file, line_ends: Vec::new() },
+            tokens: Vec::new(),
+            errors: Vec::new()
+        };
 
-        if src_file.code.len() == 0 { return TokenizationResult { src, result: Ok(tokens) }; }
+        if src_file.code.len() == 0 { return tokens; }
 
         let mut tokenizer = Tokenizer {
-            errors: Vec::new(),
-            tokens: TokenizedCode { src, tokens },
+            tokens,
             back_patches: Vec::new(),
 
             col: 0,
-            line_start_col: 0,
             token_start_col: 0,
+            logical_characters_count: 0,
         };
 
-        'tokenization: while let Some(next_character) = tokenizer.current_ascii_multiline() {
-            let kind = 'next_token: {
-                let next = match next_character {
-                    Ok(next) => match next {
-                        b' ' | b'\t' | b'\x0B' | b'\x0C' => {
-                            // ignore whitespace
-                            tokenizer.col += 1;
-                            continue 'tokenization;
-                        },
-                        b'\n' => {
-                            tokenizer.new_line(LineEnd::LF);
-                            continue 'tokenization;
-                        },
-                        b'\r' => {
-                            if let Some(b'\n') = text::byte(tokenizer.code(), tokenizer.col as usize + 1) {
-                                tokenizer.new_line(LineEnd::CRLF);
-                                continue 'tokenization;
-                            }
+        'tokenization: while let Some(next_character) = tokenizer.current_byte() {
+            tokenizer.token_start_col = tokenizer.col;
 
-                            tokenizer.new_line(LineEnd::CR);
-                            continue 'tokenization;
-                        },
-                        control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
-                            tokenizer.errors.push(Msg {
-                                severity: MsgSeverity::NonTerminalError,
-                                kind: ErrorKind::ControlCharacter(control),
-                                col: tokenizer.col,
-                                pointers_count: 1,
-                            });
-
-                            tokenizer.col += 1;
-                            break 'next_token TokenKind::Unexpected { text_end: tokenizer.col };
-                        },
-                        other => {
-                            tokenizer.token_start_col = tokenizer.col;
-                            tokenizer.col += 1;
-                            other
-                        },
-                    },
-                    Err(grapheme) => {
-                        tokenizer.errors.push(tokenizer.utf8_error(grapheme));
-                        tokenizer.col += grapheme.len() as usize32;
-                        break 'next_token TokenKind::Unexpected { text_end: tokenizer.col };
-                    },
-                };
-
-                match next {
-                    b'r' => match tokenizer.current_byte_multiline() {
+            let kind = match next_character {
+                ascii_whitespace_common!() => { tokenizer.col += 1; continue 'tokenization; },
+                b'\n' => { tokenizer.new_line_lf(); continue 'tokenization; },
+                b'\r' => { tokenizer.new_line_cr(); continue 'tokenization; },
+                b'r' => {
+                    tokenizer.col += 1;
+                    match tokenizer.current_byte() {
                         Some(b'"') => {
                             tokenizer.col += 1;
-                            match tokenizer.raw_str_literal() {
-                                Ok(text_end) => TokenKind::RawStr { text_end },
-                                Err(text_end) => TokenKind::Unexpected { text_end },
-                            }
+                            tokenizer.raw_str_literal()
                         },
                         _ => tokenizer.identifier(),
-                    },
-                    b'a'..=b'z' | b'A'..=b'Z' | b'_' => tokenizer.identifier(),
-
-                    b'0' => match tokenizer.current_byte_singleline() {
-                        None => TokenKind::DecimalInteger { text_end: tokenizer.col },
+                    }
+                }
+                b'a'..=b'z' | b'A'..=b'Z' | b'_' => {
+                    tokenizer.col += 1;
+                    tokenizer.identifier()
+                },
+                b'0' => {
+                    tokenizer.col += 1;
+                    match tokenizer.current_byte() {
                         Some(b'b') => {
                             tokenizer.col += 1;
                             match tokenizer.digits_text(digit::Base::Binary) {
-                                Ok(text_end) => TokenKind::BinaryInteger { text_end },
-                                Err(text_end) => TokenKind::Unexpected { text_end },
+                                Ok(()) => TokenKind::BinaryInteger { text_end: tokenizer.col },
+                                Err(()) => TokenKind::Unexpected { text_end: tokenizer.col },
                             }
                         },
                         Some(b'o') => {
                             tokenizer.col += 1;
                             match tokenizer.digits_text(digit::Base::Octal) {
-                                Ok(text_end) => TokenKind::OctalInteger { text_end },
-                                Err(text_end) => TokenKind::Unexpected { text_end },
+                                Ok(()) => TokenKind::OctalInteger { text_end: tokenizer.col },
+                                Err(()) => TokenKind::Unexpected { text_end: tokenizer.col },
                             }
                         },
                         Some(b'd') => {
                             tokenizer.col += 1;
                             match tokenizer.digits_text(digit::Base::Decimal) {
-                                Ok(text_end) => TokenKind::DecimalIntegerPrefix { text_end },
-                                Err(text_end) => TokenKind::Unexpected { text_end },
+                                Ok(()) => TokenKind::DecimalIntegerPrefix { text_end: tokenizer.col },
+                                Err(()) => TokenKind::Unexpected { text_end: tokenizer.col },
                             }
                         },
                         Some(b'x') => {
                             tokenizer.col += 1;
                             match tokenizer.digits_text(digit::Base::Hexadecimal) {
-                                Ok(text_end) => TokenKind::HexadecimalInteger { text_end },
-                                Err(text_end) => TokenKind::Unexpected { text_end },
+                                Ok(()) => TokenKind::HexadecimalInteger { text_end: tokenizer.col },
+                                Err(()) => TokenKind::Unexpected { text_end: tokenizer.col },
                             }
                         },
                         Some(_) => match tokenizer.digits_text(digit::Base::Decimal) {
-                            Ok(text_end) => TokenKind::DecimalInteger { text_end },
-                            Err(text_end) => TokenKind::Unexpected { text_end },
+                            Ok(()) => TokenKind::DecimalInteger { text_end: tokenizer.col },
+                            Err(()) => TokenKind::Unexpected { text_end: tokenizer.col },
                         }
-                    },
-                    b'1'..=b'9' => match tokenizer.digits_text(digit::Base::Decimal) {
-                        Ok(text_end) => TokenKind::DecimalInteger { text_end },
-                        Err(text_end) => TokenKind::Unexpected { text_end },
-                    },
-
-                    b'\'' => match tokenizer.ascii_literal() {
-                        Ok((text_end, value)) => TokenKind::Ascii { text_end, value },
-                        Err(text_end) => TokenKind::Unexpected { text_end },
-                    },
-                    b'"' => match tokenizer.str_literal() {
-                        Ok(text_end) => TokenKind::Str { text_end },
-                        Err(text_end) => TokenKind::Unexpected { text_end },
-                    },
-                    b'`' => match tokenizer.identifier_str() {
-                        Ok(text_end) => TokenKind::IdentifierStr { text_end },
-                        Err(text_end) => TokenKind::Unexpected { text_end },
-                    },
-
-                    b'#' => match tokenizer.get_next_byte_singleline() {
+                        None => TokenKind::DecimalInteger { text_end: tokenizer.col },
+                    }
+                },
+                b'1'..=b'9' => {
+                    tokenizer.col += 1;
+                    match tokenizer.digits_text(digit::Base::Decimal) {
+                        Ok(()) => TokenKind::DecimalInteger { text_end: tokenizer.col },
+                        Err(()) => TokenKind::Unexpected { text_end: tokenizer.col },
+                    }
+                },
+                b'\'' => {
+                    tokenizer.col += 1;
+                    tokenizer.ascii_literal()
+                },
+                b'"' => {
+                    tokenizer.col += 1;
+                    tokenizer.str_literal()
+                },
+                b'`' => {
+                    tokenizer.col += 1;
+                    tokenizer.identifier_str()
+                },
+                b'#' => {
+                    tokenizer.col += 1;
+                    match tokenizer.current_byte() {
                         Some(b'*') => 'comment: {
+                            tokenizer.col += 1;
                             let previous_block_comments_token_start_len = tokenizer.back_patches.len();
                             'next_character: loop {
-                                match tokenizer.get_next_byte_multiline() {
-                                    Some(b'*') => match tokenizer.get_next_byte_multiline() {
-                                        Some(b'#') => {
-                                            let kind = TokenKind::BlockComment { text_end: tokenizer.col };
+                                let Some(first_ch) = tokenizer.current_byte() else { break 'next_character; };
+                                match first_ch {
+                                    b'*' => {
+                                        tokenizer.col += 1;
 
-                                            if tokenizer.back_patches.len() == previous_block_comments_token_start_len {
-                                                break 'comment kind;
-                                            }
-                                            let Some(token_start_col) = tokenizer.back_patches.pop() else {
-                                                unreachable!("unclosed block comment");
-                                            };
+                                        let Some(ch) = tokenizer.current_byte() else { break 'next_character; };
+                                        match ch {
+                                            b'#' => {
+                                                tokenizer.col += 1;
+                                                let kind = TokenKind::BlockComment { text_end: tokenizer.col };
 
-                                            tokenizer.tokens.tokens.tokens.push(Token { kind, col: tokenizer.token_start_col });
-                                            tokenizer.token_start_col = unsafe { token_start_col.column };
-                                        },
-                                        Some(_) => {},
-                                        None => break 'next_character,
+                                                if tokenizer.back_patches.len() == previous_block_comments_token_start_len {
+                                                    break 'comment kind;
+                                                }
+                                                let Some(token_start_col) = tokenizer.back_patches.pop() else {
+                                                    unreachable!("unclosed block comment");
+                                                };
+
+                                                // REMOVE(stefano): why keep track of nested comments?
+                                                tokenizer.tokens.tokens.push(Token { kind, col: tokenizer.token_start_col });
+                                                tokenizer.token_start_col = unsafe { token_start_col.column };
+                                            },
+                                            b'\n' => tokenizer.new_line_lf(),
+                                            b'\r' => tokenizer.new_line_cr(),
+                                            _ => tokenizer.col += 1,
+                                        }
                                     },
-                                    Some(b'#') => {
-                                        let comment_start_col = tokenizer.col - 1;
-                                        match tokenizer.get_next_byte_multiline() {
-                                            Some(b'*') => {
+                                    b'#' => {
+                                        let comment_start_col = tokenizer.col;
+                                        tokenizer.col += 1;
+
+                                        let Some(ch) = tokenizer.current_byte() else { break 'next_character; };
+                                        match ch {
+                                            b'*' => {
+                                                tokenizer.col += 1;
                                                 let back_patch = BackPatch { column: tokenizer.token_start_col };
                                                 tokenizer.back_patches.push(back_patch);
                                                 tokenizer.token_start_col = comment_start_col;
                                             },
-                                            Some(_) => {},
-                                            None => break 'next_character,
+                                            b'\n' => tokenizer.new_line_lf(),
+                                            b'\r' => tokenizer.new_line_cr(),
+                                            _ => tokenizer.col += 1,
                                         }
                                     },
-                                    Some(_) => {},
-                                    None => break 'next_character,
+                                    b'\n' => tokenizer.new_line_lf(),
+                                    b'\r' => tokenizer.new_line_cr(),
+                                    _ => tokenizer.col += 1,
                                 }
                             }
 
-                            tokenizer.errors.push(Msg {
+                            tokenizer.tokens.errors.push(Msg {
                                 severity: MsgSeverity::NonTerminalError,
                                 kind: ErrorKind::UnclosedBlockComment,
                                 col: tokenizer.token_start_col,
@@ -682,7 +658,7 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                             while tokenizer.back_patches.len() != previous_block_comments_token_start_len {
                                 let Some(block_comment_token_start) = tokenizer.back_patches.pop() else { break; };
 
-                                tokenizer.errors.push(Msg {
+                                tokenizer.tokens.errors.push(Msg {
                                     severity: MsgSeverity::NonTerminalError,
                                     kind: ErrorKind::UnclosedBlockComment,
                                     col: unsafe { block_comment_token_start.column },
@@ -692,167 +668,142 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                             TokenKind::Unexpected { text_end: tokenizer.col }
                         },
                         Some(b'#') => {
-                            while let Some(_) = tokenizer.get_next_byte_singleline() {
-                                // consume next character
+                            tokenizer.col += 1;
+                            while !matches!(tokenizer.current_byte(), Some(ascii_newlines!()) | None) {
+                                tokenizer.col += 1;
                             }
                             TokenKind::LineComment { text_end: tokenizer.col }
                         },
                         Some(_) | None => {
-                            tokenizer.errors.push(Msg {
+                            tokenizer.tokens.errors.push(Msg {
                                 severity: MsgSeverity::NonTerminalError,
                                 kind: ErrorKind::OldStyleLineComment,
                                 col: tokenizer.token_start_col,
                                 pointers_count: 1,
                             });
+
                             // continue tokenizing the old style
-                            while let Some(_) = tokenizer.get_next_byte_singleline() {
-                                // consume next character
+                            while !matches!(tokenizer.current_byte(), Some(ascii_newlines!()) | None) {
+                                tokenizer.col += 1;
                             }
                             TokenKind::Unexpected { text_end: tokenizer.col }
                         },
-                    },
+                    }
+                },
+                b'(' => {
+                    tokenizer.col += 1;
+                    let back_patch = BackPatch { token: Index32::new(tokenizer.tokens.tokens.len() as usize32) };
+                    tokenizer.back_patches.push(back_patch);
+                    TokenKind::OpenRoundBracket
+                },
+                b')' => 'bracket: {
+                    tokenizer.col += 1;
 
-                    b'(' => {
-                        let back_patch = BackPatch { token: Index32::new(tokenizer.tokens.tokens().len()) };
-                        tokenizer.back_patches.push(back_patch);
+                    let Some(bracket_index) = tokenizer.back_patches.pop() else {
+                        tokenizer.unopened_bracket_error(ErrorKind::UnopenedRoundBracket);
+                        break 'bracket TokenKind::Unexpected { text_end: tokenizer.col };
+                    };
+
+                    let token = unsafe { bracket_index.token };
+                    #[expect(clippy::wildcard_enum_match_arm)]
+                    match tokenizer.tokens.tokens[token].kind {
                         TokenKind::OpenRoundBracket
-                    },
-                    b')' => 'bracket: {
-                        let Some(bracket_index) = tokenizer.back_patches.pop() else {
-                            tokenizer.errors.push(Msg {
-                                severity: MsgSeverity::NonTerminalError,
-                                kind: ErrorKind::UnopenedRoundBracket,
-                                col: tokenizer.token_start_col,
-                                pointers_count: 1,
-                            });
-                            break 'bracket TokenKind::Unexpected { text_end: tokenizer.col };
-                        };
+                        | TokenKind::CloseRoundBracket
+                        | TokenKind::CloseCurlyBracket
+                        | TokenKind::CloseSquareBracket => TokenKind::CloseRoundBracket,
+                        TokenKind::OpenCurlyBracket => {
+                            tokenizer.mismatched_bracket_error(ErrorKind::MismatchedCurlyRoundBracket);
+                            TokenKind::Unexpected { text_end: tokenizer.col }
+                        },
+                        TokenKind::OpenSquareBracket => {
+                            tokenizer.mismatched_bracket_error(ErrorKind::MismatchedSquareRoundBracket);
+                            TokenKind::Unexpected { text_end: tokenizer.col }
+                        },
+                        _ => unreachable!("incorrect bracket index"),
+                    }
+                },
+                b'[' => {
+                    tokenizer.col += 1;
+                    let back_patch = BackPatch { token: Index32::new(tokenizer.tokens.tokens.len() as usize32) };
+                    tokenizer.back_patches.push(back_patch);
+                    TokenKind::OpenSquareBracket
+                },
+                b']' => 'bracket: {
+                    tokenizer.col += 1;
 
-                        let token = unsafe { bracket_index.token };
-                        #[expect(clippy::wildcard_enum_match_arm)]
-                        match tokenizer.tokens.tokens()[token].kind {
-                            TokenKind::OpenRoundBracket
-                            | TokenKind::CloseRoundBracket
-                            | TokenKind::CloseCurlyBracket
-                            | TokenKind::CloseSquareBracket => TokenKind::CloseRoundBracket,
-                            TokenKind::OpenCurlyBracket => {
-                                tokenizer.errors.push(Msg {
-                                    severity: MsgSeverity::NonTerminalError,
-                                    kind: ErrorKind::MismatchedCurlyRoundBracket,
-                                    col: tokenizer.token_start_col,
-                                    pointers_count: 1,
-                                });
-                                TokenKind::Unexpected { text_end: tokenizer.col }
-                            },
-                            TokenKind::OpenSquareBracket => {
-                                tokenizer.errors.push(Msg {
-                                    severity: MsgSeverity::NonTerminalError,
-                                    kind: ErrorKind::MismatchedSquareRoundBracket,
-                                    col: tokenizer.token_start_col,
-                                    pointers_count: 1,
-                                });
-                                TokenKind::Unexpected { text_end: tokenizer.col }
-                            },
-                            _ => unreachable!("incorrect bracket index"),
-                        }
-                    },
-                    b'[' => {
-                        let back_patch = BackPatch { token: Index32::new(tokenizer.tokens.tokens().len()) };
-                        tokenizer.back_patches.push(back_patch);
+                    let Some(bracket_index) = tokenizer.back_patches.pop() else {
+                        tokenizer.unopened_bracket_error(ErrorKind::UnopenedSquareBracket);
+                        break 'bracket TokenKind::Unexpected { text_end: tokenizer.col };
+                    };
+
+                    let token = unsafe { bracket_index.token };
+                    #[expect(clippy::wildcard_enum_match_arm)]
+                    match tokenizer.tokens.tokens[token].kind {
                         TokenKind::OpenSquareBracket
-                    },
-                    b']' => 'bracket: {
-                        let Some(bracket_index) = tokenizer.back_patches.pop() else {
-                            tokenizer.errors.push(Msg {
-                                severity: MsgSeverity::NonTerminalError,
-                                kind: ErrorKind::UnopenedSquareBracket,
-                                col: tokenizer.token_start_col,
-                                pointers_count: 1,
-                            });
-                            break 'bracket TokenKind::Unexpected { text_end: tokenizer.col };
-                        };
+                        | TokenKind::CloseSquareBracket
+                        | TokenKind::CloseCurlyBracket
+                        | TokenKind::CloseRoundBracket => TokenKind::CloseSquareBracket,
+                        TokenKind::OpenCurlyBracket => {
+                            tokenizer.mismatched_bracket_error(ErrorKind::MismatchedCurlySquareBracket);
+                            TokenKind::Unexpected { text_end: tokenizer.col }
+                        },
+                        TokenKind::OpenRoundBracket => {
+                            tokenizer.mismatched_bracket_error(ErrorKind::MismatchedRoundSquareBracket);
+                            TokenKind::Unexpected { text_end: tokenizer.col }
+                        },
+                        _ => unreachable!("incorrect bracket index"),
+                    }
+                },
+                b'{' => {
+                    tokenizer.col += 1;
+                    let back_patch = BackPatch { token: Index32::new(tokenizer.tokens.tokens.len() as usize32) };
+                    tokenizer.back_patches.push(back_patch);
+                    TokenKind::OpenCurlyBracket
+                },
+                b'}' => 'bracket: {
+                    tokenizer.col += 1;
 
-                        let token = unsafe { bracket_index.token };
-                        #[expect(clippy::wildcard_enum_match_arm)]
-                        match tokenizer.tokens.tokens()[token].kind {
-                            TokenKind::OpenSquareBracket
-                            | TokenKind::CloseSquareBracket
-                            | TokenKind::CloseCurlyBracket
-                            | TokenKind::CloseRoundBracket => TokenKind::CloseSquareBracket,
-                            TokenKind::OpenCurlyBracket => {
-                                tokenizer.errors.push(Msg {
-                                    severity: MsgSeverity::NonTerminalError,
-                                    kind: ErrorKind::MismatchedCurlySquareBracket,
-                                    col: tokenizer.token_start_col,
-                                    pointers_count: 1,
-                                });
-                                TokenKind::Unexpected { text_end: tokenizer.col }
-                            },
-                            TokenKind::OpenRoundBracket => {
-                                tokenizer.errors.push(Msg {
-                                    severity: MsgSeverity::NonTerminalError,
-                                    kind: ErrorKind::MismatchedRoundSquareBracket,
-                                    col: tokenizer.token_start_col,
-                                    pointers_count: 1,
-                                });
-                                TokenKind::Unexpected { text_end: tokenizer.col }
-                            },
-                            _ => unreachable!("incorrect bracket index"),
-                        }
-                    },
-                    b'{' => {
-                        let back_patch = BackPatch { token: Index32::new(tokenizer.tokens.tokens().len()) };
-                        tokenizer.back_patches.push(back_patch);
+                    let Some(bracket_index) = tokenizer.back_patches.pop() else {
+                        tokenizer.unopened_bracket_error(ErrorKind::UnopenedCurlyBracket);
+                        break 'bracket TokenKind::Unexpected { text_end: tokenizer.col };
+                    };
+
+                    let token = unsafe { bracket_index.token };
+                    #[expect(clippy::wildcard_enum_match_arm)]
+                    match tokenizer.tokens.tokens[token].kind {
                         TokenKind::OpenCurlyBracket
-                    },
-                    b'}' => 'bracket: {
-                        let Some(bracket_index) = tokenizer.back_patches.pop() else {
-                            tokenizer.errors.push(Msg {
-                                severity: MsgSeverity::NonTerminalError,
-                                kind: ErrorKind::UnopenedCurlyBracket,
-                                col: tokenizer.token_start_col,
-                                pointers_count: 1,
-                            });
-                            break 'bracket TokenKind::Unexpected { text_end: tokenizer.col };
-                        };
-
-                        let token = unsafe { bracket_index.token };
-                        #[expect(clippy::wildcard_enum_match_arm)]
-                        match tokenizer.tokens.tokens()[token].kind {
-                            TokenKind::OpenCurlyBracket
-                            | TokenKind::CloseCurlyBracket
-                            | TokenKind::CloseRoundBracket
-                            | TokenKind::CloseSquareBracket => TokenKind::CloseCurlyBracket,
-                            TokenKind::OpenRoundBracket => {
-                                tokenizer.errors.push(Msg {
-                                    severity: MsgSeverity::NonTerminalError,
-                                    kind: ErrorKind::MismatchedRoundCurlyBracket,
-                                    col: tokenizer.token_start_col,
-                                    pointers_count: 1,
-                                });
-                                TokenKind::Unexpected { text_end: tokenizer.col }
-                            },
-                            TokenKind::OpenSquareBracket => {
-                                tokenizer.errors.push(Msg {
-                                    severity: MsgSeverity::NonTerminalError,
-                                    kind: ErrorKind::MismatchedSquareCurlyBracket,
-                                    col: tokenizer.token_start_col,
-                                    pointers_count: 1,
-                                });
-                                TokenKind::Unexpected { text_end: tokenizer.col }
-                            },
-                            _ => unreachable!("incorrect bracket index"),
-                        }
-                    },
-
-                    b':' => TokenKind::Colon,
-                    b';' => TokenKind::SemiColon,
-                    b',' => TokenKind::Comma,
-
-                    b'!' => match tokenizer.current_byte_multiline() {
+                        | TokenKind::CloseCurlyBracket
+                        | TokenKind::CloseRoundBracket
+                        | TokenKind::CloseSquareBracket => TokenKind::CloseCurlyBracket,
+                        TokenKind::OpenRoundBracket => {
+                            tokenizer.mismatched_bracket_error(ErrorKind::MismatchedRoundCurlyBracket);
+                            TokenKind::Unexpected { text_end: tokenizer.col }
+                        },
+                        TokenKind::OpenSquareBracket => {
+                            tokenizer.mismatched_bracket_error(ErrorKind::MismatchedSquareCurlyBracket);
+                            TokenKind::Unexpected { text_end: tokenizer.col }
+                        },
+                        _ => unreachable!("incorrect bracket index"),
+                    }
+                },
+                b':' => {
+                    tokenizer.col += 1;
+                    TokenKind::Colon
+                },
+                b';' => {
+                    tokenizer.col += 1;
+                    TokenKind::SemiColon
+                },
+                b',' => {
+                    tokenizer.col += 1;
+                    TokenKind::Comma
+                },
+                b'!' => {
+                    tokenizer.col += 1;
+                    match tokenizer.current_byte() {
                         Some(b'=') => {
                             tokenizer.col += 1;
-                            match tokenizer.current_byte_multiline() {
+                            match tokenizer.current_byte() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     TokenKind::Op(Op::NotEqualsEquals)
@@ -861,18 +812,21 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                             }
                         },
                         _ => TokenKind::Op(Op::Not),
-                    },
-                    b'*' => match tokenizer.current_byte_multiline() {
+                    }
+                },
+                b'*' => {
+                    tokenizer.col += 1;
+                    match tokenizer.current_byte() {
                         Some(b'*') => {
                             tokenizer.col += 1;
-                            match tokenizer.current_byte_multiline() {
+                            match tokenizer.current_byte() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     TokenKind::Op(Op::PowEquals)
                                 },
                                 Some(b'\\') => {
                                     tokenizer.col += 1;
-                                    match tokenizer.current_byte_multiline() {
+                                    match tokenizer.current_byte() {
                                         Some(b'=') => {
                                             tokenizer.col += 1;
                                             TokenKind::Op(Op::WrappingPowEquals)
@@ -882,7 +836,7 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                                 },
                                 Some(b'|') => {
                                     tokenizer.col += 1;
-                                    match tokenizer.current_byte_multiline() {
+                                    match tokenizer.current_byte() {
                                         Some(b'=') => {
                                             tokenizer.col += 1;
                                             TokenKind::Op(Op::SaturatingPowEquals)
@@ -899,7 +853,7 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                         },
                         Some(b'\\') => {
                             tokenizer.col += 1;
-                            match tokenizer.current_byte_multiline() {
+                            match tokenizer.current_byte() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     TokenKind::Op(Op::WrappingTimesEquals)
@@ -909,7 +863,7 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                         },
                         Some(b'|') => {
                             tokenizer.col += 1;
-                            match tokenizer.current_byte_multiline() {
+                            match tokenizer.current_byte() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     TokenKind::Op(Op::SaturatingTimesEquals)
@@ -919,7 +873,7 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                         },
                         Some(b'#') => {
                             tokenizer.col += 1;
-                            tokenizer.errors.push(Msg {
+                            tokenizer.tokens.errors.push(Msg {
                                 severity: MsgSeverity::NonTerminalError,
                                 kind: ErrorKind::UnopenedBlockComment,
                                 col: tokenizer.token_start_col,
@@ -928,15 +882,18 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                             TokenKind::Unexpected { text_end: tokenizer.col }
                         }
                         _ => TokenKind::Op(Op::Times),
-                    },
-                    b'/' => match tokenizer.current_byte_multiline() {
+                    }
+                },
+                b'/' => {
+                    tokenizer.col += 1;
+                    match tokenizer.current_byte() {
                         Some(b'=') => {
                             tokenizer.col += 1;
                             TokenKind::Op(Op::DivideEquals)
                         },
                         Some(b'\\') => {
                             tokenizer.col += 1;
-                            match tokenizer.current_byte_multiline() {
+                            match tokenizer.current_byte() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     TokenKind::Op(Op::WrappingDivideEquals)
@@ -946,7 +903,7 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                         },
                         Some(b'|') => {
                             tokenizer.col += 1;
-                            match tokenizer.current_byte_multiline() {
+                            match tokenizer.current_byte() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     TokenKind::Op(Op::SaturatingDivideEquals)
@@ -955,22 +912,28 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                             }
                         },
                         _ => TokenKind::Op(Op::Divide),
-                    },
-                    b'%' => match tokenizer.current_byte_multiline() {
+                    }
+                }
+                b'%' => {
+                    tokenizer.col += 1;
+                    match tokenizer.current_byte() {
                         Some(b'=') => {
                             tokenizer.col += 1;
                             TokenKind::Op(Op::RemainderEquals)
                         },
                         _ => TokenKind::Op(Op::Remainder),
-                    },
-                    b'+' => match tokenizer.current_byte_multiline() {
+                    }
+                },
+                b'+' => {
+                    tokenizer.col += 1;
+                    match tokenizer.current_byte() {
                         Some(b'=') => {
                             tokenizer.col += 1;
                             TokenKind::Op(Op::PlusEquals)
                         },
                         Some(b'\\') => {
                             tokenizer.col += 1;
-                            match tokenizer.current_byte_multiline() {
+                            match tokenizer.current_byte() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     TokenKind::Op(Op::WrappingPlusEquals)
@@ -980,7 +943,7 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                         },
                         Some(b'|') => {
                             tokenizer.col += 1;
-                            match tokenizer.current_byte_multiline() {
+                            match tokenizer.current_byte() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     TokenKind::Op(Op::SaturatingPlusEquals)
@@ -989,15 +952,18 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                             }
                         },
                         _ => TokenKind::Op(Op::Plus),
-                    },
-                    b'-' => match tokenizer.current_byte_multiline() {
+                    }
+                },
+                b'-' => {
+                    tokenizer.col += 1;
+                    match tokenizer.current_byte() {
                         Some(b'=') => {
                             tokenizer.col += 1;
                             TokenKind::Op(Op::MinusEquals)
                         },
                         Some(b'\\') => {
                             tokenizer.col += 1;
-                            match tokenizer.current_byte_multiline() {
+                            match tokenizer.current_byte() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     TokenKind::Op(Op::WrappingMinusEquals)
@@ -1007,7 +973,7 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                         },
                         Some(b'|') => {
                             tokenizer.col += 1;
-                            match tokenizer.current_byte_multiline() {
+                            match tokenizer.current_byte() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     TokenKind::Op(Op::SaturatingMinusEquals)
@@ -1016,11 +982,14 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                             }
                         },
                         _ => TokenKind::Op(Op::Minus),
-                    },
-                    b'&' => match tokenizer.current_byte_multiline() {
+                    }
+                },
+                b'&' => {
+                    tokenizer.col += 1;
+                    match tokenizer.current_byte() {
                         Some(b'&') => {
                             tokenizer.col += 1;
-                            match tokenizer.current_byte_multiline() {
+                            match tokenizer.current_byte() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     TokenKind::Op(Op::AndEquals)
@@ -1033,18 +1002,24 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                             TokenKind::Op(Op::BitAndEquals)
                         },
                         _ => TokenKind::Op(Op::BitAnd),
-                    },
-                    b'^' => match tokenizer.current_byte_multiline() {
+                    }
+                },
+                b'^' => {
+                    tokenizer.col += 1;
+                    match tokenizer.current_byte() {
                         Some(b'=') => {
                             tokenizer.col += 1;
                             TokenKind::Op(Op::BitXorEquals)
                         },
                         _ => TokenKind::Op(Op::BitXor),
-                    },
-                    b'|' => match tokenizer.current_byte_multiline() {
+                    }
+                },
+                b'|' => {
+                    tokenizer.col += 1;
+                    match tokenizer.current_byte() {
                         Some(b'|') => {
                             tokenizer.col += 1;
-                            match tokenizer.current_byte_multiline() {
+                            match tokenizer.current_byte() {
                                 Some(b'=') => {
                                     tokenizer.col += 1;
                                     TokenKind::Op(Op::OrEquals)
@@ -1057,21 +1032,27 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                             TokenKind::Op(Op::BitOrEquals)
                         },
                         _ => TokenKind::Op(Op::BitOr),
-                    },
-                    b'=' => match tokenizer.current_byte_multiline() {
+                    }
+                },
+                b'=' => {
+                    tokenizer.col += 1;
+                    match tokenizer.current_byte() {
                         Some(b'=') => {
                             tokenizer.col += 1;
                             TokenKind::Op(Op::EqualsEquals)
                         },
                         _ => TokenKind::Op(Op::Equals),
-                    },
-                    b'>' => match tokenizer.current_byte_multiline() {
+                    }
+                },
+                b'>' => {
+                    tokenizer.col += 1;
+                    match tokenizer.current_byte() {
                         Some(b'>') => {
                             tokenizer.col += 1;
-                            match tokenizer.current_byte_multiline() {
+                            match tokenizer.current_byte() {
                                 Some(b'>') => {
                                     tokenizer.col += 1;
-                                    match tokenizer.current_byte_multiline() {
+                                    match tokenizer.current_byte() {
                                         Some(b'=') => {
                                             tokenizer.col += 1;
                                             TokenKind::Op(Op::RightRotateEquals)
@@ -1091,14 +1072,17 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                             TokenKind::Op(Op::GreaterOrEquals)
                         },
                         _ => TokenKind::Op(Op::Greater),
-                    },
-                    b'<' => match tokenizer.current_byte_multiline() {
+                    }
+                },
+                b'<' => {
+                    tokenizer.col += 1;
+                    match tokenizer.current_byte() {
                         Some(b'<') => {
                             tokenizer.col += 1;
-                            match tokenizer.current_byte_multiline() {
+                            match tokenizer.current_byte() {
                                 Some(b'<') => {
                                     tokenizer.col += 1;
-                                    match tokenizer.current_byte_multiline() {
+                                    match tokenizer.current_byte() {
                                         Some(b'=') => {
                                             tokenizer.col += 1;
                                             TokenKind::Op(Op::LeftRotateEquals)
@@ -1112,7 +1096,7 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                                 },
                                 Some(b'\\') => {
                                     tokenizer.col += 1;
-                                    match tokenizer.current_byte_multiline() {
+                                    match tokenizer.current_byte() {
                                         Some(b'=') => {
                                             tokenizer.col += 1;
                                             TokenKind::Op(Op::WrappingLeftShiftEquals)
@@ -1122,7 +1106,7 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                                 },
                                 Some(b'|') => {
                                     tokenizer.col += 1;
-                                    match tokenizer.current_byte_multiline() {
+                                    match tokenizer.current_byte() {
                                         Some(b'=') => {
                                             tokenizer.col += 1;
                                             TokenKind::Op(Op::SaturatingLeftShiftEquals)
@@ -1135,7 +1119,7 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                         },
                         Some(b'=') => {
                             tokenizer.col += 1;
-                            match tokenizer.current_byte_multiline() {
+                            match tokenizer.current_byte() {
                                 Some(b'>') => {
                                     tokenizer.col += 1;
                                     TokenKind::Op(Op::Compare)
@@ -1144,32 +1128,56 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                             }
                         },
                         _ => TokenKind::Op(Op::Less),
-                    },
-                    unrecognized => {
-                        tokenizer.errors.push(Msg {
-                            severity: MsgSeverity::NonTerminalError,
-                            kind: ErrorKind::UnrecognizedCharacter(unrecognized),
-                            col: tokenizer.token_start_col,
-                            pointers_count: 1,
-                        });
-                        TokenKind::Unexpected { text_end: tokenizer.col }
-                    },
-                }
+                    }
+                },
+                ascii_whitespace_uncommon!() => { tokenizer.col += 1; continue 'tokenization; },
+                _control @ ascii_controls!() => {
+                    tokenizer.tokens.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
+                        kind: ErrorKind::ControlCharacter,
+                        col: tokenizer.col,
+                        pointers_count: 1,
+                    });
+
+                    tokenizer.col += 1;
+                    TokenKind::Unexpected { text_end: tokenizer.col }
+                },
+                __unrecognized @ ascii_range!() => {
+                    tokenizer.tokens.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
+                        kind: ErrorKind::UnrecognizedCharacter,
+                        col: tokenizer.col,
+                        pointers_count: 1,
+                    });
+
+                    tokenizer.col += 1;
+                    TokenKind::Unexpected { text_end: tokenizer.col }
+                },
+                _utf8_ch => {
+                    tokenizer.utf8_error();
+                    TokenKind::Unexpected { text_end: tokenizer.col }
+                },
             };
 
-            tokenizer.tokens.tokens.tokens.push(Token { kind, col: tokenizer.token_start_col });
+            tokenizer.tokens.tokens.push(Token { kind, col: tokenizer.token_start_col });
         }
 
-        if tokenizer.line_start_col != tokenizer.col {
-            // file ended without a newline
-            let line = unsafe { Line::new_unchecked(tokenizer.line_start_col, tokenizer.col) };
-            tokenizer.tokens.src.lines.push(line);
+        match tokenizer.code().as_bytes().last() {
+            Some(ascii_newlines!()) => {
+                // file ended on a newline, a line entry has already been added
+            }
+            None => {
+                // file is empty, no need to add a line entry
+            }
+            Some(_) => {
+                // file ended on a character other than a newline
+                tokenizer.tokens.src.line_ends.push(tokenizer.col);
+            }
         }
 
         while let Some(bracket_index) = tokenizer.back_patches.pop() {
             let token = unsafe { bracket_index.token };
-            // there can only be open brackets at this point
-            let bracket_token = tokenizer.tokens.tokens()[token];
+            let bracket_token = tokenizer.tokens.tokens[token];
 
             #[expect(clippy::wildcard_enum_match_arm)]
             let error_kind = match bracket_token.kind {
@@ -1179,7 +1187,7 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
                 _ => unreachable!("incorrect bracket index"),
             };
 
-            tokenizer.errors.push(Msg {
+            tokenizer.tokens.errors.push(Msg {
                 severity: MsgSeverity::NonTerminalError,
                 kind: error_kind,
                 col: bracket_token.col,
@@ -1187,24 +1195,30 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
             });
         }
 
-        let result = if tokenizer.errors.len() == 0 {
-            Ok(tokenizer.tokens.tokens)
-        } else {
-            Err(tokenizer.errors)
-        };
-        return TokenizationResult { src: tokenizer.tokens.src, result };
+        return tokenizer.tokens;
     }
 }
 
 // iteration of characters
 impl<'code> Tokenizer<'code, '_> {
-    #[inline]
+    // REMOVE(stefano): less complexity to keep track
+    #[inline(always)]
     fn new_line(&mut self, line_end: LineEnd) {
-        let line = unsafe { Line::new_unchecked(self.line_start_col, self.col) };
-        self.tokens.src.lines.push(line);
-
+        self.tokens.src.line_ends.push(self.col);
         self.col += line_end as usize32;
-        self.line_start_col = self.col;
+    }
+
+    #[inline(always)]
+    fn new_line_lf(&mut self) {
+        self.new_line(LineEnd::LF);
+    }
+
+    #[inline]
+    fn new_line_cr(&mut self) {
+        match text::byte(self.code(), self.col as usize + 1) {
+            Some(b'\n')    => self.new_line(LineEnd::CRLF),
+            Some(_) | None => self.new_line(LineEnd::CR),
+        }
     }
 
     #[must_use] #[inline(always)] #[track_caller]
@@ -1212,114 +1226,16 @@ impl<'code> Tokenizer<'code, '_> {
         return text::slice(self.code(), self.token_start_col as usize, self.col as usize);
     }
 
-    #[must_use] #[inline]
-    const fn current_byte_multiline(&self) -> Option<u8> {
+    #[must_use] #[inline(always)] #[track_caller]
+    const fn current_byte(&self) -> Option<u8> {
         return text::byte(self.code(), self.col as usize);
-    }
-
-    #[must_use]
-    const fn current_byte_singleline(&self) -> Option<u8> {
-        let Some(next) = self.current_byte_multiline() else { return None; };
-        return match next {
-            b'\r' | b'\n' => None,
-            other => Some(other),
-        };
-    }
-
-    #[must_use]
-    fn get_next_byte_multiline(&mut self) -> Option<u8> {
-        let Some(next) = self.current_byte_multiline() else { return None; };
-        return match next {
-            b'\n' => {
-                self.new_line(LineEnd::LF);
-                Some(b'\n')
-            },
-            b'\r' => {
-                if let Some(b'\n') = text::byte(self.code(), self.col as usize + 1) {
-                    self.new_line(LineEnd::CRLF);
-                    return Some(b'\n');
-                }
-
-                self.new_line(LineEnd::CR);
-                Some(b'\n')
-            },
-            other => {
-                self.col += 1;
-                Some(other)
-            },
-        };
-    }
-
-    #[must_use]
-    fn current_grapheme(&self) -> &'code str {
-        let rest_of_code = &self.code()[self.col as usize..];
-        let mut rest_of_line_graphemes = rest_of_code.graphemes(true);
-        // TODO(stefano): report invalid utf8 errors
-        let Some(grapheme) = rest_of_line_graphemes.next() else { unreachable!("not a valid grapheme"); };
-        return grapheme;
-    }
-
-    #[must_use]
-    const fn get_next_byte_singleline(&mut self) -> Option<u8> {
-        let Some(next) = self.current_byte_multiline() else { return None; };
-        return match next {
-            b'\r' | b'\n' => None,
-            other => {
-                self.col += 1;
-                Some(other)
-            },
-        };
-    }
-
-    #[must_use]
-    fn current_ascii_multiline(&self) -> Option<Result<ascii, &'code str>> {
-        let Some(next) = self.current_byte_multiline() else { return None; };
-        return match next {
-            ascii_ch @ 0..=b'\x7F' => Some(Ok(ascii_ch)),
-            _utf8_ch => Some(Err(self.current_grapheme())),
-        };
-    }
-
-    #[must_use]
-    fn current_ascii_singleline(&self) -> Option<Result<ascii, &'code str>> {
-        let Some(next) = self.current_byte_singleline() else { return None; };
-        return match next {
-            ascii_ch @ 0..=b'\x7F' => Some(Ok(ascii_ch)),
-            _utf8_ch => Some(Err(self.current_grapheme())),
-        };
-    }
-
-    #[must_use]
-    fn current_or_until_next_ascii_singleline(&mut self) -> Option<ascii> {
-        loop {
-            let Some(next) = self.current_byte_singleline() else { return None; };
-            match next {
-                ascii_ch @ 0..=b'\x7F' => return Some(ascii_ch),
-                _utf8_ch => {
-                    let grapheme = self.current_grapheme();
-                    self.errors.push(self.utf8_error(grapheme));
-                    self.col += grapheme.len() as usize32;
-                },
-            }
-        }
-    }
-
-    #[inline(always)]
-    fn utf8_error(&self, grapheme: &'code str) -> Msg<ErrorKind> {
-        let text_end = self.col + grapheme.len() as usize32;
-        return Msg {
-            severity: MsgSeverity::NonTerminalError,
-            kind: ErrorKind::Utf8Character { text_end },
-            col: self.col,
-            pointers_count: grapheme.display_len(),
-        };
     }
 }
 
 // tokenization of numbers, strings and character literals
 impl Tokenizer<'_, '_> {
-    fn digits_text(&mut self, base: digit::Base) -> Result<usize32, usize32> {
-        let previous_errors_len = self.errors.len();
+    fn digits_text(&mut self, base: digit::Base) -> Result<(), ()> {
+        let previous_errors_len = self.tokens.errors.len();
 
         let check_fn = match base {
             digit::Base::Binary => digit::binary::check,
@@ -1328,63 +1244,115 @@ impl Tokenizer<'_, '_> {
             digit::Base::Hexadecimal => digit::hexadecimal::check,
         };
 
-        while let Some(digit) = self.current_or_until_next_ascii_singleline() {
+        while let Some(digit) = self.current_byte() {
             match check_fn(digit) {
-                digit::NOT_A_DIGIT => break,
-                digit::OUT_OF_RANGE => self.errors.push(Msg {
-                    severity: MsgSeverity::NonTerminalError,
-                    kind: ErrorKind::DigitOutOfRange(digit, Base(base)),
-                    col: self.col,
-                    pointers_count: 1,
-                }),
-                _ => {},
+                digit::NOT_A_DIGIT => match digit {
+                    _ascii_ch @ ascii_range!() => break,
+                    _utf8_ch => self.utf8_error(),
+                }
+                digit::OUT_OF_RANGE => {
+                    self.tokens.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
+                        kind: ErrorKind::DigitOutOfRange(Base(base)),
+                        col: self.col,
+                        pointers_count: 1,
+                    });
+                    self.col += 1;
+                },
+                _ => self.col += 1,
             }
-            self.col += 1;
         }
 
-        if previous_errors_len != self.errors.len() { return Err(self.col); }
-        return Ok(self.col);
+        if previous_errors_len != self.tokens.errors.len() { return Err(()); }
+        return Ok(());
     }
 
-    fn escape_sequence(&mut self, start_of_character: usize32) -> EscapeSequence {
-        let current_character = match self.current_ascii_singleline() {
-            Some(Ok(current_character)) => current_character,
-            Some(Err(grapheme)) => {
-                self.errors.push(self.utf8_error(grapheme));
-                self.col += grapheme.len() as usize32;
-                return EscapeSequence::ErrContinue;
-            },
-            None => {
-                self.errors.push(Msg {
-                    severity: MsgSeverity::NonTerminalError,
-                    kind: ErrorKind::UnterminatedEscapeCharacter,
-                    col: start_of_character,
-                    pointers_count: self.col - start_of_character,
-                });
-                return EscapeSequence::ErrBreak;
-            },
+    // TODO(stefano): check error columns
+    fn escape_sequence(&mut self) -> EscapeSequence {
+        let start_of_character = self.col;
+        self.col += 1; // skipping the backslash
+
+        let Some(current_character) = self.current_byte() else {
+            self.tokens.errors.push(Msg {
+                severity: MsgSeverity::NonTerminalError,
+                kind: ErrorKind::UnterminatedEscapeCharacter,
+                col: start_of_character,
+                pointers_count: self.col - start_of_character,
+            });
+            return EscapeSequence::ErrBreak;
         };
-        self.col += 1;
 
         let escaped_character = match current_character {
-            b'\\' => b'\\',
-            b'\'' => b'\'',
-            b'"' => b'\"',
-            b'e' => b'\x1b',
-            b'n' => b'\n',
-            b'r' => b'\r',
-            b't' => b'\t',
-            b'0' => b'\0',
+            b'\\' => {
+                self.col += 1;
+                self.logical_characters_count += 1;
+                b'\\'
+            },
+            b'\'' => {
+                self.col += 1;
+                self.logical_characters_count += 1;
+                b'\''
+            },
+            b'"'  => {
+                self.col += 1;
+                self.logical_characters_count += 1;
+                b'\"'
+            },
+            b'e'  => {
+                self.col += 1;
+                self.logical_characters_count += 1;
+                b'\x1b'
+            },
+            b'n'  => {
+                self.col += 1;
+                self.logical_characters_count += 1;
+                b'\n'
+            },
+            b'r'  => {
+                self.col += 1;
+                self.logical_characters_count += 1;
+                b'\r'
+            },
+            b't'  => {
+                self.col += 1;
+                self.logical_characters_count += 1;
+                b'\t'
+            },
+            b'0'  => {
+                self.col += 1;
+                self.logical_characters_count += 1;
+                b'\0'
+            },
             b'^' => {
-                let caret_character = match self.current_ascii_singleline() {
-                    Some(Ok(escape_character)) => escape_character,
-                    Some(Err(grapheme)) => {
-                        self.errors.push(self.utf8_error(grapheme));
-                        self.col += grapheme.len() as usize32;
-                        return EscapeSequence::ErrContinue;
+                let Some(caret_character) = self.current_byte() else {
+                    self.tokens.errors.push(Msg {
+                        severity: MsgSeverity::NonTerminalError,
+                        kind: ErrorKind::UnterminatedEscapeCharacter,
+                        col: start_of_character,
+                        pointers_count: self.col - start_of_character,
+                    });
+                    return EscapeSequence::ErrBreak;
+                };
+                self.col += 1;
+
+                match caret_character {
+                    b'@'..=b'Z' => {
+                        self.col += 1;
+                        self.logical_characters_count += 1;
+                        caret_character - b'@'
                     },
-                    None => {
-                        self.errors.push(Msg {
+                    b'['..=b'_' => {
+                        self.col += 1;
+                        self.logical_characters_count += 1;
+                        caret_character - b'[' + b'Z' - b'@' + 1
+                    },
+                    b'?' => {
+                        self.col += 1;
+                        self.logical_characters_count += 1;
+                        b'\x7f'
+                    },
+                    ascii_newlines!() => {
+                        self.tokens.errors.push(Msg {
                             severity: MsgSeverity::NonTerminalError,
                             kind: ErrorKind::UnterminatedEscapeCharacter,
                             col: start_of_character,
@@ -1392,40 +1360,63 @@ impl Tokenizer<'_, '_> {
                         });
                         return EscapeSequence::ErrBreak;
                     },
-                };
-                self.col += 1;
-
-                match caret_character {
-                    b'@'..=b'Z' => caret_character - b'@',
-                    b'['..=b'_' => caret_character - b'[' + b'Z' - b'@' + 1,
-                    b'?' => b'\x7f',
-                    unrecognized => {
-                        self.errors.push(Msg {
+                    _control @ ascii_controls!() => {
+                        self.tokens.errors.push(Msg {
                             severity: MsgSeverity::NonTerminalError,
-                            kind: ErrorKind::UnrecognizedEscapeCharacter(unrecognized),
-                            col: start_of_character,
-                            pointers_count: 3,
+                            kind: ErrorKind::ControlCharacter,
+                            col: start_of_character + 2,
+                            pointers_count: 1,
                         });
+                        self.col += 1;
+                        self.logical_characters_count += 1;
+                        return EscapeSequence::ErrContinue;
+                    },
+                    _unrecognized @ ascii_range!() => {
+                        self.tokens.errors.push(Msg {
+                            severity: MsgSeverity::NonTerminalError,
+                            kind: ErrorKind::UnrecognizedEscapeCharacter,
+                            col: start_of_character,
+                            pointers_count: self.col - start_of_character,
+                        });
+                        self.col += 1;
+                        self.logical_characters_count += 1;
+                        return EscapeSequence::ErrContinue;
+                    },
+                    _utf8_ch => {
+                        self.utf8_error();
                         return EscapeSequence::ErrContinue;
                     },
                 }
             },
-            control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
-                self.errors.push(Msg {
+            ascii_newlines!() => {
+                self.tokens.errors.push(Msg {
                     severity: MsgSeverity::NonTerminalError,
-                    kind: ErrorKind::ControlCharacter(control),
+                    kind: ErrorKind::UnterminatedEscapeCharacter,
+                    col: start_of_character,
+                    pointers_count: self.col - start_of_character,
+                });
+                return EscapeSequence::ErrBreak;
+            },
+            _control @ ascii_controls!() => {
+                self.tokens.errors.push(Msg {
+                    severity: MsgSeverity::NonTerminalError,
+                    kind: ErrorKind::ControlCharacter,
                     col: start_of_character + 1,
                     pointers_count: 1,
                 });
                 return EscapeSequence::ErrContinue;
             },
-            unrecognized => {
-                self.errors.push(Msg {
+            _unrecognized @ ascii_range!() => {
+                self.tokens.errors.push(Msg {
                     severity: MsgSeverity::NonTerminalError,
-                    kind: ErrorKind::UnrecognizedEscapeCharacter(unrecognized),
+                    kind: ErrorKind::UnrecognizedEscapeCharacter,
                     col: start_of_character,
-                    pointers_count: 2,
+                    pointers_count: self.col - start_of_character,
                 });
+                return EscapeSequence::ErrContinue;
+            },
+            _utf8_ch => {
+                self.utf8_error();
                 return EscapeSequence::ErrContinue;
             },
         };
@@ -1433,191 +1424,193 @@ impl Tokenizer<'_, '_> {
         return EscapeSequence::Ok(escaped_character);
     }
 
-    fn ascii_literal(&mut self) -> Result<(usize32, ascii), usize32> {
-        let previous_errors_len = self.errors.len();
+    fn ascii_literal(&mut self) -> TokenKind {
+        let previous_errors_len = self.tokens.errors.len();
+        self.logical_characters_count = 0;
 
         let mut logical_character = b'\0';
-        let mut logical_characters_count = 0;
         loop {
-            let next_character = match self.current_ascii_singleline() {
-                Some(Ok(next_character)) => next_character,
-                Some(Err(grapheme)) => {
-                    self.errors.push(self.utf8_error(grapheme));
-                    self.col += grapheme.len() as usize32;
-                    continue;
+            let Some(next_character) = self.current_byte() else {
+                self.tokens.errors.push(Msg {
+                    severity: MsgSeverity::NonTerminalError,
+                    kind: ErrorKind::UnclosedCharacterLiteral,
+                    col: self.token_start_col,
+                    pointers_count: self.token_text().pointers_count(),
+                });
+                break;
+            };
+
+            match next_character {
+                b'\\' => match self.escape_sequence() {
+                    EscapeSequence::Ok(ch) => logical_character = ch,
+                    EscapeSequence::ErrBreak => break,
+                    EscapeSequence::ErrContinue => {},
                 },
-                None => {
-                    self.errors.push(Msg {
+                b'\'' => {
+                    if self.logical_characters_count == 0 {
+                        self.tokens.errors.push(Msg {
+                            severity: MsgSeverity::NonTerminalError,
+                            kind: ErrorKind::EmptyCharacterLiteral,
+                            col: self.token_start_col,
+                            pointers_count: 2,
+                        });
+                    }
+                    if self.logical_characters_count > 1 {
+                        self.tokens.errors.push(Msg {
+                            severity: MsgSeverity::NonTerminalError,
+                            kind: ErrorKind::MultipleCharactersInCharacterLiteral,
+                            col: self.token_start_col,
+                            pointers_count: self.token_text().pointers_count(),
+                        });
+                    }
+                    self.col += 1;
+                    break;
+                },
+                ascii_newlines!() => {
+                    self.tokens.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::UnclosedCharacterLiteral,
                         col: self.token_start_col,
-                        pointers_count: self.token_text().display_len(),
+                        pointers_count: self.token_text().pointers_count(),
                     });
+                    self.col += 1;
                     break;
                 },
-            };
-            let start_of_character = self.col;
-            self.col += 1;
-
-            match next_character {
-                b'\\' => {
-                    logical_character = match self.escape_sequence(start_of_character) {
-                        EscapeSequence::Ok(ch) => ch,
-                        EscapeSequence::ErrBreak => break,
-                        EscapeSequence::ErrContinue => continue,
-                    };
-                },
-                control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
-                    self.errors.push(Msg {
+                _control @ ascii_controls!() => {
+                    self.tokens.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::ControlCharacter(control),
-                        col: start_of_character,
+                        kind: ErrorKind::ControlCharacter,
+                        col: self.col,
                         pointers_count: 1,
                     });
+                    self.col += 1;
+                    self.logical_characters_count += 1;
                 },
-                b'\'' => break,
-                _ => {},
+                ascii_range!() => {
+                    self.col += 1;
+                    self.logical_characters_count += 1;
+                },
+                _utf8_ch => {
+                    self.utf8_error();
+                    self.logical_characters_count += 1;
+                },
             }
-
-            logical_characters_count += 1;
         }
 
-        if previous_errors_len != self.errors.len() {
-            return Err(self.col);
-        }
-
-        if logical_characters_count == 0 {
-            self.errors.push(Msg {
-                severity: MsgSeverity::NonTerminalError,
-                kind: ErrorKind::EmptyCharacterLiteral,
-                col: self.token_start_col,
-                pointers_count: 2,
-            });
-            return Err(self.col);
-        }
-        if logical_characters_count > 1 {
-            self.errors.push(Msg {
-                severity: MsgSeverity::NonTerminalError,
-                kind: ErrorKind::MultipleCharactersInCharacterLiteral,
-                col: self.token_start_col,
-                pointers_count: self.token_text().display_len(),
-            });
-            return Err(self.col);
-        }
-        return Ok((self.col, logical_character));
+        if previous_errors_len != self.tokens.errors.len() { return TokenKind::Unexpected { text_end: self.col }; }
+        return TokenKind::Ascii { text_end: self.col, value: logical_character };
     }
 
-    fn str_literal(&mut self) -> Result<usize32, usize32> {
-        let previous_errors_len = self.errors.len();
+    fn str_literal(&mut self) -> TokenKind {
+        let previous_errors_len = self.tokens.errors.len();
 
         loop {
-            let next_character = match self.current_ascii_singleline() {
-                Some(Ok(next_character)) => next_character,
-                Some(Err(grapheme)) => {
-                    self.errors.push(self.utf8_error(grapheme));
-                    self.col += grapheme.len() as usize32;
-                    continue;
+            let Some(next_character) = self.current_byte() else {
+                self.tokens.errors.push(Msg {
+                    severity: MsgSeverity::NonTerminalError,
+                    kind: ErrorKind::UnclosedStrLiteral,
+                    col: self.token_start_col,
+                    pointers_count: self.token_text().pointers_count(),
+                });
+                break;
+            };
+
+            match next_character {
+                b'\\' => match self.escape_sequence() {
+                    EscapeSequence::Ok(_ch) => {},
+                    EscapeSequence::ErrBreak => break,
+                    EscapeSequence::ErrContinue => {},
                 },
-                None => {
-                    self.errors.push(Msg {
+                b'"' => {
+                    self.col += 1;
+                    break;
+                },
+                ascii_newlines!() => {
+                    self.tokens.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::UnclosedStrLiteral,
                         col: self.token_start_col,
-                        pointers_count: self.token_text().display_len(),
+                        pointers_count: self.token_text().pointers_count(),
                     });
+                    self.col += 1;
                     break;
-                },
-            };
-            let start_of_character = self.col;
-            self.col += 1;
-
-            match next_character {
-                b'\\' => {
-                    let _logical_character = match self.escape_sequence(start_of_character) {
-                        EscapeSequence::Ok(ch) => ch,
-                        EscapeSequence::ErrBreak => break,
-                        EscapeSequence::ErrContinue => continue,
-                    };
-                },
-                control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
-                    self.errors.push(Msg {
+                }
+                _control @ ascii_controls!() => {
+                    self.tokens.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::ControlCharacter(control),
-                        col: start_of_character,
+                        kind: ErrorKind::ControlCharacter,
+                        col: self.col,
                         pointers_count: 1,
                     });
+                    self.col += 1;
                 },
-                b'"' => break,
-                _ => {},
+                ascii_range!() => self.col += 1,
+                _utf8_ch => self.utf8_error(),
             }
         }
 
-        if previous_errors_len != self.errors.len() { return Err(self.col); }
-        return Ok(self.col);
+        if previous_errors_len != self.tokens.errors.len() { return TokenKind::Unexpected { text_end: self.col }; }
+        return TokenKind::Str { text_end: self.col };
     }
 
-    fn raw_str_literal(&mut self) -> Result<usize32, usize32> {
-        let previous_errors_len = self.errors.len();
+    fn raw_str_literal(&mut self) -> TokenKind {
+        let previous_errors_len = self.tokens.errors.len();
 
         loop {
-            let next_character = match self.current_ascii_singleline() {
-                Some(Ok(next_character)) => next_character,
-                Some(Err(grapheme)) => {
-                    self.errors.push(self.utf8_error(grapheme));
-                    self.col += grapheme.len() as usize32;
-                    continue;
+            let Some(next_character) = self.current_byte() else {
+                self.tokens.errors.push(Msg {
+                    severity: MsgSeverity::NonTerminalError,
+                    kind: ErrorKind::UnclosedRawStrLiteral,
+                    col: self.token_start_col,
+                    pointers_count: self.token_text().pointers_count(),
+                });
+                break;
+            };
+
+            match next_character {
+                b'\\' => {
+                    let Some(escape_character) = self.current_byte() else {
+                        self.tokens.errors.push(Msg {
+                            severity: MsgSeverity::NonTerminalError,
+                            kind: ErrorKind::UnterminatedEscapeCharacter,
+                            col: self.col,
+                            pointers_count: 1,
+                        });
+                        self.col += 1;
+                        break;
+                    };
+
+                    if escape_character == b'"' { self.col += 1; }
                 },
-                None => {
-                    self.errors.push(Msg {
+                b'"' => {
+                    self.col += 1;
+                    break;
+                },
+                ascii_newlines!() => {
+                    self.tokens.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::UnclosedRawStrLiteral,
                         col: self.token_start_col,
-                        pointers_count: self.token_text().display_len(),
+                        pointers_count: self.token_text().pointers_count(),
                     });
                     break;
-                },
-            };
-            let start_of_next_character = self.col;
-            self.col += 1;
-
-            match next_character {
-                b'\\' => {
-                    let escape_character = match self.current_ascii_singleline() {
-                        Some(Ok(escape_character)) => escape_character,
-                        Some(Err(grapheme)) => {
-                            self.errors.push(self.utf8_error(grapheme));
-                            self.col += grapheme.len() as usize32;
-                            continue;
-                        },
-                        None => {
-                            self.errors.push(Msg {
-                                severity: MsgSeverity::NonTerminalError,
-                                kind: ErrorKind::UnterminatedEscapeCharacter,
-                                col: start_of_next_character,
-                                pointers_count: self.col - start_of_next_character,
-                            });
-                            break;
-                        },
-                    };
-                    if escape_character == b'"' {
-                        self.col += 1;
-                    }
-                },
-                control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
-                    self.errors.push(Msg {
+                }
+                _control @ ascii_controls!() => {
+                    self.tokens.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::ControlCharacter(control),
-                        col: start_of_next_character,
+                        kind: ErrorKind::ControlCharacter,
+                        col: self.col,
                         pointers_count: 1,
                     });
+                    self.col += 1;
                 },
-                b'"' => break,
-                _ => {},
+                ascii_range!() => self.col += 1,
+                _utf8_ch => self.utf8_error(),
             }
         }
 
-        if previous_errors_len != self.errors.len() { return Err(self.col); }
-        return Ok(self.col);
+        if previous_errors_len != self.tokens.errors.len() { return TokenKind::Unexpected { text_end: self.col }; }
+        return TokenKind::RawStr { text_end: self.col };
     }
 }
 
@@ -1625,75 +1618,82 @@ impl Tokenizer<'_, '_> {
 impl Tokenizer<'_, '_> {
     const MAX_IDENTIFIER_LEN: usize32 = 63;
 
-    fn identifier_str(&mut self) -> Result<usize32, usize32> {
-        let previous_errors_len = self.errors.len();
+    fn identifier_str(&mut self) -> TokenKind {
+        let previous_errors_len = self.tokens.errors.len();
+        self.logical_characters_count = 0;
 
         loop {
-            let next_character = match self.current_ascii_singleline() {
-                Some(Ok(next_character)) => next_character,
-                Some(Err(grapheme)) => {
-                    self.errors.push(self.utf8_error(grapheme));
-                    self.col += grapheme.len() as usize32;
-                    continue;
+            let Some(next_character) = self.current_byte() else {
+                self.tokens.errors.push(Msg {
+                    severity: MsgSeverity::NonTerminalError,
+                    kind: ErrorKind::UnclosedIdentifierStr,
+                    col: self.token_start_col,
+                    pointers_count: self.token_text().pointers_count(),
+                });
+                break;
+            };
+
+            match next_character {
+                b'`' => {
+                    self.col += 1;
+
+                    if self.logical_characters_count > Self::MAX_IDENTIFIER_LEN {
+                        self.tokens.errors.push(Msg {
+                            severity: MsgSeverity::NonTerminalError,
+                            kind: ErrorKind::IdentifierTooLong { max: Self::MAX_IDENTIFIER_LEN },
+                            col: self.token_start_col,
+                            pointers_count: self.token_text().pointers_count(),
+                        });
+                    }
+
+                    break;
                 },
-                None => {
-                    self.errors.push(Msg {
+                ascii_newlines!() => {
+                    self.tokens.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::UnclosedIdentifierStr,
                         col: self.token_start_col,
-                        pointers_count: self.token_text().display_len(),
+                        pointers_count: self.token_text().pointers_count(),
                     });
                     break;
-                },
-            };
-            let start_of_next_character = self.col;
-            self.col += 1;
-
-            match next_character {
-                control @ (b'\x00'..=b'\x1F' | b'\x7F') => {
-                    self.errors.push(Msg {
+                }
+                _control @ ascii_controls!() => {
+                    self.tokens.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
-                        kind: ErrorKind::ControlCharacter(control),
-                        col: start_of_next_character,
+                        kind: ErrorKind::ControlCharacter,
+                        col: self.col,
                         pointers_count: 1,
                     });
+                    self.logical_characters_count += 1;
+                    self.col += 1;
                 },
-                b'`' => break,
-                _ => {},
+                ascii_range!() => {
+                    self.logical_characters_count += 1;
+                    self.col += 1;
+                },
+                _utf8_ch => {
+                    self.logical_characters_count += 1;
+                    self.utf8_error();
+                },
             }
         }
 
-        if previous_errors_len != self.errors.len() { return Err(self.col); }
-
-        let identifier_len = self.col - self.token_start_col - 2; // - 2 for the quotes
-        if identifier_len > Self::MAX_IDENTIFIER_LEN {
-            self.errors.push(Msg {
-                severity: MsgSeverity::NonTerminalError,
-                kind: ErrorKind::IdentifierTooLong { max: Self::MAX_IDENTIFIER_LEN },
-                col: self.token_start_col,
-                pointers_count: identifier_len,
-            });
-            return Err(self.col);
-        }
-
-        return Ok(self.col);
+        if previous_errors_len != self.tokens.errors.len() { return TokenKind::Unexpected { text_end: self.col }; }
+        return TokenKind::IdentifierStr { text_end: self.col };
     }
 
     fn identifier(&mut self) -> TokenKind {
-        let previous_errors_len = self.errors.len();
+        let previous_errors_len = self.tokens.errors.len();
 
-        while let Some(letter) = self.current_or_until_next_ascii_singleline() {
+        while let Some(letter) = self.current_byte() {
             match letter {
-                b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_' => {
-                    self.col += 1;
-                },
-                _ => break,
+                b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'_' => self.col += 1,
+                _other @ ascii_range!() => break,
+                _utf8_ch => self.utf8_error(),
             }
         }
 
-        if previous_errors_len != self.errors.len() {
-            return TokenKind::Unexpected { text_end: self.col };
-        }
+        if previous_errors_len != self.tokens.errors.len() { return TokenKind::Unexpected { text_end: self.col }; }
 
         let identifier = match self.token_text() {
             "let" => TokenKind::Let,
@@ -1712,13 +1712,12 @@ impl Tokenizer<'_, '_> {
             "continue" => TokenKind::Continue,
             "len" => TokenKind::Op(Op::Len),
             identifier => {
-                let identifier_len = identifier.len() as usize32;
                 if identifier_len > Self::MAX_IDENTIFIER_LEN {
-                    self.errors.push(Msg {
+                    self.tokens.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::IdentifierTooLong { max: Self::MAX_IDENTIFIER_LEN },
                         col: self.token_start_col,
-                        pointers_count: identifier_len,
+                        pointers_count: self.token_text().pointers_count(),
                     });
                     return TokenKind::Unexpected { text_end: self.col };
                 }
@@ -1731,6 +1730,68 @@ impl Tokenizer<'_, '_> {
     }
 }
 
+// errors
+impl Tokenizer<'_, '_> {
+    fn utf8_error(&mut self) {
+        let rest_of_code = &self.code()[self.col as usize..];
+        let mut rest_of_line_graphemes = rest_of_code.graphemes(true);
+        let Some(grapheme) = rest_of_line_graphemes.next() else {
+            // IDEA(stefano): find next good utf8 character and move column to there
+            self.tokens.errors.push(Msg {
+                severity: MsgSeverity::NonTerminalError,
+                kind: ErrorKind::InvalidUtf8,
+                col: self.col,
+                pointers_count: 1,
+            });
+            self.col += 1;
+            return;
+        };
+
+        let text_end = self.col + grapheme.len() as usize32;
+        self.tokens.errors.push(Msg {
+            severity: MsgSeverity::NonTerminalError,
+            kind: ErrorKind::Utf8Character { text_end },
+            col: self.col,
+            pointers_count: grapheme.pointers_count(),
+        });
+        self.col = text_end;
+    }
+
+    #[inline] #[track_caller]
+    fn unopened_bracket_error(&mut self, kind: ErrorKind) {
+        debug_assert!(matches!(
+            kind,
+            ErrorKind::UnopenedRoundBracket | ErrorKind::UnopenedSquareBracket | ErrorKind::UnopenedCurlyBracket
+        ), "invalid token kind");
+
+        self.tokens.errors.push(Msg {
+            severity: MsgSeverity::NonTerminalError,
+            kind,
+            col: self.token_start_col,
+            pointers_count: 1,
+        });
+    }
+
+    #[inline] #[track_caller]
+    fn mismatched_bracket_error(&mut self, kind: ErrorKind) {
+        debug_assert!(matches!(
+            kind,
+            ErrorKind::MismatchedRoundCurlyBracket
+            | ErrorKind::MismatchedRoundSquareBracket
+            | ErrorKind::MismatchedSquareRoundBracket
+            | ErrorKind::MismatchedSquareCurlyBracket
+            | ErrorKind::MismatchedCurlyRoundBracket
+            | ErrorKind::MismatchedCurlySquareBracket
+        ), "invalid token kind");
+
+        self.tokens.errors.push(Msg {
+            severity: MsgSeverity::NonTerminalError,
+            kind,
+            col: self.token_start_col,
+            pointers_count: 1,
+        });
+    }
+}
 
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
 #[must_use] #[repr(transparent)]
@@ -1799,6 +1860,21 @@ impl Base {
     }
 }
 
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use] #[repr(u8)]
+pub enum OpenBracket {
+    Round  = b'(',
+    Square = b'[',
+    Curly  = b'{',
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[must_use] #[repr(u8)]
+pub enum CloseBracket {
+    Round  = b')',
+    Square = b']',
+    Curly  = b'}',
+}
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 #[must_use]
@@ -1806,6 +1882,10 @@ pub enum ErrorKind {
     OldStyleLineComment,
     UnclosedBlockComment,
     UnopenedBlockComment,
+
+    // UnclosedBracket(OpenBracket),
+    // UnopenedBracket(CloseBracket),
+    // MismatchedBraacket { expected: CloseBracket, actual: CloseBracket },
 
     UnclosedRoundBracket,
     UnclosedSquareBracket,
@@ -1820,9 +1900,9 @@ pub enum ErrorKind {
     MismatchedCurlyRoundBracket,
     MismatchedCurlySquareBracket,
 
-    DigitOutOfRange(ascii, Base),
+    DigitOutOfRange(Base),
 
-    UnrecognizedEscapeCharacter(ascii),
+    UnrecognizedEscapeCharacter,
     UnterminatedEscapeCharacter,
     AsciiBinaryEscapeOverflow,
 
@@ -1836,9 +1916,10 @@ pub enum ErrorKind {
 
     IdentifierTooLong { max: usize32 },
 
-    ControlCharacter(ascii),
+    ControlCharacter,
     Utf8Character { text_end: usize32 },
-    UnrecognizedCharacter(ascii),
+    InvalidUtf8,
+    UnrecognizedCharacter,
 }
 
 impl IntoMsgInfo for ErrorKind {
@@ -1906,7 +1987,8 @@ impl IntoMsgInfo for ErrorKind {
                 "']' closes the wrong bracket, expected a '}' instead".into()
             ),
 
-            Self::DigitOutOfRange(digit, base) => {
+            // IDEA(stefano): group consecutive digit out of range errors together
+            Self::DigitOutOfRange(base) => {
                 let mut bases_ranges = String::new();
                 bases_ranges += "(";
 
@@ -1919,25 +2001,30 @@ impl IntoMsgInfo for ErrorKind {
                 }
                 bases_ranges += ")";
 
+                let digit = src.code().as_bytes()[col as usize];
+
                 (
                     "invalid integer literal".into(),
                     format!(
                         "digit '{escaped}' is out of the valid range for a base {} number {}",
                         base.0 as u8,
                         bases_ranges,
-                        escaped = *digit as utf32,
+                        escaped = digit as utf32,
                     ).into()
                 )
             },
 
-            Self::UnrecognizedEscapeCharacter(unrecognized) => (
-                "invalid escape character".into(),
-                format!(
-                    "unrecognized escape character '{letter}' ({codepoint})",
-                    letter = *unrecognized as utf32,
-                    codepoint = unrecognized,
-                ).into(),
-            ),
+            Self::UnrecognizedEscapeCharacter => {
+                let unrecognized = src.code().as_bytes()[col as usize];
+                (
+                    "invalid escape character".into(),
+                    format!(
+                        "unrecognized escape character '{letter}' ({codepoint})",
+                        letter = unrecognized as utf32,
+                        codepoint = unrecognized,
+                    ).into(),
+                )
+            },
             Self::UnterminatedEscapeCharacter => (
                 "invalid escape character".into(),
                 "unterminated escape character".into(),
@@ -1980,10 +2067,13 @@ impl IntoMsgInfo for ErrorKind {
                 format!("exceeds the length limit of {max}").into(),
             ),
 
-            Self::ControlCharacter(ch) => (
-                "control characters are not allowed".into(),
-                format!("invalid character '{escaped}' ({ch})", escaped = ch.escape_ascii()).into(),
-            ),
+            Self::ControlCharacter => {
+                let ch = src.code().as_bytes()[col as usize];
+                (
+                    "control characters are not allowed".into(),
+                    format!("invalid character '{escaped}' ({ch})", escaped = ch.escape_ascii()).into(),
+                )
+            },
             Self::Utf8Character { text_end } => {
                 let grapheme = src.text(col, *text_end);
                 (
@@ -1991,10 +2081,17 @@ impl IntoMsgInfo for ErrorKind {
                     format!("invalid character '{grapheme}' ({codepoint})", codepoint = grapheme.escape_unicode()).into(),
                 )
             },
-            Self::UnrecognizedCharacter(unrecognized) => (
-                "unrecognized".into(),
-                format!("invalid character '{letter}' ({unrecognized})", letter = *unrecognized as utf32).into(),
+            Self::InvalidUtf8 => (
+                "invalid utf8 characters".into(),
+                "invalid character".into(),
             ),
+            Self::UnrecognizedCharacter => {
+                let unrecognized = src.code().as_bytes()[col as usize];
+                (
+                    "unrecognized".into(),
+                    format!("invalid character '{letter}' ({unrecognized})", letter = unrecognized as utf32).into(),
+                )
+            },
         };
 
         return MsgInfo { message: error_message, cause: error_cause_message };

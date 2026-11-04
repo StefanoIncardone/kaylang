@@ -13,9 +13,9 @@ documentation = "https://github.com/StefanoIncardone/kaylang/blob/main/LANGUAGE_
 license = "MIT"
 
 [dependencies]
-unicode-width = "0.2.2"
-unicode-segmentation = "1.13.3"
-cfg-if = "1.0.4"
+unicode-width = "0.2.3" # IDEA(stefano): fork own version
+unicode-segmentation = "1.13.3" # IDEA(stefano): fork own version
+cfg-if = "1.0.5"
 
 [dependencies.back-to-front]
 # For publishing

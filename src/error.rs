@@ -5,16 +5,13 @@ use back_to_front::{cli::{AnsiBg, AnsiFg, AnsiFlag}, usize32, ascii, utf32};
 use unicode_width::UnicodeWidthChar as _;
 
 // IDEA(stefano): move to back-to-front
-// IDEA(stefano): rename to PointersLen or something that refers to the fact that it's not
-// calculating the actual visible length of characters, but rather the length of the pointers in
-// error messages
-pub(crate) trait DisplayLen {
+pub(crate) trait PointersCount {
     #[must_use]
-    fn display_len(&self) -> usize32;
+    fn pointers_count(&self) -> usize32;
 }
 
-impl DisplayLen for str {
-    fn display_len(&self) -> usize32 {
+impl PointersCount for str {
+    fn pointers_count(&self) -> usize32 {
         let mut len = 0;
         for character in self.chars() {
             len += character.width_cjk().unwrap_or_default();
@@ -26,9 +23,9 @@ impl DisplayLen for str {
     }
 }
 
-impl DisplayLen for utf32 {
+impl PointersCount for utf32 {
     #[inline]
-    fn display_len(&self) -> usize32 {
+    fn pointers_count(&self) -> usize32 {
         let mut len = self.width_cjk().unwrap_or_default();
         if len == 0 {
             len = 1;
@@ -37,10 +34,10 @@ impl DisplayLen for utf32 {
     }
 }
 
-impl DisplayLen for ascii {
-    #[inline]
-    fn display_len(&self) -> usize32 {
-        return (*self as char).display_len();
+impl PointersCount for ascii {
+    #[inline(always)]
+    fn pointers_count(&self) -> usize32 {
+        return (*self as char).pointers_count();
     }
 }
 

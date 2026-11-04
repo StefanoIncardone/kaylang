@@ -1,11 +1,8 @@
 #![expect(clippy::print_stderr, reason = "it's a cli tool")]
 
 use kaylang::{
-    Color,
-    front_end::{
-        ast::Parser,
-        src_file::SrcFile,
-        tokenizer::{TokenizationResult, Tokenizer},
+    Color, front_end::{
+        ast::Parser, src_file::SrcFile, tokenizer::{TokenizationResult, Tokenizer, Tokens},
     },
 };
 use std::{path::Path, process::ExitCode};
@@ -27,24 +24,22 @@ fn main() -> ExitCode {
         },
     };
 
-    let (src, tokens) = {
-        let TokenizationResult { result, src } = Tokenizer::tokenize(&src_file);
-        match result {
-            Ok(tokens) => (src, tokens),
-            Err(errors) => {
-                for error in errors {
-                    eprintln!("{}\n", error.display(&src));
-                }
-                return ExitCode::FAILURE;
-            },
+    let tokens = {
+        let TokenizationResult { src, tokens, errors } = Tokenizer::tokenize(&src_file);
+        if errors.len() > 0 {
+            for error in errors {
+                eprintln!("{}\n", error.display(&src));
+            }
+            return ExitCode::FAILURE;
         }
+        Tokens { src, tokens }
     };
 
-    let _ast = match Parser::parse(&src, &tokens) {
+    let _ast = match Parser::parse(&tokens) {
         Ok(ast) => ast,
         Err(errors) => {
             for error in errors {
-                eprintln!("{}\n", error.display(&src));
+                eprintln!("{}\n", error.display(&tokens.src));
             }
             return ExitCode::FAILURE;
         },

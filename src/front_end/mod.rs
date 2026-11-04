@@ -9,7 +9,7 @@ use self::src_file::{Position, SrcCode};
 use crate::{ERROR, error::MsgWithCauseUnderTextWithLocation, front_end::src_file::SrcFile};
 extern crate alloc;
 use alloc::borrow::Cow;
-use back_to_front::{text, usize32};
+use back_to_front::usize32;
 
 // IDEA(stefano): move to back-to-front
 #[derive(Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -34,13 +34,8 @@ impl<T> Copy for Index32<T> {}
 
 impl<T> Index32<T> {
     #[inline(always)]
-    pub(crate) const fn new_usize32(index: usize32) -> Self {
+    pub(crate) const fn new(index: usize32) -> Self {
         return Self(index, core::marker::PhantomData);
-    }
-
-    #[inline(always)]
-    pub(crate) const fn new(index: usize) -> Self {
-        return Self(index as usize32, core::marker::PhantomData);
     }
 
     #[must_use] #[inline(always)] #[track_caller]
@@ -124,10 +119,10 @@ pub struct Msg<K: IntoMsgInfo> {
 }
 
 impl<K: IntoMsgInfo> Msg<K> {
+    // IDEA(stefano): implement display for Vec<Msg<K>> instead
     pub fn display<'code, 'path>(&self, src: &SrcCode<'code, 'path>) -> MsgDisplay<'code, 'path> {
         let position = Position::new(src, self.col);
-        let line_span = src.lines[position.line as usize - 1];
-        let line_text = text::span(src.code(), line_span);
+        let line_text = src.line_text(Index32::new(position.line - 1));
 
         let MsgInfo { message: error_message, cause: error_cause_message } = self.kind.info(self.col, src.src_file);
         return MsgDisplay {

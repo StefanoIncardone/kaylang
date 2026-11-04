@@ -1,0 +1,7 @@
+## character literals
+
+'\
+'
+
+## Note: make sure the file does not end on a newline, this is testing unclosed literals at the end of files
+'

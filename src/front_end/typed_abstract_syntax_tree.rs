@@ -1002,14 +1002,14 @@ pub struct TypedSyntaxTree<'st, 'tokens: 'st, 'code: 'tokens, 'path> {
 impl TypedSyntaxTree<'_, '_, '_, '_> {
     #[inline]
     fn new_expression(&mut self, expression: Expression) -> Index32<Expression> {
-        let index = Index32::new(self.expressions.len());
+        let index = Index32::new(self.expressions.len() as usize32);
         self.expressions.push(expression);
         return index;
     }
 
     #[inline]
     fn new_variable(&mut self, variable: VariableDefinition) -> Index32<VariableDefinition> {
-        let index = Index32::new(self.variables.len());
+        let index = Index32::new(self.variables.len() as usize32);
         self.variables.push(variable);
         return index;
     }
@@ -1071,7 +1071,7 @@ impl<'st, 'tokens: 'st, 'code: 'tokens, 'path> Parser<'st, 'tokens, 'code, 'path
                     parser.errors.push(err);
 
                     // consuming all remaining nodes until the end of the file
-                    parser.node_index = Index32::new(parser.tast.syntax_tree.nodes.len());
+                    parser.node_index = Index32::new(parser.tast.syntax_tree.nodes.len() as usize32);
                     break;
                 },
             }
@@ -1136,7 +1136,7 @@ impl<'st, 'tokens: 'st, 'code: 'tokens, 'path> Parser<'st, 'tokens, 'code, 'path
 
             st::Node::Scope { open_curly_bracket_column, raw_nodes_in_scope_count, .. } => {
                 let current_scope_index = self.scope;
-                self.scope = Index32::new(self.scopes.len());
+                self.scope = Index32::new(self.scopes.len() as usize32);
                 self.scopes.push(Scope {
                     parent: current_scope_index,
                     // types: Vec::new(),
@@ -1145,7 +1145,7 @@ impl<'st, 'tokens: 'st, 'code: 'tokens, 'path> Parser<'st, 'tokens, 'code, 'path
                 });
 
                 let placeholder_scope = Node::Scope { raw_nodes_in_scope_count: 0 };
-                let placeholder_scope_node_index = Index32::new(self.tast.nodes.len());
+                let placeholder_scope_node_index = Index32::new(self.tast.nodes.len() as usize32);
                 self.tast.nodes.push(placeholder_scope);
 
                 let raw_nodes_in_scope_end = self.node_index.0 + *raw_nodes_in_scope_count;
@@ -1160,7 +1160,7 @@ impl<'st, 'tokens: 'st, 'code: 'tokens, 'path> Parser<'st, 'tokens, 'code, 'path
                     }
                 }
 
-                let last_scope_node_index = Index32::<Node>::new(self.tast.nodes.len() - 1);
+                let last_scope_node_index = Index32::<Node>::new(self.tast.nodes.len() as usize32 - 1);
                 let Node::Scope { raw_nodes_in_scope_count: placeholder_raw_nodes_in_scope_count } =
                     &mut self.tast.nodes[placeholder_scope_node_index]
                 else {
@@ -1230,8 +1230,7 @@ impl<'st, 'tokens: 'st, 'code: 'tokens, 'path> Parser<'st, 'tokens, 'code, 'path
         error_cause_message: &str,
     ) -> ! {
         let position = Position::new(&self.tast.syntax_tree.tokens.src, absolute_column);
-        let line_span = self.tast.syntax_tree.tokens.src.lines[position.line as usize - 1];
-        let line_text = &self.tast.syntax_tree.code()[line_span.start() as usize..line_span.end() as usize];
+        let line_text = self.tast.syntax_tree.tokens.src.line_text(Index32::new(position.line - 1));
 
         let error = MsgWithCauseUnderTextWithLocation {
             severity: MsgSeverity::Error,
@@ -1277,12 +1276,12 @@ struct Peeked<'st> {
 impl<'st, 'code: 'st> Parser<'st, '_, 'code, '_> {
     #[must_use]
     fn peek_next_node(&self) -> Option<Peeked<'st>> {
-        let node_index_end = Index32::<Node>::new(self.tast.syntax_tree.nodes.len());
+        let node_index_end = Index32::<Node>::new(self.tast.syntax_tree.nodes.len() as usize32);
         for next_node_index in self.node_index.0..node_index_end.0 {
-            let next_node_index_index = Index32::new_usize32(next_node_index);
+            let next_node_index_index = Index32::new(next_node_index);
             let next_node = &self.tast.syntax_tree.nodes[next_node_index_index];
             let st::Node::Semicolon { .. } = next_node else {
-                let peeked_node_index_index = Index32::new_usize32(next_node_index_index.0 + 1);
+                let peeked_node_index_index = Index32::new(next_node_index_index.0 + 1);
                 return Some(Peeked { node: next_node, index: peeked_node_index_index });
             };
         }
@@ -1409,7 +1408,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
             },
         };
 
-        return token.display_len(self.tast.syntax_tree.tokens.src.src_file);
+        return token.display_len(self.tast.syntax_tree.tokens);
     }
 
     // NOTE(stefano): only considering the first token in the expression until proper
@@ -1683,7 +1682,7 @@ impl<'code> Parser<'_, '_, 'code, '_> {
 
                 let array_expression = Expression::Array {
                     base_type: expected_array_items_type.base_typ(),
-                    items_start: Index32::new_usize32(items_start.0),
+                    items_start: Index32::new(items_start.0),
                     items_len: *items_len as u64,
                 };
 
@@ -2779,7 +2778,7 @@ impl Parser<'_, '_, '_, '_> {
                     actual: condition_expression_type,
                 },
                 col: if_column,
-                pointers_count: Token { kind: TokenKind::If, col: if_column }.display_len(self.tast.syntax_tree.tokens.src.src_file),
+                pointers_count: Token { kind: TokenKind::If, col: if_column }.display_len(self.tast.syntax_tree.tokens),
             });
         };
         return Ok(condition_expression);
@@ -2800,7 +2799,7 @@ impl Parser<'_, '_, '_, '_> {
                     actual: condition_expression_type,
                 },
                 col: loop_column,
-                pointers_count: Token { kind: TokenKind::Loop, col: loop_column }.display_len(self.tast.syntax_tree.tokens.src.src_file),
+                pointers_count: Token { kind: TokenKind::Loop, col: loop_column }.display_len(self.tast.syntax_tree.tokens),
             });
         };
         return Ok(condition_expression);

@@ -1,13 +1,9 @@
 #![expect(clippy::print_stderr, reason = "it's a cli tool")]
 
 use kaylang::{
-    Color, Logger,
-    front_end::{
-        ast::Parser,
-        src_file::SrcFile,
-        tokenizer::{TokenizationResult, Tokenizer},
+    Color, Logger, Verbosity, front_end::{
+        ast::Parser, src_file::SrcFile, tokenizer::{TokenizationResult, Tokenizer, Tokens},
     },
-    Verbosity,
 };
 use kaylang::{
     PARSING, DONE, LOADING_SOURCE, PARSING_AST, TOKENIZATION,
@@ -44,30 +40,28 @@ fn main() -> ExitCode {
         }
     };
 
-    let (src, tokens) = {
+    let tokens = {
         let logger = Logger::new();
-        let TokenizationResult { result, src } = Tokenizer::tokenize(&src_file);
+        let TokenizationResult { src, tokens, errors } = Tokenizer::tokenize(&src_file);
         logger.sub_step(&TOKENIZATION, None, verbosity);
-        match result {
-            Ok(tokens) => (src, tokens),
-            Err(errors) => {
-                for error in errors {
-                    eprintln!("{}\n", error.display(&src));
-                }
-                return ExitCode::FAILURE;
-            },
+        if errors.len() > 0 {
+            for error in errors {
+                eprintln!("{}\n", error.display(&src));
+            }
+            return ExitCode::FAILURE;
         }
+        Tokens { src, tokens }
     };
 
     let _ast = {
         let logger = Logger::new();
-        let building_ast_result = Parser::parse(&src, &tokens);
+        let building_ast_result = Parser::parse(&tokens);
         logger.sub_step(&PARSING_AST, None, verbosity);
         match building_ast_result {
             Ok(ast) => ast,
             Err(errors) => {
                 for error in errors {
-                    eprintln!("{}\n", error.display(&src));
+                    eprintln!("{}\n", error.display(&tokens.src));
                 }
                 return ExitCode::FAILURE;
             },

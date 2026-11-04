@@ -1,6 +1,6 @@
-use crate::{ERROR, error::MsgWithCause};
+use crate::{ERROR, error::MsgWithCause, front_end::Index32};
 use std::{fs::File, io::Read as _, path::Path};
-use back_to_front::{slice, src_code::Line, text};
+use back_to_front::{slice, src_code::Span, text};
 use unicode_width::UnicodeWidthChar as _;
 
 #[expect(clippy::useless_attribute, reason = "false positive")]
@@ -25,8 +25,8 @@ pub struct Position<'path> {
 impl<'path> Position<'path> {
     pub(crate) fn new(src: &SrcCode<'_, 'path>, offset: usize32) -> Self {
         let line_index = src.line_index(offset);
-        let line = src.lines[line_index as usize];
-        let line_text_before_error = text::slice(src.code(), line.start() as usize, offset as usize);
+        let line_span = src.line_span(line_index);
+        let line_text_before_error = text::slice(src.code(), line_span.start() as usize, offset as usize);
 
         let mut width = 1;
         let mut column = 1;
@@ -36,7 +36,7 @@ impl<'path> Position<'path> {
             column += 1;
         }
 
-        return Self { file: src.path(), line: line_index + 1, column, offset, width };
+        return Self { file: src.path(), line: line_index.0 + 1, column, offset, width };
     }
 }
 
@@ -105,39 +105,84 @@ impl<'path> SrcFile<'path> {
     }
 }
 
+/// Consecutive ranges of line end columns, excluding newline characters
+pub type LineEnds = Vec<usize32>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct SrcCode<'code, 'path> {
     pub(crate) src_file: &'code SrcFile<'path>,
-    /// Consecutive ranges of line start and end columns, excluding new line characters
-    // IDEA(stefano): only store line ends, include line terminators and extract visible characters only when needed
-    pub(crate) lines: Vec<Line>,
+    pub(crate) line_ends: LineEnds,
 }
 
 // getters
 #[rustfmt::skip]
 impl<'code, 'path> SrcCode<'code, 'path> {
-    #[must_use] #[inline(always)] pub const fn path(&self)  -> &'path Path { return self.src_file.path(); }
-    #[must_use] #[inline(always)] pub const fn code(&self)  -> &'code str  { return self.src_file.code(); }
-                #[inline(always)] pub const fn lines(&self) -> &[Line]     { return self.lines.as_slice(); }
+    #[must_use] #[inline(always)] pub const fn path(&self)      -> &'path Path { return self.src_file.path(); }
+    #[must_use] #[inline(always)] pub const fn code(&self)      -> &'code str  { return self.src_file.code(); }
+    #[must_use] #[inline(always)] pub const fn line_ends(&self) -> &[usize32]  { return self.line_ends.as_slice(); }
 }
 
-impl SrcCode<'_, '_> {
-    #[must_use]
-    const fn line_index(&self, column: usize32) -> usize32 {
+impl<'code> SrcCode<'code, '_> {
+    pub(crate) const fn line_index(&self, column: usize32) -> Index32<usize32> {
         let mut left: usize32 = 0;
-        let mut right = self.lines.len() as usize32 - 1;
+        let mut right = self.line_ends.len() as usize32 - 1;
+
         while left < right {
             let middle = left + (right - left) / 2;
 
-            let line_end = unsafe { slice::at_unchecked(self.lines.as_slice(), middle as usize ) }.end();
+            let line_end = *unsafe { slice::at_unchecked(self.line_ends(), middle as usize) };
             if column <= line_end {
                 right = middle;
-            } else {
+            }
+            else {
                 left = middle + 1;
             }
         }
-        return left;
+
+        return Index32::new(left);
+    }
+
+
+    #[must_use] #[inline(always)] #[track_caller]
+    pub(crate) const fn line_end(&self, line_index: Index32<usize32>) -> usize32 {
+        let line_end = *unsafe { slice::at_unchecked(self.line_ends(), line_index.0 as usize)};
+        return line_end;
+    }
+
+    #[must_use] #[inline(always)] #[track_caller]
+    pub(crate) const fn line_start(&self, line_index: Index32<usize32>) -> usize32 {
+        let line_start: usize32 = if line_index.0 == 0 {
+            0
+        } else {
+            *unsafe { slice::at_unchecked(self.line_ends(), line_index.0 as usize - 1) } + 1
+        };
+        return line_start;
+    }
+
+    #[inline(always)] #[track_caller]
+    pub(crate) const fn line_span(&self, line_index: Index32<usize32>) -> Span {
+        let start = self.line_start(line_index);
+        let end = self.line_end(line_index);
+        return unsafe { Span::new_unchecked(start, end) };
+    }
+
+    #[must_use]
+    pub(crate) const fn line_text_with_newlines(&self, line_index: Index32<usize32>) -> &'code str {
+        let mut line_start = self.line_start(line_index);
+        let line_end = self.line_end(line_index);
+
+        unimplemented!()
+        // while (line_end as usize) < self.code().len()
+        // let span = self.line_span(line_index);
+        // let line_text = self.src_file.text(span.start(), span.end());
+        // return line_text;
+    }
+
+    #[must_use] #[inline] #[track_caller]
+    pub(crate) const fn line_text(&self, line_index: Index32<usize32>) -> &'code str {
+        let line_span = self.line_span(line_index);
+        let line_text = text::span(self.code(), line_span);
+        return line_text;
     }
 }
 

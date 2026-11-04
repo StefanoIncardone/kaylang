@@ -332,7 +332,7 @@ section .rodata
  section .data
  {strings}"#,
             asm = this.asm,
-            src_path = ir.tast.syntax_tree.path().display(),
+            src_path = ir.tast.syntax_tree.tokens.src.path().display(),
         );
 
         return program;
@@ -394,7 +394,7 @@ impl<'ir, 'code: 'ir> Compiler<'ir, '_, '_, '_, 'code, '_> {
                     | Operand::True =>       _ = writeln!(self.asm, " call bool_print"),
                     Operand::I64 { .. } =>   _ = writeln!(self.asm, " call i64_print"),
                     Operand::Ascii { .. } => _ = writeln!(self.asm, " call ascii_print"),
-                    Operand::Str { .. } => _ = unimplemented!(),
+                    Operand::Str { .. } => unimplemented!(),
                     Operand::TempVariable { .. } => unimplemented!(),
                     Operand::Variable { .. } => unimplemented!(),
                     // Operand::Variable { variable } => {

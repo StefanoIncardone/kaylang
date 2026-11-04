@@ -1,9 +1,9 @@
 #![cfg(test)]
-#![expect(clippy::panic, clippy::panic_in_result_fn, clippy::print_stderr)]
+#![expect(clippy::panic, clippy::panic_in_result_fn, clippy::print_stderr, clippy::inline_modules)]
 
 use kaylang::{
     Color, Logger, Verbosity, code_generation::{Artifacts, Platform, nasm::compiler_ast::Compiler}, front_end::{
-        ast::Parser, src_file::SrcFile, syntax_tree as st, tokenizer::{TokenizationResult, TokenizedCode, Tokenizer}, typed_abstract_syntax_tree as tast,
+        ast::Parser, src_file::SrcFile, syntax_tree as st, tokenizer::{TokenizationResult, Tokens, Tokenizer}, typed_abstract_syntax_tree as tast,
     },
 };
 use kaylang::{
@@ -15,71 +15,147 @@ use std::{
     process::{Command, ExitCode},
 };
 
-#[test]
-fn check_project_euler() -> Result<(), ExitCode> {
-    let color = Color::Auto;
-    color.set(&std::io::stderr());
+mod project_euler {
+    use super::*;
 
-    let project_euler_path = "examples/project_euler";
-    let src_files = match std::fs::read_dir(project_euler_path) {
-        Ok(files) => files,
-        Err(err)  => panic!("could not read '{project_euler_path}' folder: {err}"),
-    };
+    #[test] fn check_project_euler() -> Result<(), ExitCode> {
+        let color = Color::Auto;
+        color.set(&std::io::stderr());
 
-    let mut error = false;
-    for src_file in src_files {
-        let src_path = match src_file {
-            Ok(path) => path.path(),
-            Err(err) => panic!("could not get path: {err}"),
+        let project_euler_path = "examples/project_euler";
+        let src_files = match std::fs::read_dir(project_euler_path) {
+            Ok(files) => files,
+            Err(err)  => panic!("could not read '{project_euler_path}' folder: {err}"),
         };
-        if let Some(extension) = src_path.extension() && extension == "kay" {
-            if let Err(_) = check(&src_path) {
-                error = true;
+
+        let mut error = false;
+        for src_file in src_files {
+            let src_path = match src_file {
+                Ok(path) => path.path(),
+                Err(err) => panic!("could not get path: {err}"),
+            };
+            if let Some(extension) = src_path.extension() && extension == "kay" {
+                if let Err(_) = check(&src_path) {
+                    error = true;
+                }
             }
         }
+
+        if error { return Err(ExitCode::FAILURE); }
+        return Ok(());
     }
 
-    if error { return Err(ExitCode::FAILURE); }
-    return Ok(());
-}
+    #[test] fn run_project_euler() -> Result<(), ExitCode> {
+        let color = Color::Auto;
+        color.set(&std::io::stderr());
 
-#[test]
-fn run_project_euler() -> Result<(), ExitCode> {
-    let color = Color::Auto;
-    color.set(&std::io::stderr());
-
-    let out_path = Path::new("out");
-    let project_euler_path = "examples/project_euler";
-    let src_files = match std::fs::read_dir(project_euler_path) {
-        Ok(files) => files,
-        Err(err)  => panic!("could not read '{project_euler_path}' folder: {err}"),
-    };
-
-    let mut error = false;
-    for src_file in src_files {
-        let src_path = match src_file {
-            Ok(path) => path.path(),
-            Err(err) => panic!("could not get path: {err}"),
+        let out_path = Path::new("out");
+        let project_euler_path = "examples/project_euler";
+        let src_files = match std::fs::read_dir(project_euler_path) {
+            Ok(files) => files,
+            Err(err)  => panic!("could not read '{project_euler_path}' folder: {err}"),
         };
-        if let Some(extension) = src_path.extension() && extension == "kay" {
-            if let Err(_) = run(&src_path, out_path) {
-                error = true;
+
+        let mut error = false;
+        for src_file in src_files {
+            let src_path = match src_file {
+                Ok(path) => path.path(),
+                Err(err) => panic!("could not get path: {err}"),
+            };
+            if let Some(extension) = src_path.extension() && extension == "kay" {
+                if let Err(_) = run(&src_path, out_path) {
+                    error = true;
+                }
             }
         }
+
+        if error { return Err(ExitCode::FAILURE); }
+        return Ok(());
+    }
+}
+
+mod tokenization {
+    use kaylang::front_end::{Msg, tokenizer::{ErrorKind, Token, TokenKind}};
+    use super::*;
+
+    // #[test] fn escape_characters() -> Result<(), ExitCode> {
+    //     let src_path = Path::new("tests/escape_characters.kay");
+    //     let src_file = load_src_file(src_path)?;
+
+    //     let TokenizationResult { tokens, errors, .. } = Tokenizer::tokenize(&src_file);
+    //     return match result {
+    //         Ok(tokens) => Ok(()),
+    //         Err(errors) => {
+    //             unimplemented!("check");
+    //             Err(ExitCode::FAILURE)
+    //         },
+    //     };
+    // }
+
+    #[test] fn identifiers() -> Result<(), ExitCode> {
+        let src_path = Path::new("tests/tokenization/identifiers.kay");
+        let src_file = load_src_file(src_path)?;
+        let TokenizationResult { tokens, errors, .. } = Tokenizer::tokenize(&src_file);
+
+        let ([
+            Token { kind: TokenKind::Identifier { .. }, .. },
+            Token { kind: TokenKind::Identifier { .. }, .. },
+            Token { kind: TokenKind::Identifier { .. }, .. },
+            Token { kind: TokenKind::Unexpected { .. }, .. },
+            Token { kind: TokenKind::Unexpected { .. }, .. },
+            Token { kind: TokenKind::Identifier { .. }, .. },
+            Token { kind: TokenKind::IdentifierStr { .. }, .. },
+            Token { kind: TokenKind::IdentifierStr { .. }, .. },
+            Token { kind: TokenKind::Unexpected { .. }, .. },
+            Token { kind: TokenKind::Unexpected { .. }, .. },
+            Token { kind: TokenKind::Unexpected { .. }, .. },
+            Token { kind: TokenKind::Unexpected { .. }, .. },
+            Token { kind: TokenKind::LineComment { .. }, .. },
+            Token { kind: TokenKind::Unexpected { .. }, .. },
+        ], [
+            Msg { kind: ErrorKind::Utf8Character { .. }, .. },
+            Msg { kind: ErrorKind::IdentifierTooLong { .. }, .. },
+            Msg { kind: ErrorKind::Utf8Character { .. }, .. },
+            Msg { kind: ErrorKind::UnclosedIdentifierStr, .. },
+            Msg { kind: ErrorKind::Utf8Character { .. }, .. },
+            Msg { kind: ErrorKind::UnclosedIdentifierStr, .. },
+            Msg { kind: ErrorKind::IdentifierTooLong { .. }, .. },
+            Msg { kind: ErrorKind::UnclosedIdentifierStr, .. },
+        ]) = (tokens.as_slice(), errors.as_slice()) else {
+            return Err(ExitCode::FAILURE);
+        };
+        return Ok(());
     }
 
-    if error { return Err(ExitCode::FAILURE); }
-    return Ok(());
+    #[test] fn quoted_literals() -> Result<(), ExitCode> {
+        let src_path = Path::new("tests/tokenization/literals_ascii.kay");
+        return check(src_path);
+    }
 }
 
-#[test]
-fn run_escape_characters() -> Result<(), ExitCode> {
-    let out_path = Path::new("out");
-    let src_path = Path::new("tests/escape_characters.kay");
-    return run(src_path, out_path);
+fn load_src_file(src_path: &Path) -> Result<SrcFile<'_>, ExitCode> {
+    return match SrcFile::load(src_path) {
+        Ok(src_file) => Ok(src_file),
+        Err(err) => {
+            eprintln!("{err}");
+            Err(ExitCode::FAILURE)
+        },
+    }
 }
 
-#[expect(clippy::single_call_fn)]
+// fn tokenize<'code, 'path: 'code>(src_file: &'code SrcFile<'path>) -> Result<Tokens<'code, 'path>, ExitCode> {
+//     let TokenizationResult { result, src } = Tokenizer::tokenize(&src_file);
+//     return match result {
+//         Ok(tokens) => Ok(Tokens { src, tokens }),
+//         Err(errors) => {
+//             for error in errors {
+//                 eprintln!("{}\n", error.display(&src));
+//             }
+//             Err(ExitCode::FAILURE)
+//         },
+//     }
+// }
+
 fn check(src_path: &Path) -> Result<(), ExitCode> {
     let color = Color::Auto;
     color.set(&std::io::stderr());
@@ -89,25 +165,16 @@ fn check(src_path: &Path) -> Result<(), ExitCode> {
     let execution_step = Logger::new();
     Logger::info(&PARSING, src_path, verbosity);
 
-    let src_file = match SrcFile::load(src_path) {
-        Ok(src_file) => src_file,
-        Err(err) => {
-            eprintln!("{err}");
-            return Err(ExitCode::FAILURE);
-        },
-    };
-
+    let src_file = load_src_file(src_path)?;
     let tokens = {
-        let TokenizationResult { result, src } = Tokenizer::tokenize(&src_file);
-        match result {
-            Ok(tokens) => TokenizedCode { src, tokens },
-            Err(errors) => {
-                for error in errors {
-                    eprintln!("{}\n", error.display(&src));
-                }
-                return Err(ExitCode::FAILURE);
-            },
+        let TokenizationResult { src, tokens, errors } = Tokenizer::tokenize(&src_file);
+        if errors.len() > 0 {
+            for error in errors {
+                eprintln!("{}\n", error.display(&src));
+            }
+            return Err(ExitCode::FAILURE);
         }
+        Tokens { src, tokens }
     };
 
     let syntax_tree = match st::Parser::parse(&tokens) {
@@ -135,7 +202,7 @@ fn check(src_path: &Path) -> Result<(), ExitCode> {
         },
     };
 
-    let _ast = match Parser::parse(&tokens.src, &tokens.tokens) {
+    let _ast = match Parser::parse(&tokens) {
         Ok(ast) => ast,
         Err(errors) => {
             for error in errors {
@@ -158,25 +225,17 @@ fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
     let execution_step = Logger::new();
     Logger::info(&PARSING, src_path, verbosity);
 
-    let src_file = match SrcFile::load(src_path) {
-        Ok(src_file) => src_file,
-        Err(err) => {
-            eprintln!("{err}");
-            return Err(ExitCode::FAILURE);
-        },
-    };
+    let src_file = load_src_file(src_path)?;
 
     let tokens = {
-        let TokenizationResult { result, src } = Tokenizer::tokenize(&src_file);
-        match result {
-            Ok(tokens) => TokenizedCode { src, tokens },
-            Err(errors) => {
-                for error in errors {
-                    eprintln!("{}\n", error.display(&src));
-                }
-                return Err(ExitCode::FAILURE);
-            },
+        let TokenizationResult { src, tokens, errors } = Tokenizer::tokenize(&src_file);
+        if errors.len() > 0 {
+            for error in errors {
+                eprintln!("{}\n", error.display(&src));
+            }
+            return Err(ExitCode::FAILURE);
         }
+        Tokens { src, tokens }
     };
 
     let syntax_tree = match st::Parser::parse(&tokens) {
@@ -204,7 +263,7 @@ fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
         },
     };
 
-    let ast = match Parser::parse(&tokens.src, &tokens.tokens) {
+    let ast = match Parser::parse(&tokens) {
         Ok(ast) => ast,
         Err(errors) => {
             for error in errors {

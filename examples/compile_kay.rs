@@ -2,7 +2,7 @@
 
 use kaylang::{
     Color, Logger, Verbosity, code_generation::{Artifacts, Platform, nasm::compiler_ast::Compiler}, error::MsgSimple, front_end::{
-        ast::Parser, src_file::SrcFile, tokenizer::{TokenizationResult, Tokenizer},
+        ast::Parser, src_file::SrcFile, tokenizer::{TokenizationResult, Tokenizer, Tokens},
     },
 };
 use kaylang::{
@@ -46,30 +46,28 @@ fn main() -> ExitCode {
         }
     };
 
-    let (src, tokens) = {
+    let tokens = {
         let logger = Logger::new();
-        let TokenizationResult { result, src } = Tokenizer::tokenize(&src_file);
+        let TokenizationResult { src, tokens, errors } = Tokenizer::tokenize(&src_file);
         logger.sub_step(&TOKENIZATION, None, verbosity);
-        match result {
-            Ok(tokens) => (src, tokens),
-            Err(errors) => {
-                for error in errors {
-                    eprintln!("{}\n", error.display(&src));
-                }
-                return ExitCode::FAILURE;
-            },
+        if errors.len() > 0 {
+            for error in errors {
+                eprintln!("{}\n", error.display(&src));
+            }
+            return ExitCode::FAILURE;
         }
+        Tokens { src, tokens }
     };
 
     let ast = {
         let logger = Logger::new();
-        let building_ast_result = Parser::parse(&src, &tokens);
+        let building_ast_result = Parser::parse(&tokens);
         logger.sub_step(&PARSING_AST, None, verbosity);
         match building_ast_result {
             Ok(ast) => ast,
             Err(errors) => {
                 for error in errors {
-                    eprintln!("{}\n", error.display(&src));
+                    eprintln!("{}\n", error.display(&tokens.src));
                 }
                 return ExitCode::FAILURE;
             },
@@ -92,7 +90,7 @@ fn main() -> ExitCode {
 
     let _compiler_result: () = {
         let logger = Logger::new();
-        let compiled_code = Compiler::compile(&src, &ast);
+        let compiled_code = Compiler::compile(&tokens.src, &ast);
         logger.sub_step(&GENERATING_ASM, Some(&artifacts.asm_path), verbosity);
         if let Err(err) = std::fs::write(&artifacts.asm_path, compiled_code) {
             let error = MsgSimple { kind: &COULD_NOT_WRITE_COMPILED_CODE, message: &err };

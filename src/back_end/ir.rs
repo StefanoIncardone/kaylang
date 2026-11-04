@@ -242,14 +242,14 @@ impl<'tast, 'tokens: 'tast> Ir<'tast, '_, 'tokens, '_, '_> {
 impl Ir<'_, '_, '_, '_, '_> {
     #[inline]
     fn new_operand(&mut self, operand: Operand) -> Index32<Operand> {
-        let index = Index32::new(self.operands.len());
+        let index = Index32::new(self.operands.len() as usize32);
         self.operands.push(operand);
         return index;
     }
 
     #[inline]
     fn new_expression(&mut self, expression: Expression) -> Index32<Expression> {
-        let index = Index32::new(self.expressions.len());
+        let index = Index32::new(self.expressions.len() as usize32);
         self.expressions.push(expression);
         return index;
     }
@@ -395,7 +395,7 @@ impl<'tast, 'code: 'tast> Parser<'tast, '_, '_, 'code, '_> {
     #[must_use]
     fn peek_next_node(&self) -> Option<Peeked<'tast>> {
         let next_node = self.node_index.get(&self.ir.tast.nodes)?;
-        let peeked_node_index_index = Index32::new_usize32(self.node_index.0 + 1);
+        let peeked_node_index_index = Index32::new(self.node_index.0 + 1);
         return Some(Peeked { node: next_node, index: peeked_node_index_index });
     }
 }
