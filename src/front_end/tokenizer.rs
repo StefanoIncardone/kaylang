@@ -1201,7 +1201,6 @@ impl<'code, 'path> Tokenizer<'code, 'path> {
 
 // iteration of characters
 impl<'code> Tokenizer<'code, '_> {
-    // REMOVE(stefano): less complexity to keep track
     #[inline(always)]
     fn new_line(&mut self, line_end: LineEnd) {
         self.tokens.src.line_ends.push(self.col);
@@ -1238,9 +1237,9 @@ impl Tokenizer<'_, '_> {
         let previous_errors_len = self.tokens.errors.len();
 
         let check_fn = match base {
-            digit::Base::Binary => digit::binary::check,
-            digit::Base::Octal => digit::octal::check,
-            digit::Base::Decimal => digit::decimal::check,
+            digit::Base::Binary      => digit::binary::check,
+            digit::Base::Octal       => digit::octal::check,
+            digit::Base::Decimal     => digit::decimal::check,
             digit::Base::Hexadecimal => digit::hexadecimal::check,
         };
 
@@ -1267,8 +1266,7 @@ impl Tokenizer<'_, '_> {
         return Ok(());
     }
 
-    // TODO(stefano): check error columns
-    fn escape_sequence(&mut self) -> EscapeSequence {
+    fn ascii_or_str_escape_sequence(&mut self) -> EscapeSequence {
         let start_of_character = self.col;
         self.col += 1; // skipping the backslash
 
@@ -1384,6 +1382,7 @@ impl Tokenizer<'_, '_> {
                     },
                     _utf8_ch => {
                         self.utf8_error();
+                        self.logical_characters_count += 1;
                         return EscapeSequence::ErrContinue;
                     },
                 }
@@ -1404,6 +1403,8 @@ impl Tokenizer<'_, '_> {
                     col: start_of_character + 1,
                     pointers_count: 1,
                 });
+                self.col += 1;
+                self.logical_characters_count += 1;
                 return EscapeSequence::ErrContinue;
             },
             _unrecognized @ ascii_range!() => {
@@ -1413,12 +1414,41 @@ impl Tokenizer<'_, '_> {
                     col: start_of_character,
                     pointers_count: self.col - start_of_character,
                 });
+                self.col += 1;
+                self.logical_characters_count += 1;
                 return EscapeSequence::ErrContinue;
             },
             _utf8_ch => {
                 self.utf8_error();
+                self.logical_characters_count += 1;
                 return EscapeSequence::ErrContinue;
             },
+        };
+
+        return EscapeSequence::Ok(escaped_character);
+    }
+
+    fn raw_str_escape_sequence(&mut self) -> EscapeSequence {
+        let start_of_character = self.col;
+        self.col += 1; // skipping the backslash
+
+        let Some(current_character) = self.current_byte() else {
+            self.tokens.errors.push(Msg {
+                severity: MsgSeverity::NonTerminalError,
+                kind: ErrorKind::UnterminatedEscapeCharacter,
+                col: start_of_character,
+                pointers_count: self.col - start_of_character,
+            });
+            return EscapeSequence::ErrBreak;
+        };
+
+        let escaped_character = match current_character {
+            b'"'  => {
+                self.col += 1;
+                self.logical_characters_count += 1;
+                b'\"'
+            },
+            _ => return EscapeSequence::ErrContinue,
         };
 
         return EscapeSequence::Ok(escaped_character);
@@ -1441,7 +1471,7 @@ impl Tokenizer<'_, '_> {
             };
 
             match next_character {
-                b'\\' => match self.escape_sequence() {
+                b'\\' => match self.ascii_or_str_escape_sequence() {
                     EscapeSequence::Ok(ch) => logical_character = ch,
                     EscapeSequence::ErrBreak => break,
                     EscapeSequence::ErrContinue => {},
@@ -1486,7 +1516,7 @@ impl Tokenizer<'_, '_> {
                     self.col += 1;
                     self.logical_characters_count += 1;
                 },
-                ascii_range!() => {
+                _unrecognized @ ascii_range!() => {
                     self.col += 1;
                     self.logical_characters_count += 1;
                 },
@@ -1516,7 +1546,7 @@ impl Tokenizer<'_, '_> {
             };
 
             match next_character {
-                b'\\' => match self.escape_sequence() {
+                b'\\' => match self.ascii_or_str_escape_sequence() {
                     EscapeSequence::Ok(_ch) => {},
                     EscapeSequence::ErrBreak => break,
                     EscapeSequence::ErrContinue => {},
@@ -1544,7 +1574,7 @@ impl Tokenizer<'_, '_> {
                     });
                     self.col += 1;
                 },
-                ascii_range!() => self.col += 1,
+                _unrecognized @ ascii_range!() => self.col += 1,
                 _utf8_ch => self.utf8_error(),
             }
         }
@@ -1568,19 +1598,10 @@ impl Tokenizer<'_, '_> {
             };
 
             match next_character {
-                b'\\' => {
-                    let Some(escape_character) = self.current_byte() else {
-                        self.tokens.errors.push(Msg {
-                            severity: MsgSeverity::NonTerminalError,
-                            kind: ErrorKind::UnterminatedEscapeCharacter,
-                            col: self.col,
-                            pointers_count: 1,
-                        });
-                        self.col += 1;
-                        break;
-                    };
-
-                    if escape_character == b'"' { self.col += 1; }
+                b'\\' => match self.raw_str_escape_sequence() {
+                    EscapeSequence::Ok(_ch) => {},
+                    EscapeSequence::ErrBreak => break,
+                    EscapeSequence::ErrContinue => {},
                 },
                 b'"' => {
                     self.col += 1;
@@ -1604,7 +1625,7 @@ impl Tokenizer<'_, '_> {
                     });
                     self.col += 1;
                 },
-                ascii_range!() => self.col += 1,
+                _unrecognized @ ascii_range!() => self.col += 1,
                 _utf8_ch => self.utf8_error(),
             }
         }
@@ -1667,7 +1688,7 @@ impl Tokenizer<'_, '_> {
                     self.logical_characters_count += 1;
                     self.col += 1;
                 },
-                ascii_range!() => {
+                _unrecognized @ ascii_range!() => {
                     self.logical_characters_count += 1;
                     self.col += 1;
                 },
@@ -1712,12 +1733,12 @@ impl Tokenizer<'_, '_> {
             "continue" => TokenKind::Continue,
             "len" => TokenKind::Op(Op::Len),
             identifier => {
-                if identifier_len > Self::MAX_IDENTIFIER_LEN {
+                if identifier.len() > Self::MAX_IDENTIFIER_LEN as usize {
                     self.tokens.errors.push(Msg {
                         severity: MsgSeverity::NonTerminalError,
                         kind: ErrorKind::IdentifierTooLong { max: Self::MAX_IDENTIFIER_LEN },
                         col: self.token_start_col,
-                        pointers_count: self.token_text().pointers_count(),
+                        pointers_count: identifier.len() as usize32,
                     });
                     return TokenKind::Unexpected { text_end: self.col };
                 }
