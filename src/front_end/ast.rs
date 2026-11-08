@@ -657,7 +657,7 @@ impl<'ast, 'code: 'ast> ExpressionDisplay<'ast, 'code> {
             },
             Expression::Variable { variable_index, .. } => {
                 let variable = &self.ast.variables[*variable_index as usize];
-                let variable_name_str = unsafe { core::str::from_utf8_unchecked(variable.name.as_bytes()) };
+                let variable_name_str = unsafe { str::from_utf8_unchecked(variable.name.as_bytes()) };
                 write!(f, "{variable_name_str}")
             },
         };

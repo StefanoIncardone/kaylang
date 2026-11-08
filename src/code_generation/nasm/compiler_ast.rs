@@ -564,8 +564,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
             Node::Definition { var_index } => {
                 let ast_var = &self.ast.variables[*var_index as usize];
 
-                let ast_variable_name_str =
-                    unsafe { core::str::from_utf8_unchecked(ast_var.name.as_bytes()) };
+                let ast_variable_name_str = unsafe { str::from_utf8_unchecked(ast_var.name.as_bytes()) };
                 let value = &ast_var.value;
 
                 let var = self.resolve(ast_var.name);
@@ -2667,8 +2666,7 @@ impl<'ast> Compiler<'ast, '_, '_, '_> {
                 let var = self.resolve(ast_variable.name);
                 let dst_offset = var.offset;
 
-                let ast_variable_name_str =
-                    unsafe { core::str::from_utf8_unchecked(ast_variable.name.as_bytes()) };
+                let ast_variable_name_str = unsafe { str::from_utf8_unchecked(ast_variable.name.as_bytes()) };
                 _ = writeln!(self.asm, " ; {ast_variable_name_str} {op} {}", new_value.display(self.ast));
                 if let AssignmentOp::Equals = op {
                     self.definition(new_value, Base::Rbp, dst_offset);

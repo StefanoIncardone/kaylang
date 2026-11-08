@@ -1,8 +1,8 @@
 #![expect(clippy::print_stderr, reason = "it's a cli tool")]
 
 use kaylang::{
-    Color, Language, Logger, Verbosity, code_generation::{Artifacts, Platform, nasm::compiler_ast::Compiler}, error::MsgSimple, front_end::{
-        ast::Parser, src_file::SrcFile, tokenizer::{TokenizationResult, Tokenizer, Tokens},
+    Color, ERROR, Language, Logger, Verbosity, code_generation::{Artifacts, Platform, nasm::compiler_ast::Compiler}, error::{MsgSimple, MsgWithCause}, front_end::{
+        MsgSeverity, ast::Parser, src_file::SrcFile, tokenizer::{TokenizationResult, Tokenizer, Tokens},
     },
 };
 use kaylang::{
@@ -107,8 +107,8 @@ fn main() -> ExitCode {
             let compiled_code = Compiler::compile(&tokens.src, &ast);
             logger.sub_step(&GENERATING_ASM, Some(&artifacts.asm_path), verbosity);
             if let Err(err) = std::fs::write(&artifacts.asm_path, compiled_code) {
-                let error = MsgSimple { kind: &COULD_NOT_WRITE_COMPILED_CODE, message: &err };
-                eprintln!("{error}");
+                let error = MsgWithCause { color: MsgSeverity::ERROR_COLOR, kind: ERROR, message: COULD_NOT_WRITE_COMPILED_CODE, cause: "" };
+                eprintln!("{error}\n{err}");
                 return ExitCode::FAILURE;
             }
         };
@@ -143,11 +143,9 @@ fn main() -> ExitCode {
             match assembler_result {
                 Ok(output) => {
                     if !output.status.success() {
-                        let error = MsgSimple {
-                            kind: &ASSEMBLING_ERROR,
-                            message: &String::from_utf8_lossy(&output.stderr),
-                        };
-                        eprintln!("{error}");
+                        let error = MsgSimple { color: MsgSeverity::ERROR_COLOR, kind: ERROR, message: ASSEMBLING_ERROR };
+                        eprintln!("{error}\n{}", unsafe { str::from_utf8_unchecked(&output.stderr) });
+
                         return match output.status.code() {
                             Some(code) => ExitCode::from(code as u8),
                             None => ExitCode::FAILURE,
@@ -155,8 +153,8 @@ fn main() -> ExitCode {
                     }
                 },
                 Err(err) => {
-                    let error = MsgSimple { kind: &COULD_NOT_RUN_ASSEMBLER, message: &err };
-                    eprintln!("{error}");
+                    let error = MsgSimple { color: MsgSeverity::ERROR_COLOR, kind: ERROR, message: COULD_NOT_RUN_ASSEMBLER };
+                    eprintln!("{error}\n{err}");
                     return ExitCode::FAILURE;
                 },
             }
@@ -178,9 +176,9 @@ fn main() -> ExitCode {
         match linker_result {
             Ok(output) => {
                 if !output.status.success() {
-                    let error =
-                        MsgSimple { kind: &LINKING_ERROR, message: &String::from_utf8_lossy(&output.stderr) };
-                    eprintln!("{error}");
+                    let error = MsgSimple { color: MsgSeverity::ERROR_COLOR, kind: ERROR, message: LINKING_ERROR };
+                    eprintln!("{error}\n{}", unsafe { str::from_utf8_unchecked(&output.stderr) });
+
                     return match output.status.code() {
                         Some(code) => ExitCode::from(code as u8),
                         None => ExitCode::FAILURE,
@@ -188,8 +186,8 @@ fn main() -> ExitCode {
                 }
             },
             Err(err) => {
-                let error = MsgSimple { kind: &COULD_NOT_RUN_LINKER, message: &err };
-                eprintln!("{error}");
+                let error = MsgSimple { color: MsgSeverity::ERROR_COLOR, kind: ERROR, message: COULD_NOT_RUN_LINKER };
+                eprintln!("{error}\n{err}");
                 return ExitCode::FAILURE;
             },
         }

@@ -3237,6 +3237,10 @@ i"" -> i#"""# -> i##""""## -> i###"""""###
 ##         ^          ^^            ^^^      these are the valid characters
 i"" -> i"""i -> ii""""ii -> iii"""""iii
 ##       ^         ^^           ^^^      these are the valid characters
+
+## or
+#"" -> ##"""# -> ###""""## -> ####"""""###
+##        ^          ^^            ^^^      these are the valid characters
 ```
 
 could be extended to character literals:

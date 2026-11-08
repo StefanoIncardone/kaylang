@@ -2,8 +2,8 @@
 //! This file is also an example of how it's possible to create cli tools based on this compiler
 
 use kaylang::{
-    Args, ArgsParser, Command, Help, Language, Logger, TRANSFORMING, Version, back_end::ir, code_generation::{Artifacts, Platform, nasm }, error::MsgSimple, front_end::{
-        src_file::SrcFile, syntax_tree, tokenizer::{TokenizationResult, Tokens, Tokenizer}, typed_abstract_syntax_tree,
+    Args, ArgsParser, Command, ERROR, Help, Language, Logger, TRANSFORMING, Version, back_end::ir, code_generation::{Artifacts, Platform, nasm }, error::MsgSimple, front_end::{
+        MsgSeverity, src_file::SrcFile, syntax_tree, tokenizer::{TokenizationResult, Tokenizer, Tokens}, typed_abstract_syntax_tree,
     },
 };
 use kaylang::{
@@ -180,8 +180,8 @@ fn main() -> ExitCode {
             let compiled_code = nasm::compiler_ir::Compiler::compile(&ir);
             logger.sub_step(&GENERATING_ASM, Some(&artifacts.asm_path), verbosity);
             if let Err(err) = std::fs::write(&artifacts.asm_path, compiled_code) {
-                let error = MsgSimple { kind: &COULD_NOT_WRITE_COMPILED_CODE, message: &err };
-                eprintln!("{error}");
+                let error = MsgSimple { color: MsgSeverity::ERROR_COLOR, kind: ERROR, message: COULD_NOT_WRITE_COMPILED_CODE };
+                eprintln!("{error}\n{err}");
                 return ExitCode::FAILURE;
             }
         };
@@ -217,19 +217,17 @@ fn main() -> ExitCode {
             logger.sub_step(&ASSEMBLING, Some(&artifacts.obj_path), verbosity);
             match assembler_result {
                 Ok(output) => if !output.status.success() {
-                    let error = MsgSimple {
-                        kind: &ASSEMBLING_ERROR,
-                        message: &String::from_utf8_lossy(&output.stderr),
-                    };
-                    eprintln!("{error}");
+                    let error = MsgSimple { color: MsgSeverity::ERROR_COLOR, kind: ERROR, message: ASSEMBLING_ERROR };
+                    eprintln!("{error}\n{}", unsafe { str::from_utf8_unchecked(&output.stderr) });
+
                     return match output.status.code() {
                         Some(code) => ExitCode::from(code as u8),
                         None       => ExitCode::FAILURE,
                     };
                 },
                 Err(err) => {
-                    let error = MsgSimple { kind: &COULD_NOT_RUN_ASSEMBLER, message: &err };
-                    eprintln!("{error}");
+                    let error = MsgSimple { color: MsgSeverity::ERROR_COLOR, kind: ERROR, message: COULD_NOT_RUN_ASSEMBLER };
+                    eprintln!("{error}\n{err}");
                     return ExitCode::FAILURE;
                 },
             }
@@ -250,16 +248,17 @@ fn main() -> ExitCode {
         logger.sub_step(&LINKING, Some(&artifacts.exe_path), verbosity);
         match linker_result {
             Ok(output) => if !output.status.success() {
-                let error = MsgSimple { kind: &LINKING_ERROR, message: &String::from_utf8_lossy(&output.stderr) };
-                eprintln!("{error}");
+                let error = MsgSimple { color: MsgSeverity::ERROR_COLOR, kind: ERROR, message: LINKING_ERROR };
+                eprintln!("{error}\n{}", unsafe { str::from_utf8_unchecked(&output.stderr) });
+
                 return match output.status.code() {
                     Some(code) => ExitCode::from(code as u8),
                     None => ExitCode::FAILURE,
                 };
             },
             Err(err) => {
-                let error = MsgSimple { kind: &COULD_NOT_RUN_LINKER, message: &err };
-                eprintln!("{error}");
+                let error = MsgSimple { color: MsgSeverity::ERROR_COLOR, kind: ERROR, message: COULD_NOT_RUN_LINKER };
+                eprintln!("{error}\n{err}");
                 return ExitCode::FAILURE;
             },
         }
@@ -282,8 +281,8 @@ fn main() -> ExitCode {
             };
         },
         Err(err) => {
-            let error = MsgSimple { kind: &COULD_NOT_RUN_EXECUTABLE, message: &err };
-            eprintln!("{error}");
+            let error = MsgSimple { color: MsgSeverity::ERROR_COLOR, kind: ERROR, message: COULD_NOT_RUN_EXECUTABLE };
+            eprintln!("{error}\n{err}");
             return ExitCode::FAILURE;
         },
     }

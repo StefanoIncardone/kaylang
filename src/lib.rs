@@ -16,12 +16,12 @@ use back_to_front::{
     cli::{Arg, FlagPrefix, FlagSeparator, Mask, bits, mask, AnsiFg, AnsiBg, AnsiFlag},
     usize32,
 };
-use color::{Colored, ansi_flag};
+use color::{Colored, ansi_flag, AnsiColor};
 use core::fmt::Write as _;
 use error::MsgWithCauseUnderText;
 use std::{io::IsTerminal, path::Path, time::Instant};
 
-use crate::code_generation::Artifacts;
+use crate::{code_generation::Artifacts, front_end::MsgSeverity};
 
 #[must_use]
 const fn max_text_len(texts: &[&str]) -> usize {
@@ -48,7 +48,7 @@ macro_rules! messages {
     };
 
     ($($visibility:vis $step_name:ident = $text:literal, $fg:ident, $bg:ident, $flags:ident $(,)?;)+) => {
-        $($visibility static $step_name: Colored<'_, str> = Colored { text: $text, fg: $fg, bg: $bg, flags: $flags };)+
+        $($visibility static $step_name: Colored<'_, str> = Colored { text: $text, color: AnsiColor { fg: $fg, bg: $bg, flags: $flags } };)+
     };
 }
 
@@ -86,29 +86,19 @@ messages!(
 );
 
 // errors
-const ERR_FG: AnsiFg = AnsiFg::LightRed;
-const ERR_BG: AnsiBg = AnsiBg::Default;
-const ERR_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
+pub const ERROR:   &str = "Error";
+pub const WARNING: &str = "Warning";
+pub const INFO:    &str = "Info";
 
-const BAR_FG: AnsiFg = AnsiFg::LightBlue;
-const BAR_BG: AnsiBg = AnsiBg::Default;
-const BAR_FLAGS: ansi_flag = AnsiFlag::Bold as ansi_flag;
+pub(crate) const AT:  &str = "at";
+pub(crate) const BAR: &str = "|";
 
-pub(crate) const ERROR: &str = "Error";
-pub(crate) const AT: &str = "at";
-
-messages!(
-    pub(crate) CAUSE = "Cause", ERR_FG, ERR_BG, ERR_FLAGS;
-    pub(crate) BAR   = "|",     BAR_FG, BAR_BG, BAR_FLAGS;
-);
-messages!(
-    pub COULD_NOT_WRITE_COMPILED_CODE = "Could not write compile code", ERR_FG, ERR_BG, ERR_FLAGS;
-    pub COULD_NOT_RUN_ASSEMBLER       = "Could not run assembler",      ERR_FG, ERR_BG, ERR_FLAGS;
-    pub COULD_NOT_RUN_LINKER          = "Could not run linker",         ERR_FG, ERR_BG, ERR_FLAGS;
-    pub COULD_NOT_RUN_EXECUTABLE      = "Could not run executable",     ERR_FG, ERR_BG, ERR_FLAGS;
-    pub ASSEMBLING_ERROR              = "Assembling Error",             ERR_FG, ERR_BG, ERR_FLAGS;
-    pub LINKING_ERROR                 = "Linking Error",                ERR_FG, ERR_BG, ERR_FLAGS;
-);
+pub const COULD_NOT_WRITE_COMPILED_CODE: &str = "could not write compile code";
+pub const COULD_NOT_RUN_ASSEMBLER:       &str = "could not run assembler";
+pub const COULD_NOT_RUN_LINKER:          &str = "could not run linker";
+pub const COULD_NOT_RUN_EXECUTABLE:      &str = "could not run executable";
+pub const ASSEMBLING_ERROR:              &str = "assembling Error";
+pub const LINKING_ERROR:                 &str = "linking Error";
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[must_use]
@@ -147,9 +137,7 @@ impl Logger {
     pub fn done(self, text: &dyn core::fmt::Display, output: Option<&Path>, padding: usize) {
         let elapsed_time = Colored {
             text: &format!("{:.06}s", self.start.elapsed().as_secs_f32()),
-            fg: AnsiFg::White,
-            bg: AnsiBg::Default,
-            flags: AnsiFlag::Default as u8,
+            color: AnsiColor { fg: AnsiFg::White, bg: AnsiBg::Default, flags: AnsiFlag::Default as u8 },
         };
 
         if let Some(out) = output {
@@ -566,12 +554,10 @@ pub struct Version;
 impl core::fmt::Display for Version {
     #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        const fg: AnsiFg = AnsiFg::White;
-        const bg: AnsiBg = AnsiBg::Default;
-        const flags: ansi_flag = AnsiFlag::Bold as ansi_flag;
+        const color: AnsiColor = AnsiColor { fg: AnsiFg::White, bg: AnsiBg::Default, flags: AnsiFlag::Bold as ansi_flag };
         return write!(f,
             "Kaylang compiler, version {VERSION}",
-            VERSION = Colored { text: env!("CARGO_PKG_VERSION"), fg, bg, flags },
+            VERSION = Colored { text: env!("CARGO_PKG_VERSION"), color },
         );
     }
 }
@@ -599,13 +585,11 @@ impl Default for Help<'_> {
 impl core::fmt::Display for Help<'_> {
     #[rustfmt::skip]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        const fg_value:  AnsiFg = AnsiFg::White;
-        const fg_option: AnsiFg = AnsiFg::LightGreen;
-        const fg_flag:   AnsiFg = AnsiFg::Blue;
-        const bg:        AnsiBg = AnsiBg::Default;
-        const flags_value:  ansi_flag = AnsiFlag::Bold as ansi_flag;
-        const flags_option: ansi_flag = AnsiFlag::Bold as ansi_flag;
-        const flags_flag:   ansi_flag = AnsiFlag::Bold as ansi_flag;
+        const bg:           AnsiBg    = AnsiBg::Default;
+        const flags:        ansi_flag = AnsiFlag::Bold as ansi_flag;
+        const color_value:  AnsiColor = AnsiColor { fg: AnsiFg::White, bg, flags };
+        const color_option: AnsiColor = AnsiColor { fg: AnsiFg::LightGreen, bg, flags };
+        const color_flag:   AnsiColor = AnsiColor { fg: AnsiFg::Blue, bg, flags };
 
         return write!(
             f,
@@ -668,58 +652,58 @@ impl core::fmt::Display for Help<'_> {
 
             Version         = Version,
             executable_name = self.executable_name.display(),
-            Usage           = Colored { text: "Usage",           fg: fg_value,  bg, flags: flags_value },
-            Arguments       = Colored { text: "Arguments",       fg: fg_value , bg, flags: flags_value },
-            Options         = Colored { text: "Options",         fg: fg_option, bg, flags: flags_option },
-            Command         = Colored { text: "Command",         fg: fg_option, bg, flags: flags_option },
-            color           = Colored { text: "color",           fg: fg_value,  bg, flags: flags_value },
-            Src             = Colored { text: "Src",             fg: fg_option, bg, flags: flags_option },
-            src             = Colored { text: "src",             fg: fg_value,  bg, flags: flags_value },
-            path            = Colored { text: "path",            fg: fg_value,  bg, flags: flags_value },
-            Check_Options   = Colored { text: "Check Options",   fg: fg_option, bg, flags: flags_option },
-            Compile_Options = Colored { text: "Compile Options", fg: fg_option, bg, flags: flags_option },
-            Run_Options     = Colored { text: "Run Options",     fg: fg_option, bg, flags: flags_option },
-            Language        = Colored { text: "Language",        fg: fg_option, bg, flags: flags_option },
-            Output          = Colored { text: "Output",          fg: fg_option, bg, flags: flags_option },
+            Usage           = Colored { text: "Usage",           color: color_value },
+            Arguments       = Colored { text: "Arguments",       color: color_value },
+            Options         = Colored { text: "Options",         color: color_option },
+            Command         = Colored { text: "Command",         color: color_option },
+            color           = Colored { text: "color",           color: color_value },
+            Src             = Colored { text: "Src",             color: color_option },
+            src             = Colored { text: "src",             color: color_value },
+            path            = Colored { text: "path",            color: color_value },
+            Check_Options   = Colored { text: "Check Options",   color: color_option },
+            Compile_Options = Colored { text: "Compile Options", color: color_option },
+            Run_Options     = Colored { text: "Run Options",     color: color_option },
+            Language        = Colored { text: "Language",        color: color_option },
+            Output          = Colored { text: "Output",          color: color_option },
 
-            // s   = Colored { text: "*",   fg: fg_flag,  bg, flags: flags_flag },
-            out = Colored { text: "out", fg: fg_value, bg, flags: flags_value },
+            // s   = Colored { text: "*",   color: color_flag },
+            out = Colored { text: "out", color: color_value },
 
-            __color = Colored { text: &ColorFlag::DashDashColor, fg: fg_flag, bg, flags: flags_flag },
-            _c      = Colored { text: &ColorFlag::DashC,         fg: fg_flag, bg, flags: flags_flag },
-            auto    = Colored { text: &Color::Auto,              fg: fg_flag, bg, flags: flags_flag },
-            always  = Colored { text: &Color::Always,            fg: fg_flag, bg, flags: flags_flag },
-            never   = Colored { text: &Color::Never,             fg: fg_flag, bg, flags: flags_flag },
+            __color = Colored { text: &ColorFlag::DashDashColor, color: color_flag },
+            _c      = Colored { text: &ColorFlag::DashC,         color: color_flag },
+            auto    = Colored { text: &Color::Auto,              color: color_flag },
+            always  = Colored { text: &Color::Always,            color: color_flag },
+            never   = Colored { text: &Color::Never,             color: color_flag },
 
-            help   = Colored { text: &CommandFlag::Help,             fg: fg_flag, bg, flags: flags_flag },
-            __help = Colored { text: &CommandFlag::DashDashHelp,     fg: fg_flag, bg, flags: flags_flag },
-            _h     = Colored { text: &CommandFlag::DashH,            fg: fg_flag, bg, flags: flags_flag },
-            hq     = Colored { text: &CommandFlag::Question,         fg: fg_flag, bg, flags: flags_flag },
-            __hq   = Colored { text: &CommandFlag::DashDashQuestion, fg: fg_flag, bg, flags: flags_flag },
-            _hq    = Colored { text: &CommandFlag::DashQuestion,     fg: fg_flag, bg, flags: flags_flag },
+            help   = Colored { text: &CommandFlag::Help,             color: color_flag },
+            __help = Colored { text: &CommandFlag::DashDashHelp,     color: color_flag },
+            _h     = Colored { text: &CommandFlag::DashH,            color: color_flag },
+            hq     = Colored { text: &CommandFlag::Question,         color: color_flag },
+            __hq   = Colored { text: &CommandFlag::DashDashQuestion, color: color_flag },
+            _hq    = Colored { text: &CommandFlag::DashQuestion,     color: color_flag },
 
-            version   = Colored { text: &CommandFlag::Version,         fg: fg_flag, bg, flags: flags_flag },
-            __version = Colored { text: &CommandFlag::DashDashVersion, fg: fg_flag, bg, flags: flags_flag },
-            _v        = Colored { text: &CommandFlag::DashV,           fg: fg_flag, bg, flags: flags_flag },
+            version   = Colored { text: &CommandFlag::Version,         color: color_flag },
+            __version = Colored { text: &CommandFlag::DashDashVersion, color: color_flag },
+            _v        = Colored { text: &CommandFlag::DashV,           color: color_flag },
 
-            check   = Colored { text: &CommandFlag::Check,   fg: fg_flag, bg, flags: flags_flag },
-            compile = Colored { text: &CommandFlag::Compile, fg: fg_flag, bg, flags: flags_flag },
-            run     = Colored { text: &CommandFlag::Run,     fg: fg_flag, bg, flags: flags_flag },
+            check   = Colored { text: &CommandFlag::Check,   color: color_flag },
+            compile = Colored { text: &CommandFlag::Compile, color: color_flag },
+            run     = Colored { text: &CommandFlag::Run,     color: color_flag },
 
-            __kay = Colored { text: &LanguageFlag::DashDashKay, fg: fg_flag, bg, flags: flags_flag },
-            __asm = Colored { text: &LanguageFlag::DashDashAsm, fg: fg_flag, bg, flags: flags_flag },
-            __obj = Colored { text: &LanguageFlag::DashDashObj, fg: fg_flag, bg, flags: flags_flag },
+            __kay = Colored { text: &LanguageFlag::DashDashKay, color: color_flag },
+            __asm = Colored { text: &LanguageFlag::DashDashAsm, color: color_flag },
+            __obj = Colored { text: &LanguageFlag::DashDashObj, color: color_flag },
 
-            __output = Colored { text: &OutputFlag::DashDashOutput, fg: fg_flag, bg, flags: flags_flag },
-            _o       = Colored { text: &OutputFlag::DashO,          fg: fg_flag, bg, flags: flags_flag },
+            __output = Colored { text: &OutputFlag::DashDashOutput, color: color_flag },
+            _o       = Colored { text: &OutputFlag::DashO,          color: color_flag },
 
-            __src = Colored { text: &SrcFlag::DashDashSrc, fg: fg_flag, bg, flags: flags_flag },
-            _s    = Colored { text: &SrcFlag::DashS,       fg: fg_flag, bg, flags: flags_flag },
+            __src = Colored { text: &SrcFlag::DashDashSrc, color: color_flag },
+            _s    = Colored { text: &SrcFlag::DashS,       color: color_flag },
 
-            __quiet   = Colored { text: &VerbosityFlag::DashDashQuiet,   fg: fg_flag, bg, flags: flags_flag },
-            _q        = Colored { text: &VerbosityFlag::DashQ,           fg: fg_flag, bg, flags: flags_flag },
-            __Verbose = Colored { text: &VerbosityFlag::DashDashVerbose, fg: fg_flag, bg, flags: flags_flag },
-            _V        = Colored { text: &VerbosityFlag::DashV,           fg: fg_flag, bg, flags: flags_flag },
+            __quiet   = Colored { text: &VerbosityFlag::DashDashQuiet,   color: color_flag },
+            _q        = Colored { text: &VerbosityFlag::DashQ,           color: color_flag },
+            __Verbose = Colored { text: &VerbosityFlag::DashDashVerbose, color: color_flag },
+            _V        = Colored { text: &VerbosityFlag::DashV,           color: color_flag },
         );
     }
 }
@@ -1724,7 +1708,8 @@ impl<S: AsRef<str>> core::fmt::Display for Errors<'_, '_, S> {
 
             let display_pointers_offset = pointers_offset + arg_value_pointers_offset as usize;
             let error_msg = MsgWithCauseUnderText {
-                kind: &ERROR,
+                color: MsgSeverity::ERROR_COLOR,
+                kind: ERROR,
                 message: &error_message,
                 cause: &error_cause_message,
                 line_text: &args_text,

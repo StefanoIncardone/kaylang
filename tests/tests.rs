@@ -216,6 +216,7 @@ fn check(src_path: &Path) -> Result<(), ExitCode> {
     return Ok(());
 }
 
+#[expect(clippy::single_call_fn)]
 fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
     let color = Color::Auto;
     color.set(&std::io::stderr());
@@ -294,7 +295,7 @@ fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
     let _assembler_status: () = match platform.assembler(&artifacts.asm_path, &artifacts.obj_path).output() {
         Ok(output) => {
             if !output.status.success() {
-                let stderr_out = String::from_utf8_lossy(&output.stderr);
+                let stderr_out = unsafe { str::from_utf8_unchecked(&output.stderr) };
                 eprintln!("{ASSEMBLING_ERROR}:\n{stderr_out}");
                 return match output.status.code() {
                     Some(code) => Err(ExitCode::from(code as u8)),
@@ -311,7 +312,7 @@ fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
     let _linker_status: () = match platform.linker(&artifacts.obj_path, &artifacts.exe_path).output() {
         Ok(output) => {
             if !output.status.success() {
-                let stderr_out = String::from_utf8_lossy(&output.stderr);
+                let stderr_out = unsafe { str::from_utf8_unchecked(&output.stderr) };
                 eprintln!("{LINKING_ERROR}:\n{stderr_out}");
                 return match output.status.code() {
                     Some(code) => Err(ExitCode::from(code as u8)),
@@ -341,8 +342,8 @@ fn run(src_path: &Path, out_path: &Path) -> Result<(), ExitCode> {
     };
     running_step.step(&DONE, None, verbosity);
 
-    let stdout = unsafe { String::from_utf8_unchecked(run_result.stdout) };
-    let stderr = unsafe { String::from_utf8_unchecked(run_result.stderr) };
+    let stdout = unsafe { str::from_utf8_unchecked(&run_result.stdout) };
+    let stderr = unsafe { str::from_utf8_unchecked(&run_result.stderr) };
 
     eprintln!("{stderr}");
     eprintln!("{stdout}");

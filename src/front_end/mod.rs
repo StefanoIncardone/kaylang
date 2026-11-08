@@ -6,10 +6,10 @@ pub mod typed_abstract_syntax_tree;
 pub mod types;
 
 use self::src_file::{Position, SrcCode};
-use crate::{ERROR, error::MsgWithCauseUnderTextWithLocation, front_end::src_file::SrcFile};
+use crate::{ERROR, WARNING, color::{AnsiColor, ansi_flag}, error::MsgWithCauseUnderTextWithLocation, front_end::src_file::SrcFile};
 extern crate alloc;
 use alloc::borrow::Cow;
-use back_to_front::usize32;
+use back_to_front::{cli::{AnsiBg, AnsiFg, AnsiFlag}, usize32};
 
 // IDEA(stefano): move to back-to-front
 #[derive(Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -106,11 +106,52 @@ pub enum MsgSeverity {
     Warning,
 }
 
+impl MsgSeverity {
+    pub const ERROR_COLOR: AnsiColor = AnsiColor {
+        fg: AnsiFg::LightRed,
+        bg: AnsiBg::Default,
+        flags: AnsiFlag::Bold as ansi_flag,
+    };
+
+    pub const WARNING_COLOR: AnsiColor = AnsiColor {
+        fg: AnsiFg::LightYellow,
+        bg: AnsiBg::Default,
+        flags: AnsiFlag::Bold as ansi_flag,
+    };
+
+    pub const INFO_COLOR: AnsiColor = AnsiColor {
+        fg: AnsiFg::LightCyan,
+        bg: AnsiBg::Default,
+        flags: AnsiFlag::Bold as ansi_flag,
+    };
+
+    pub const ACCENT_COLOR: AnsiColor = AnsiColor {
+        fg: AnsiFg::LightBlue,
+        bg: AnsiBg::Default,
+        flags: AnsiFlag::Bold as ansi_flag,
+    };
+
+    #[inline]
+    pub const fn color(self) -> AnsiColor {
+        return match self {
+            Self::Error | Self::NonTerminalError => Self::ERROR_COLOR,
+            Self::Warning => Self::WARNING_COLOR,
+        };
+    }
+
+    #[must_use] #[inline]
+    pub const fn kind(self) -> &'static str {
+        return match self {
+            Self::Error | Self::NonTerminalError => ERROR,
+            Self::Warning => WARNING,
+        };
+    }
+}
+
 // IDEA(stefano): allow pointers to start past the end of the line
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 #[must_use]
 pub struct Msg<K: IntoMsgInfo> {
-    // BUG(stefano): is ignored
     pub severity: MsgSeverity,
     pub kind: K,
     /// absolute source code byte position
@@ -150,8 +191,8 @@ pub struct MsgDisplay<'code, 'path> {
 impl core::fmt::Display for MsgDisplay<'_, '_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let error = MsgWithCauseUnderTextWithLocation {
-            severity: MsgSeverity::Error,
-            kind: &ERROR,
+            color: self.severity.color(),
+            kind: self.severity.kind(),
             message: &self.error_message,
             cause: &self.error_cause_message,
             position: self.position.clone(),

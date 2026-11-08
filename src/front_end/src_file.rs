@@ -1,4 +1,4 @@
-use crate::{ERROR, error::MsgWithCause, front_end::Index32};
+use crate::{ERROR, error::MsgWithCause, front_end::{Index32, MsgSeverity}};
 use std::{fs::File, io::Read as _, path::Path};
 use back_to_front::{slice, src_code::Span, text};
 use unicode_width::UnicodeWidthChar as _;
@@ -151,12 +151,27 @@ impl<'code> SrcCode<'code, '_> {
 
     #[must_use] #[inline(always)] #[track_caller]
     pub(crate) const fn line_start(&self, line_index: Index32<usize32>) -> usize32 {
-        let line_start: usize32 = if line_index.0 == 0 {
-            0
-        } else {
-            *unsafe { slice::at_unchecked(self.line_ends(), line_index.0 as usize - 1) } + 1
+        if line_index.0 == 0 { return 0; }
+
+        let next_index = *unsafe { slice::at_unchecked(self.line_ends(), line_index.0 as usize - 1) };
+        let Some(next_ch) = text::byte(self.code(), next_index as usize) else {
+            return next_index;
         };
-        return line_start;
+
+        let next_next_index = next_index + 1;
+        return match next_ch {
+            b'\n' => next_next_index,
+            b'\r' => {
+                let Some(next_next_ch) = text::byte(self.code(), next_next_index as usize) else {
+                    return next_next_index;
+                };
+                match next_next_ch {
+                    b'\n' => next_next_index + 1,
+                    _ => next_next_index,
+                }
+            },
+            _ => next_index,
+        };
     }
 
     #[inline(always)] #[track_caller]
@@ -216,7 +231,7 @@ impl core::fmt::Display for Error<'_> {
             ErrorKind::CouldNotReadEntireFile => "failed to read entire file".to_owned(),
         };
 
-        let error = MsgWithCause { kind: &ERROR, message: &message, cause: &cause };
+        let error = MsgWithCause { color: MsgSeverity::ERROR_COLOR, kind: ERROR, message: &message, cause: &cause };
         return write!(f, "{error}");
     }
 }

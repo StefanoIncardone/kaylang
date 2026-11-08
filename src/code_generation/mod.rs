@@ -11,7 +11,7 @@ pub mod nasm;
 
 use cfg_if::cfg_if;
 
-use crate::{ERROR, error::MsgWithCause};
+use crate::{ERROR, error::MsgWithCause, front_end::MsgSeverity};
 use core::fmt::Write as _;
 use std::{
     path::{Path, PathBuf}, process::Command,
@@ -203,7 +203,7 @@ impl core::fmt::Display for Error {
             },
         }
 
-        let error = MsgWithCause { kind: &ERROR, message: &message, cause: &cause };
+        let error = MsgWithCause { color: MsgSeverity::ERROR_COLOR, kind: ERROR, message: &message, cause: &cause };
         return write!(f, "{error}");
     }
 }

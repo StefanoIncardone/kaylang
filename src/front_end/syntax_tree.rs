@@ -1057,10 +1057,10 @@ impl<'tokens, 'code: 'tokens, 'path> Parser<'tokens, 'code, 'path> {
         let pointers_count = token.display_len(self.syntax_tree.tokens);
 
         let error = MsgWithCauseUnderTextWithLocation {
-            severity: MsgSeverity::Error,
-            kind: &ERROR,
-            message: &error_message,
-            cause: &error_cause_message,
+            color: MsgSeverity::ERROR_COLOR,
+            kind: ERROR,
+            message: error_message,
+            cause: error_cause_message,
             position,
             line_text,
             pointers_count,

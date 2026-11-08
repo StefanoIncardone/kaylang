@@ -1233,10 +1233,10 @@ impl<'st, 'tokens: 'st, 'code: 'tokens, 'path> Parser<'st, 'tokens, 'code, 'path
         let line_text = self.tast.syntax_tree.tokens.src.line_text(Index32::new(position.line - 1));
 
         let error = MsgWithCauseUnderTextWithLocation {
-            severity: MsgSeverity::Error,
-            kind: &ERROR,
-            message: &error_message,
-            cause: &error_cause_message,
+            color: MsgSeverity::ERROR_COLOR,
+            kind: ERROR,
+            message: error_message,
+            cause: error_cause_message,
             position,
             line_text,
             pointers_count,
